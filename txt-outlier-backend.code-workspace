@@ -1,11 +1,11 @@
 {
   "folders": [
     {
-      "name": "project-root",
+      "name": "txt-outlier-backend",
       "path": "./"
     },
     {
-      "name": "supabase-functions",
+      "name": "express",
       "path": "supabase/functions"
     }
   ],

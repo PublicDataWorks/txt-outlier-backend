@@ -1,0 +1,28 @@
+{
+  "name": "txt-outlier-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/PublicDataWorks/txt-outlier-backend.git",
+  "author": "None",
+  "license": "MIT",
+  "scripts": {
+    "start": "deno run -A supabase/functions/express/index.ts",
+    "dev": "deno run --watch -A supabase/functions/express/index.ts",
+    "test": "deno test -A",
+    "lint": "deno lint"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.29.3",
+    "express": "^4.18.2",
+    "express-async-errors": "^3.1.1",
+    "helmet": "^7.1.0",
+    "inserturlparams": "^1.0.1",
+    "jet-paths": "^1.0.6",
+    "jsonfile": "^6.1.0",
+    "module-alias": "^2.2.3",
+    "morgan": "^1.10.0",
+    "postgres": "^3.4.3",
+    "validator": "^13.11.0",
+    "winston": "^3.11.0"
+  }
+}

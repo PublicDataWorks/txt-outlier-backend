@@ -11,7 +11,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
-} from "npm:drizzle-orm/pg-core";
+} from "drizzle/pg-core";
 
 export const teams = pgTable("teams", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
