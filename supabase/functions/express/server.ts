@@ -2,23 +2,19 @@
  * Setup express server.
  */
 
-import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
-// import path from 'path';
 import helmet from 'helmet';
 import express, { Request, Response, NextFunction } from 'express';
-import logger from 'jet-logger';
 
 import 'express-async-errors';
 
-import BaseRouter from '@src/routes/api.ts';
-import Paths from '@src/constants/Paths.ts';
+import BaseRouter from './routes/api.ts';
+import Paths from './constants/Paths.ts';
 
-import EnvVars from '@src/constants/EnvVars.ts';
-import HttpStatusCodes from '@src/constants/HttpStatusCodes.ts';
+import HttpStatusCodes from './constants/HttpStatusCodes.ts';
 
-import { NodeEnvs } from '@src/constants/misc.ts';
-import { RouteError } from '@src/other/classes.ts';
+import { RouteError } from './other/classes.ts';
+import {logger} from "./util/misc.ts";
 
 
 // **** Variables **** //
@@ -31,17 +27,14 @@ const app = express();
 // Basic middleware
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));
-app.use(cookieParser(EnvVars.CookieProps.Secret));
 
 // Show routes called in console during development
-if (EnvVars.NodeEnv === NodeEnvs.Dev.valueOf()) {
-  app.use(morgan('dev'));
-}
+app.use(morgan('dev'));
+
 
 // Security
-if (EnvVars.NodeEnv === NodeEnvs.Production.valueOf()) {
-  app.use(helmet());
-}
+app.use(helmet());
+
 
 // Add APIs, must be after middleware
 app.use(Paths.Base, BaseRouter);
@@ -52,11 +45,9 @@ app.use((
   _: Request,
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  next: NextFunction,
+  _next: NextFunction,
 ) => {
-  if (EnvVars.NodeEnv !== NodeEnvs.Test.valueOf()) {
-    logger.err(err, true);
-  }
+  logger.error(err, true);
   let status = HttpStatusCodes.BAD_REQUEST;
   if (err instanceof RouteError) {
     status = err.status;
@@ -72,16 +63,8 @@ app.get('/', (_: Request, res: Response) => {
   return res.redirect('/users');
 });
 
-// Redirect to login if not logged in.
-app.get('/users', (_: Request, res: Response) => {
-  return res.sendFile('users.html', { root: viewsDir });
-});
-
 // Nav to users pg by default
-app.post('/express/postgres', (req: Request, res: Response) => {
-  console.log("gogogoggo", req.body)
-  return res.json('ok');
-});
+
 // **** Export default **** //
 
 export default app;

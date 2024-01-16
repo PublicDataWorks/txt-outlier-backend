@@ -1,13 +1,12 @@
-
-
 import jsonfile from 'jsonfile';
 
-import { IUser } from '@src/models/User.ts';
-
+import { IUser } from '../models/User.ts';
+import * as path from "https://deno.land/std@0.212.0/path/mod.ts";
 
 // **** Variables **** //
 
 const DB_FILE_NAME = 'database.json';
+const __dirname = path.dirname(path.fromFileUrl(import.meta.url));
 
 
 // **** Types **** //

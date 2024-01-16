@@ -5,9 +5,9 @@
 /* eslint-disable node/no-process-env */
 
 
-export default {
+const EnvVars = {
   NodeEnv: (Deno.env.get('NODE_ENV') ?? ''),
-  Port: Number(Deno.env.get('PORT') ?? 0),
+  Port: Number(Deno.env.get('PORT') ?? 8000),
   CookieProps: {
     Key: 'ExpressGeneratorTs',
     Secret: (Deno.env.get('COOKIE_SECRET') ?? ''),
@@ -26,3 +26,5 @@ export default {
     Exp: (Deno.env.get('COOKIE_EXP') ?? ''), // exp at the same time as the cookie
   },
 } as const;
+
+export default EnvVars;

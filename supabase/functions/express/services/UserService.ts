@@ -1,7 +1,7 @@
-import UserRepo from '@src/repos/UserRepo.ts';
-import { IUser } from '@src/models/User.ts';
-import { RouteError } from '@src/other/classes.ts';
-import HttpStatusCodes from '@src/constants/HttpStatusCodes.ts';
+import UserRepo from '../repos/UserRepo.ts';
+import { IUser } from '../models/User.ts';
+import { RouteError } from '../other/classes.ts';
+import HttpStatusCodes from '../constants/HttpStatusCodes.ts';
 
 
 // **** Variables **** //

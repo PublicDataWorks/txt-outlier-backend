@@ -12,14 +12,27 @@ jobs:
           command: |
             curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
       - run:
+          name: "Install deno"
+          command: |
+            curl -fsSL https://deno.land/install.sh | sh
+      - run:
           name: "Install Supabase CLI"
           command: npm install supabase --save-dev
       - run:
           name: "Supabase login"
           command: npx supabase login --token $SUPABASE_ACCESS_TOKEN
       - run:
+          name: "Build & run"
+          command: /home/circleci/.deno/bin/deno run -A supabase/functions/express/index.ts
+          background: true
+      - run:
+          name: "Run test"
+          command: |
+            sleep 5
+            /home/circleci/.deno/bin/deno test -A
+      - run:
           name: "Deploy Function"
-          command: npx supabase functions deploy express --project-ref $SUPABASE_PROJECT_ID
+          command: npx supabase functions deploy express --no-verify-jwt --project-ref $SUPABASE_PROJECT_ID
 
 workflows:
   version: 2

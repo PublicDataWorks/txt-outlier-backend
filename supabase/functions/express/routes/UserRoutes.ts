@@ -1,7 +1,7 @@
-import HttpStatusCodes from '@src/constants/HttpStatusCodes.ts';
+import HttpStatusCodes from '../constants/HttpStatusCodes.ts';
 
-import UserService from '@src/services/UserService.ts';
-import { IUser } from '@src/models/User.ts';
+import UserService from '../services/UserService.ts';
+import { IUser } from '../models/User.ts';
 import { IReq, IRes } from './types/express/misc.ts';
 
 

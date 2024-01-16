@@ -1,8 +1,6 @@
-import logger from 'jet-logger';
-
-import EnvVars from '@src/constants/EnvVars.ts';
+import EnvVars from '../express/constants/EnvVars.ts';
 import server from './server.ts';
-
+import {logger} from "./util/misc.ts";
 
 // **** Run **** //
 

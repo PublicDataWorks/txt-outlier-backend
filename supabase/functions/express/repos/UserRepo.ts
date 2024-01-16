@@ -1,5 +1,5 @@
-import { IUser } from '@src/models/User.ts';
-import { getRandomInt } from '@src/util/misc.ts';
+import { IUser } from '../models/User.ts';
+import { getRandomInt } from '../util/misc.ts';
 import orm from './MockOrm.ts';
 
 

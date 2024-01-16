@@ -1,12 +1,11 @@
 {
     "imports": {
-        "@src/": "./functions/express/",
-        "cookie-parser": "npm:cookie-parser@^1.4.6",
+        "assert": "https://deno.land/std@0.210.0/assert/mod.ts",
         "express": "npm:express@^4.18.2",
         "express-async-errors": "npm:express-async-errors@^3.1.1",
         "helmet": "npm:helmet@^7.1.0",
         "inserturlparams": "npm:inserturlparams@^1.0.1",
-        "jet-logger": "npm:jet-logger@^1.3.1",
+        "winston": "npm:winston@^3.11.0",
         "jet-paths": "npm:jet-paths@^1.0.6",
         "validator": "npm:validator@^13.11.0",
         "jsonfile": "npm:jsonfile@^6.1.0",
@@ -17,3 +16,4 @@
         "drizzle-orm/postgres-js": "npm:drizzle-orm@^0.29.3/postgres-js"
     }
   }
+

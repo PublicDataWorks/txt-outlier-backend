@@ -4,7 +4,7 @@
 
 
 export default {
-  Base: 'express/api',
+  Base: '/express/api',
   Users: {
     Base: '/users',
     Get: '/all',

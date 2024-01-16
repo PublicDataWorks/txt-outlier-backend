@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import validator from 'validator'; 
+import validator from 'validator';
 import { Request, Response, NextFunction } from 'express';
 
 import Paths from '../constants/Paths.ts';
-import User from '@src/models/User.ts';
+import User from '../models/User.ts';
 import UserRoutes from './UserRoutes.ts';
 
 // **** Variables **** //
@@ -61,7 +61,6 @@ userRouter.delete(
 
 // Add UserRouter
 apiRouter.use(Paths.Users.Base, userRouter);
-
 // **** Export default **** //
 
 export default apiRouter;

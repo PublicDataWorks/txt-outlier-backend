@@ -2,7 +2,7 @@
  * Miscellaneous shared classes go here.
  */
 
-import HttpStatusCodes from '@src/constants/HttpStatusCodes.ts';
+import HttpStatusCodes from '../constants/HttpStatusCodes.ts';
 
 
 /**
