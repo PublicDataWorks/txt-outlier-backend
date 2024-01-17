@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1703759594257,
+      "tag": "0000_lean_the_phantom",
+      "breakpoints": true
+    }
+  ]
+}
