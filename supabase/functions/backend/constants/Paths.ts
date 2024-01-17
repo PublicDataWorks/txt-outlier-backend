@@ -1,10 +1,5 @@
-/**
- * Express router paths go here.
- */
-
-
 export default {
-  Base: '/express/api',
+  Base: '/',
   Users: {
     Base: '/users',
     Get: '/all',
