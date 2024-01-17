@@ -1,5 +1,0 @@
-{
-  "compilerOptions": {
-  },
-  "importMap": "supabase/functions/import_map.json"
-}

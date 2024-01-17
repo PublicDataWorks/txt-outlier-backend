@@ -1,0 +1,5 @@
+{
+  "compilerOptions": {
+  },
+  "importMap": "./import_map.json"
+}
