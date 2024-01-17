@@ -1,8 +1,7 @@
 {
   "name": "express-gen-ts",
   "version": "0.0.0",
-  "scripts": {
-  },
+  "scripts": {},
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.6",
@@ -34,6 +33,7 @@
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
+    "drizzle-orm": "^0.29.3",
     "eslint": "^8.56.0",
     "eslint-plugin-node": "^11.1.0",
     "find": "^0.3.0",

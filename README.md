@@ -1,7 +1,6 @@
-# Fresh project
+# Supabase Deno Edge Function project
 
-Your new Fresh project is ready to go. You can follow the Fresh "Getting
-Started" guide here: https://fresh.deno.dev/docs/getting-started
+For local development, install node dependencies
 
 ### Usage
 
@@ -10,7 +9,9 @@ Make sure to install Deno: https://deno.land/manual/getting_started/installation
 Then start the project:
 
 ```
-deno task start
+npm dev
 ```
 
 This will watch the project directory and restart as necessary.
+
+For further instructions see the `package.json` file.
