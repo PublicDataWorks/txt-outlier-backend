@@ -1,0 +1,12 @@
+{
+  "imports": {
+    "assert": "https://deno.land/std@0.210.0/assert/mod.ts",
+    "express": "npm:express",
+    "express-async-errors": "npm:express-async-errors@^3.1.1",
+    "helmet": "npm:helmet@^7.1.0",
+    "postgres": "npm:postgres@^3.4.3",
+    "drizzle-orm": "npm:drizzle-orm",
+    "drizzle-orm/postgres-js": "npm:drizzle-orm/postgres-js"
+  }
+}
+
