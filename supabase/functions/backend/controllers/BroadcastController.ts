@@ -1,16 +1,17 @@
-import BroadcastService from '../services/BroadcastService.ts';
-import {Request, Response} from 'express';
+import BroadcastService from "../services/BroadcastService.ts";
+import { Request, Response } from "express";
 
-async function make(req: Request, res: Response) {
-    try {
-        const broadcast = await BroadcastService.create();
-        return res.status(200).json({ broadcast });
-    } catch (error) {
-        console.error("Error in making broadcast:", error.message);
-        return res.status(500).json({ error: "Internal Server Error" });
-    }
+async function make(_req: Request, res: Response) {
+  await BroadcastService.make();
+  return res.status(204);
+}
+
+async function sendDraft(_req: Request, res: Response) {
+  await BroadcastService.sendDraftMessage();
+  return res.status(204);
 }
 
 export default {
-    make,
+  make,
+  sendDraft,
 } as const;
