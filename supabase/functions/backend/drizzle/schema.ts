@@ -185,8 +185,7 @@ export const conversationsAuthors = pgTable("conversations_authors", {
 });
 
 export const invokeHistory = pgTable("invoke_history", {
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  id: bigint("id", { mode: "number" }).primaryKey().notNull(),
+  id: serial("id").primaryKey().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow().notNull(),
   conversationId: uuid("conversation_id"),
@@ -292,11 +291,17 @@ export const twilioMessages = pgTable("twilio_messages", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }),
   references: text("references").array().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
-    .notNull(),
+    .defaultNow().notNull(),
   externalId: text("external_id"),
   attachments: text("attachments"),
   fromField: text("from_field").notNull().references(() => authors.phoneNumber),
   toField: text("to_field").notNull().references(() => authors.phoneNumber),
+}, (table) => {
+  return {
+    deliveredAtIdx: index("twilio_messages_delivered_at_idx").on(
+      table.deliveredAt,
+    ),
+  };
 });
 
 export const userHistory = pgTable("user_history", {
@@ -324,8 +329,7 @@ export const users = pgTable("users", {
 });
 
 export const audienceSegments = pgTable("audience_segments", {
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  id: bigint("id", { mode: "number" }).primaryKey().notNull(),
+  id: serial("id").primaryKey().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow().notNull(),
   query: text("query").notNull(),
@@ -357,22 +361,35 @@ export const outgoingMessages = pgTable("outgoing_messages", {
   id: serial("id").primaryKey().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .defaultNow().notNull(),
+  recipientPhoneNumber: text("recipient_phone_number").notNull().references(
+    () => authors.phoneNumber,
+    { onUpdate: "cascade" },
+  ),
+  message: text("message").notNull(),
+  runAt: timestamp("run_at", { withTimezone: true, mode: "string" }).notNull(),
+  processed: boolean("processed").default(false).notNull(),
   // You can use { mode: "bigint" } if numbers are exceeding js number limitations
   broadcastId: bigint("broadcast_id", { mode: "number" }).notNull().references(
     () => broadcasts.id,
     { onUpdate: "cascade" },
   ),
   // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  segmentId: bigint("segment_id", { mode: "number" }).notNull()
-    .references(() => audienceSegments.id, { onUpdate: "cascade" }),
-  recipientPhoneNumber: text("recipient_phone_number").notNull().references(
-    () => authors.phoneNumber,
+  segmentId: bigint("segment_id", { mode: "number" }).notNull().references(
+    () => audienceSegments.id,
     { onUpdate: "cascade" },
   ),
-  message: text("message").notNull(),
-  runAt: timestamp("run_at", { withTimezone: true, mode: "string" })
-    .notNull(),
-  processed: boolean("processed").default(false).notNull(),
+}, (table) => {
+  return {
+    outgoingMessagesBroadcastIdSegmentIdMessageRunAtReKey: unique(
+      "outgoing_messages_broadcast_id_segment_id_message_run_at_re_key",
+    ).on(
+      table.recipientPhoneNumber,
+      table.message,
+      table.runAt,
+      table.broadcastId,
+      table.segmentId,
+    ),
+  };
 });
 
 export type Rule = typeof rules.$inferInsert;
@@ -394,5 +411,5 @@ export type Organization = typeof organizations.$inferInsert;
 export type ConversationAuthor = typeof conversationsAuthors.$inferInsert;
 export type TwilioMessage = typeof twilioMessages.$inferInsert;
 export type InvokeHistory = typeof invokeHistory.$inferInsert;
-export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
-export type Broadcast = typeof broadcasts.$inferInsert
+export type BroadcastSegment = typeof broadcastsSegments.$inferInsert;
+export type Broadcast = typeof broadcasts.$inferInsert;

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "introspect": "drizzle-kit introspect:pg ",
+    "introspect": "drizzle-kit introspect:pg",
     "migration:generate": "drizzle-kit generate:pg --schema=./schema.ts --out=."
   },
   "author": "Outlier Media",

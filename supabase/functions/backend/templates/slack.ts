@@ -4,4 +4,3 @@ export const markdownTemplate = `
 The server received a broadcast making request that failed due to the following reason:
 - *<%= failureDetails %>*
 `;
-
