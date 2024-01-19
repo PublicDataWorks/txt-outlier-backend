@@ -7,6 +7,7 @@ import "express-async-errors";
 import BaseRouter from "./routes/Api.ts";
 import Paths from "./constants/Paths.ts";
 import RouteError from "./exception/RouteError.ts";
+import SystemError from "./exception/SystemError.ts";
 
 const app = express();
 
@@ -16,10 +17,8 @@ app.use(morgan("dev"));
 // Security
 app.use(helmet());
 
-// Add APIs, must be after middleware
 app.use(Paths.Base, BaseRouter);
 
-// Add error handler
 app.use((
   err: Error,
   _: Request,
@@ -27,6 +26,10 @@ app.use((
   _next: NextFunction,
 ) => {
   let status = 400;
+  if (err instanceof SystemError) {
+    return res.status(204).send();
+    // TODO: send slack
+  }
   if (err instanceof RouteError) {
     status = err.status;
   }

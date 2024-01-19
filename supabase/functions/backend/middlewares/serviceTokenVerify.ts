@@ -1,34 +1,22 @@
-/**
- * Middleware to verify user logged in and is an an admin.
- */
+import { NextFunction, Request, Response } from "express";
+import AppResponse from "../misc/AppResponse.ts";
 
-import { Request, Response, NextFunction } from 'express';
-
-// **** Variables **** //
-
-const USER_UNAUTHORIZED_ERR = 'User not authorized to perform this action';
-
-// **** Functions **** //
-
-/**
- * See note at beginning of file.
- */
-async function serviceTokenVerify(
+const serviceTokenVerify = (
   req: Request,
   res: Response,
   next: NextFunction,
-) {
-  let token = "";
-  if (req.headers.authorization && req.headers.authorization.split(' ')[0] === 'Bearer') {
-    token = req.headers.authorization.split(' ')[1];
+) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return AppResponse.unauthorized(res);
   }
-  if (token !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!){
-    return res.status(401).json({ message: "Unauthorized" })
+
+  const token = authHeader.split(" ")[1];
+  if (token !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+    return AppResponse.unauthorized(res);
   }
-  next()
-}
 
-
-// **** Export Default **** //
+  next();
+};
 
 export default serviceTokenVerify;
