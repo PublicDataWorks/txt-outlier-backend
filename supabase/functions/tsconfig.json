@@ -4,5 +4,5 @@
     "noEmit": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["backend"],
+  "include": ["backend"]
 }
