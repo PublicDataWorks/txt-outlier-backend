@@ -1,6 +1,6 @@
 import { assert } from "https://deno.land/std@0.210.0/assert/mod.ts";
-import { sql } from "npm:drizzle-orm";
-import postgres from "npm:postgres";
+import { sql } from "drizzle-orm";
+import postgres from "postgres";
 import {
   afterAll,
   beforeEach,
@@ -17,7 +17,7 @@ const supabaseInTest: PostgresJsDatabase = drizzle(client, {
 beforeEach(async () => {
   await supabaseInTest.execute(sql.raw(DROP_ALL_TABLES));
   const sqlScript = Deno.readTextFileSync(
-    "../drizzle/0000_dusty_pet_avengers.sql",
+    "drizzle/0000_dusty_pet_avengers.sql",
   );
   await supabaseInTest.execute(sql.raw(sqlScript));
 });
@@ -53,6 +53,7 @@ export const DROP_ALL_TABLES = `
     DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
 `;
 
+// Key generated from supabase running local, not sensitive
 const LOCAL_SERVICE_KEY =
   `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU`;
 const req = async (path: string, body?: string) => {
