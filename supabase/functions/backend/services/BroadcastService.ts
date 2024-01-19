@@ -10,6 +10,7 @@ import SystemError from "../exception/SystemError.ts";
 import type { PgTransaction } from "drizzle-orm/pg-core/session";
 import slack from "../lib/slack.ts";
 import Missive from "../constants/Missive.ts";
+import * as log from "log";
 
 const make = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -48,6 +49,7 @@ const make = async () => {
   await supabase.update(broadcasts).set({ editable: false }).where(
     eq(broadcasts.id, nextBroadcast.id),
   );
+  await sendDraftMessage();
 };
 
 const insertBroadcastSegment = async (
@@ -81,7 +83,7 @@ const insertBroadcastSegment = async (
       }
     });
   } catch (e) {
-    console.log(e); // TODO: Add logger
+    log.debug(e);
     await slack({ "failureDetails": e });
   }
 };
@@ -112,7 +114,7 @@ const sendDraftMessage = async () => {
     if (response.ok) {
       processed.push(outgoing.id);
     } else {
-      console.log(response); // TODO: Add logger
+      log.debug(response);
       // TODO: Saved to DB
     }
     await new Promise((r) =>

@@ -1,4 +1,4 @@
-import { SlackAPI } from "slackAPI";
+import { SlackAPI } from "slack-API";
 import { markdownTemplate } from "../templates/slack.ts";
 
 export interface ErrorDetail {
