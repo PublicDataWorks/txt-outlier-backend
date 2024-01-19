@@ -394,3 +394,5 @@ export type Organization = typeof organizations.$inferInsert;
 export type ConversationAuthor = typeof conversationsAuthors.$inferInsert;
 export type TwilioMessage = typeof twilioMessages.$inferInsert;
 export type InvokeHistory = typeof invokeHistory.$inferInsert;
+export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
+export type Broadcast = typeof broadcasts.$inferInsert
