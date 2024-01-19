@@ -1,6 +1,7 @@
 import {eq, inArray, sql} from "drizzle-orm";
 import supabase from "../lib/supabase.ts";
 import {Broadcast, broadcasts, BroadcastSegment, outgoingMessages} from "../drizzle/schema.ts";
+import slack from "../lib/slack.ts";
 
 async function make() {
     const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -113,20 +114,17 @@ const insertBroadcastSegment = async (broadcastSegment: BroadcastSegment, nextBr
                            '${outgoing.message}'                                                                          AS message,
                            TIMESTAMP WITH TIME ZONE '${nextBroadcast.runAt.toISOString()}' + INTERVAL '${outgoing.delay}' AS run_at
                     FROM (${broadcastSegment.segment.query}) AS foo
-                    LIMIT 10;
+                    LIMIT ${limit}
                 `;
-                //          LIMIT ${limit}
                 try {
                     await tx.execute(sql.raw(statement))
                 } catch (e) {
                     console.log(e);
-                    //await send slack
-                    await tx.rollback()
+                    await slack({"failureDetails": e})
                 }
             }
         });
     } catch (e) {
         console.log(e)
     }
-
 }
