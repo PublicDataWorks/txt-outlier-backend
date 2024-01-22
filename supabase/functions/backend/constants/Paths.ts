@@ -1,10 +1,12 @@
 export default {
-  Base: '/',
+  Base: "/backend",
   Users: {
-    Base: '/users',
-    Get: '/all',
-    Add: '/add',
-    Update: '/update',
-    Delete: '/delete/:id',
+    Base: "/users",
+    Get: "/all",
+  },
+  Broadcast: {
+    Base: "/broadcasts",
+    Make: "/make",
+    Draft: "/draft",
   },
 } as const;

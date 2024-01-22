@@ -4,9 +4,11 @@
     "express": "npm:express",
     "express-async-errors": "npm:express-async-errors@^3.1.1",
     "helmet": "npm:helmet@^7.1.0",
-    "postgres": "npm:postgres@^3.4.3",
     "drizzle-orm": "npm:drizzle-orm",
-    "drizzle-orm/postgres-js": "npm:drizzle-orm/postgres-js"
+    "morgan": "npm:morgan",
+    "drizzle-orm/postgres-js": "npm:drizzle-orm/postgres-js",
+    "slack-API": "https://deno.land/x/deno_slack_api@2.1.1/mod.ts",
+    "postgres": "https://deno.land/x/postgresjs/mod.js",
+    "log": "https://deno.land/std@0.212.0/log/mod.ts"
   }
 }
-
