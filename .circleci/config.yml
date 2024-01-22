@@ -1,38 +1,24 @@
 version: 2.1
 
 jobs:
-  deploy:
+  build:
     machine:
       image: ubuntu-2204:2022.04.2
-
     steps:
       - checkout
+      - run: curl -fsSL https://deno.land/install.sh | sh
+      - run: /home/circleci/.deno/bin/deno lint
+      - run: /home/circleci/.deno/bin/deno fmt --check
+
+      - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
+      - run: npx supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
       - run:
-          name: "Install node"
-          command: |
-            curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
-      - run:
-          name: "Install deno"
-          command: |
-            curl -fsSL https://deno.land/install.sh | sh
-      - run:
-          name: "Install Supabase CLI"
-          command: npm install supabase --save-dev
-      - run:
-          name: "Supabase login"
-          command: npx supabase login --token $SUPABASE_ACCESS_TOKEN
-      - run:
-          name: "Build & run"
-          command: /home/circleci/.deno/bin/deno run -A supabase/functions/backend/index.ts
+          name: Serve Edge function
+          command: npx supabase functions serve --no-verify-jwt --env-file=supabase/functions/backend/tests/.env.test
           background: true
       - run:
-          name: "Run test"
+          name: Run the tests
           command: |
             sleep 5
-            /home/circleci/.deno/bin/deno test -A
-
-workflows:
-  version: 2
-  bundle-and-deploy:
-    jobs:
-      - deploy
+            cd supabase/functions/backend
+            /home/circleci/.deno/bin/deno test --no-check --allow-all --env=tests/.env.test -q
