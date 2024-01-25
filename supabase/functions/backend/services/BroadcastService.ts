@@ -1,4 +1,5 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { withCursorPagination } from "drizzle-pagination";
 import supabase from "../lib/supabase.ts";
 import {
   Broadcast,
@@ -11,6 +12,12 @@ import type { PgTransaction } from "drizzle-orm/pg-core/session";
 import slack from "../lib/slack.ts";
 import Missive from "../constants/Missive.ts";
 import * as log from "log";
+import {
+  BroadcastWithoutTotalSent,
+  convertToBroadcastWithoutTotalSent,
+  convertToBroadcastWithTotalSent,
+  ReturnModel,
+} from "../models/Broadcast.ts";
 
 const make = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -46,6 +53,7 @@ const make = async () => {
   }
   // Each segment is an independent entity; one failure doesn't affect the others.
   await Promise.all(insertWaitList);
+  await makeTomorrowBroadcast(nextBroadcast);
   await supabase.update(broadcasts).set({ editable: false }).where(
     eq(broadcasts.id, nextBroadcast.id),
   );
@@ -128,7 +136,106 @@ const sendDraftMessage = async () => {
   }
 };
 
+const getAll = async (
+  limit?: number,
+  cursor?: number,
+): Promise<ReturnModel[]> => {
+  let results = [];
+  if (cursor) {
+    const timeCur = cursor * 1000;
+    results = await supabase.query.broadcasts.findMany(
+      withCursorPagination({
+        limit: limit || 6,
+        cursors: [
+          [
+            broadcasts.runAt, // Column to use for cursor
+            "desc", // Sort order ('asc' or 'desc')
+            timeCur + 1, // Cursor value
+          ], //TODO timestamp non unique cursor, will behave weird with duplicated timestamp
+        ],
+      }),
+    );
+  } else {
+    results = await supabase.query.broadcasts.findMany(
+      {
+        limit: limit || 6,
+        orderBy: [desc(broadcasts.runAt)],
+      },
+    );
+  }
+
+  const returnSubject: ReturnModel = {
+    upcoming: {},
+    past: [],
+  };
+  if (results.length === 0) {
+    return returnSubject;
+  }
+
+  const runAtDate = new Date(results[0].runAt);
+  const currentTime = new Date();
+
+  if (runAtDate < currentTime) {
+    returnSubject.past.push(convertToBroadcastWithTotalSent(results[0]));
+    // await slack({ "failureDetails": "No upcoming broadcast scheduled in data" });
+  } else {
+    returnSubject.upcoming = convertToBroadcastWithoutTotalSent(results[0]);
+  }
+
+  if (results.length > 0) {
+    for (let i = 1; i < results.length; i++) {
+      const resultItem = results[i];
+      returnSubject.past.push(convertToBroadcastWithTotalSent(resultItem));
+    }
+  }
+  const lastRunAtTimestamp = results[results.length - 1].runAt.getTime() / 1000;
+  returnSubject.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0);
+
+  return returnSubject;
+};
+
+const getOne = async (id: number): Promise<BroadcastWithoutTotalSent> => {
+  const result = await supabase.select().from(broadcasts).where(
+    eq(broadcasts.id, id),
+  ).limit(1);
+  if (result.length === 0) {
+    return {};
+  }
+
+  return convertToBroadcastWithoutTotalSent(result[0]);
+};
+
+const patch = async (id: number, broadcast: Broadcast) => {
+  const result: broadcasts = await supabase.update(broadcasts)
+    .set(broadcast)
+    .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
+    .returning(broadcasts);
+  if (result.length === 0) {
+    return;
+  }
+  return convertToBroadcastWithoutTotalSent(result[0]);
+};
+
 export default {
   make,
   sendDraftMessage,
+  getAll,
+  getOne,
+  patch,
 } as const;
+
+const makeTomorrowBroadcast = async (
+  previousBroadcast: Broadcast,
+) => {
+  const newBroadcast = previousBroadcast;
+  let isWeekend = (previousBroadcast.runAt.getDay() + 1) % 6 === 0;
+  newBroadcast.runAt.setDate(previousBroadcast.runAt.getDay() + 1);
+
+  while (isWeekend) {
+    newBroadcast.runAt.setDate(previousBroadcast.runAt.getDay() + 1);
+
+    // Check again if the updated date is a weekend
+    isWeekend = newBroadcast.runAt.getDay() % 6 === 0;
+  }
+  return await supabase.insert(broadcasts).value(newBroadcast);
+};

@@ -6,7 +6,9 @@ export default {
   },
   Broadcast: {
     Base: "/broadcasts",
+    Get: "",
     Make: "/make",
     Draft: "/draft",
+    ID: "/:id",
   },
 } as const;
