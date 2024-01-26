@@ -17,7 +17,7 @@ import {
   convertToBroadcastWithoutTotalSent,
   convertToBroadcastWithTotalSent,
   ReturnModel,
-} from "../models/Broadcast.ts";
+} from "../models/BroadcastRequestRespond.ts";
 
 const make = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -52,8 +52,7 @@ const make = async () => {
     insertWaitList.push(insertWait);
   }
   // Each segment is an independent entity; one failure doesn't affect the others.
-  await Promise.all(insertWaitList);
-  await makeTomorrowBroadcast(nextBroadcast);
+  await Promise.all([...insertWaitList, makeTomorrowBroadcast(nextBroadcast)]);
   await supabase.update(broadcasts).set({ editable: false }).where(
     eq(broadcasts.id, nextBroadcast.id),
   );
@@ -137,7 +136,7 @@ const sendDraftMessage = async () => {
 };
 
 const getAll = async (
-  limit?: number,
+  limit = 6,
   cursor?: number,
 ): Promise<ReturnModel[]> => {
   let results = [];
@@ -145,7 +144,7 @@ const getAll = async (
     const timeCur = cursor * 1000;
     results = await supabase.query.broadcasts.findMany(
       withCursorPagination({
-        limit: limit || 6,
+        limit,
         cursors: [
           [
             broadcasts.runAt, // Column to use for cursor
@@ -158,13 +157,13 @@ const getAll = async (
   } else {
     results = await supabase.query.broadcasts.findMany(
       {
-        limit: limit || 6,
+        limit,
         orderBy: [desc(broadcasts.runAt)],
       },
     );
   }
 
-  const returnSubject: ReturnModel = {
+  let returnSubject: ReturnModel = {
     upcoming: {},
     past: [],
   };
@@ -174,18 +173,22 @@ const getAll = async (
 
   const runAtDate = new Date(results[0].runAt);
   const currentTime = new Date();
-
+  let hasUpcoming = false;
   if (runAtDate < currentTime) {
     returnSubject.past.push(convertToBroadcastWithTotalSent(results[0]));
-    // await slack({ "failureDetails": "No upcoming broadcast scheduled in data" });
+    // await slack({ "failureDetails": "No upcoming broadcast scheduled in data" }); TODO add slack credential
   } else {
     returnSubject.upcoming = convertToBroadcastWithoutTotalSent(results[0]);
+    hasUpcoming = true;
   }
 
-  if (results.length > 0) {
+  if (results.length > 1) {
     for (let i = 1; i < results.length; i++) {
       const resultItem = results[i];
       returnSubject.past.push(convertToBroadcastWithTotalSent(resultItem));
+    }
+    if (!hasUpcoming){
+      returnSubject.past = returnSubject.past.slice(0, -1);
     }
   }
   const lastRunAtTimestamp = results[results.length - 1].runAt.getTime() / 1000;
@@ -199,19 +202,19 @@ const getOne = async (id: number): Promise<BroadcastWithoutTotalSent> => {
     eq(broadcasts.id, id),
   ).limit(1);
   if (result.length === 0) {
-    return {};
+    return null;
   }
 
   return convertToBroadcastWithoutTotalSent(result[0]);
 };
 
 const patch = async (id: number, broadcast: Broadcast) => {
-  const result: broadcasts = await supabase.update(broadcasts)
+  const result: broadcasts[] = await supabase.update(broadcasts)
     .set(broadcast)
     .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
     .returning(broadcasts);
   if (result.length === 0) {
-    return;
+    return null;
   }
   return convertToBroadcastWithoutTotalSent(result[0]);
 };
@@ -229,13 +232,13 @@ const makeTomorrowBroadcast = async (
 ) => {
   const newBroadcast = previousBroadcast;
   let isWeekend = (previousBroadcast.runAt.getDay() + 1) % 6 === 0;
-  newBroadcast.runAt.setDate(previousBroadcast.runAt.getDay() + 1);
 
   while (isWeekend) {
     newBroadcast.runAt.setDate(previousBroadcast.runAt.getDay() + 1);
 
     // Check again if the updated date is a weekend
-    isWeekend = newBroadcast.runAt.getDay() % 6 === 0;
+    isWeekend = newBroadcast.runAt.getDay() % 6 === 0 ||
+      newBroadcast.runAt.getDay() === 0;
   }
   return await supabase.insert(broadcasts).value(newBroadcast);
 };

@@ -2,11 +2,11 @@ export default {
   Base: "/backend",
   Users: {
     Base: "/users",
-    Get: "/all",
+    All: "/all",
   },
   Broadcast: {
     Base: "/broadcasts",
-    Get: "",
+    All: "",
     Make: "/make",
     Draft: "/draft",
     ID: "/:id",
