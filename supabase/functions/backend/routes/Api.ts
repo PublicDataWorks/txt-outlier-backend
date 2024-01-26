@@ -11,7 +11,7 @@ const broadcastRouter = Router();
 
 // Get all users
 userRouter.get(
-  Paths.Users.Get,
+  Paths.Users.All,
   UserController.getAll,
 );
 
@@ -26,7 +26,7 @@ broadcastRouter.get(
 );
 
 broadcastRouter.get(
-  Paths.Broadcast.Get,
+  Paths.Broadcast.All,
   broadcastController.getAll,
 );
 

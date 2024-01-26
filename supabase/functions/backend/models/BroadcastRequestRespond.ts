@@ -1,5 +1,6 @@
 import { broadcasts } from "../drizzle/schema.ts";
-import { intervalToString } from "../misc/AppResponse.ts";
+
+import { intervalToString } from "../misc/utils.ts";
 
 interface BroadcastWithTotalSent {
   id: number;

@@ -5,21 +5,11 @@ const USER_UNAUTHORIZED_ERR = "Unauthorized";
 const unauthorized = (res: Response) => {
   return res.status(401).json({ message: USER_UNAUTHORIZED_ERR });
 };
-
-export const intervalToString = (interval: string) => {
-  const [hours, minutes, seconds] = interval.split(":").map(Number);
-
-  if (hours > 0) {
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
-  } else if (minutes > 0) {
-    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-  } else if (seconds > 0) {
-    return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
-  } else {
-    return "Invalid interval format";
-  }
+const invalidRequest = (res: Response, errorMessage: string) => {
+  return res.status(400).json({ message: errorMessage });
 };
+
 export default {
   unauthorized,
-  intervalToString,
+  invalidRequest,
 } as const;
