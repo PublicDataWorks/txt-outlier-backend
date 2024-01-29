@@ -1,5 +1,4 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { withCursorPagination } from "drizzle-pagination";
 import supabase from "../lib/supabase.ts";
 import {
   Broadcast,
@@ -13,11 +12,13 @@ import slack from "../lib/slack.ts";
 import Missive from "../constants/Missive.ts";
 import * as log from "log";
 import {
-  BroadcastWithoutTotalSent,
-  convertToBroadcastWithoutTotalSent,
-  convertToBroadcastWithTotalSent,
-  ReturnModel,
-} from "../models/BroadcastRequestRespond.ts";
+  BroadcastResponse,
+  BroadcastUpdate,
+  convertToPastBroadcast,
+  convertToUpcomingBroadcast,
+  UpcomingBroadcastResponse,
+} from "../dto/BroadcastRequestRespond.ts";
+import { lt } from "npm:drizzle-orm";
 
 const make = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -59,44 +60,8 @@ const make = async () => {
   await sendDraftMessage();
 };
 
-const insertBroadcastSegment = async (
-  broadcastSegment: BroadcastSegment,
-  nextBroadcast: Broadcast,
-) => {
-  // every user receives 2 messages
-  const messages = [
-    { message: nextBroadcast.firstMessage, delay: "00:00:00" },
-    { message: nextBroadcast.secondMessage, delay: nextBroadcast.delay },
-  ];
-  const limit = Math.floor(
-    broadcastSegment.ratio * nextBroadcast.noUsers / 100,
-  );
-  try {
-    await supabase.transaction(async (tx: PgTransaction) => {
-      for (const outgoing of messages) {
-        const statement = `
-            INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id,
-                                           segment_id, message,
-                                           run_at)
-            SELECT DISTINCT ON (phone_number) phone_number                                                                                   AS recipient_phone_number,
-                                              '${nextBroadcast.id}'                                                                          AS broadcast_id,
-                                              '${broadcastSegment.segment.id}'                                                               AS segment_id,
-                                              '${outgoing.message}'                                                                          AS message,
-                                              TIMESTAMP WITH TIME ZONE '${nextBroadcast.runAt.toISOString()}' + INTERVAL '${outgoing.delay}' AS run_at
-            FROM (${broadcastSegment.segment.query}) AS foo
-            LIMIT ${limit}
-        `;
-        await tx.execute(sql.raw(statement));
-      }
-    });
-  } catch (e) {
-    log.debug(e);
-    await slack({ "failureDetails": e });
-  }
-};
-
 const sendDraftMessage = async () => {
-  const results = await supabase.select().from(outgoingMessages).limit(2);
+  const results = await supabase.select().from(outgoingMessages).limit(50);
   const processed = [];
   for (const outgoing of results) {
     const startTime = Date.now();
@@ -136,100 +101,67 @@ const sendDraftMessage = async () => {
 };
 
 const getAll = async (
-  limit = 6,
+  limit = 5, // Limit past batches
   cursor?: number,
-): Promise<ReturnModel[]> => {
-  let results = [];
+): Promise<BroadcastResponse> => {
+  let results: Broadcast[] = [];
   if (cursor) {
-    const timeCur = cursor * 1000;
-    results = await supabase.query.broadcasts.findMany(
-      withCursorPagination({
-        limit,
-        cursors: [
-          [
-            broadcasts.runAt, // Column to use for cursor
-            "desc", // Sort order ('asc' or 'desc')
-            timeCur + 1, // Cursor value
-          ], //TODO timestamp non unique cursor, will behave weird with duplicated timestamp
-        ],
-      }),
-    );
+    results = await supabase.query.broadcasts.findMany({
+      where: lt(broadcasts.runAt, new Date(cursor * 1000)),
+      limit: limit,
+      orderBy: [desc(broadcasts.runAt)],
+    });
   } else {
     results = await supabase.query.broadcasts.findMany(
       {
-        limit,
+        limit: limit + 1,
         orderBy: [desc(broadcasts.runAt)],
       },
     );
   }
 
-  let returnSubject: ReturnModel = {
-    upcoming: {},
-    past: [],
-  };
+  const response = new BroadcastResponse();
   if (results.length === 0) {
-    return returnSubject;
+    return response;
   }
 
-  const runAtDate = new Date(results[0].runAt);
-  const currentTime = new Date();
-  let hasUpcoming = false;
-  if (runAtDate < currentTime) {
-    returnSubject.past.push(convertToBroadcastWithTotalSent(results[0]));
-    // await slack({ "failureDetails": "No upcoming broadcast scheduled in data" }); TODO add slack credential
+  if (cursor && results[0].runAt < new Date()) {
+    response.past = results.map((broadcast) =>
+      convertToPastBroadcast(broadcast)
+    );
+    // await slack({ "failureDetails": "No upcoming broadcast scheduled in data" }); // TODO add slack credential
   } else {
-    returnSubject.upcoming = convertToBroadcastWithoutTotalSent(results[0]);
-    hasUpcoming = true;
+    response.upcoming = convertToUpcomingBroadcast(results[0]);
+    response.past = results.slice(1).map((broadcast) =>
+      convertToPastBroadcast(broadcast)
+    );
   }
 
-  if (results.length > 1) {
-    for (let i = 1; i < results.length; i++) {
-      const resultItem = results[i];
-      returnSubject.past.push(convertToBroadcastWithTotalSent(resultItem));
-    }
-    if (!hasUpcoming){
-      returnSubject.past = returnSubject.past.slice(0, -1);
-    }
-  }
   const lastRunAtTimestamp = results[results.length - 1].runAt.getTime() / 1000;
-  returnSubject.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0);
+  response.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0);
 
-  return returnSubject;
+  return response;
 };
 
-const getOne = async (id: number): Promise<BroadcastWithoutTotalSent> => {
-  const result = await supabase.select().from(broadcasts).where(
-    eq(broadcasts.id, id),
-  ).limit(1);
-  if (result.length === 0) {
-    return null;
-  }
-
-  return convertToBroadcastWithoutTotalSent(result[0]);
-};
-
-const patch = async (id: number, broadcast: Broadcast) => {
-  const result: broadcasts[] = await supabase.update(broadcasts)
-    .set(broadcast)
+const patch = async (
+  id: number,
+  broadcast: BroadcastUpdate,
+): Promise<UpcomingBroadcastResponse | undefined> => {
+  const result: Broadcast[] = await supabase.update(broadcasts)
+    .set({
+      firstMessage: broadcast.firstMessage,
+      secondMessage: broadcast.secondMessage,
+      runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
+      delay: broadcast.delay,
+    })
     .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
     .returning(broadcasts);
-  if (result.length === 0) {
-    return null;
-  }
-  return convertToBroadcastWithoutTotalSent(result[0]);
+  if (result.length === 0) return;
+  return convertToUpcomingBroadcast(result[0]);
 };
 
-export default {
-  make,
-  sendDraftMessage,
-  getAll,
-  getOne,
-  patch,
-} as const;
-
-const makeTomorrowBroadcast = async (
-  previousBroadcast: Broadcast,
-) => {
+/* ==============================Helpers============================== */
+const makeTomorrowBroadcast = async (previousBroadcast: Broadcast) => {
   const newBroadcast = previousBroadcast;
   let isWeekend = (previousBroadcast.runAt.getDay() + 1) % 6 === 0;
 
@@ -242,3 +174,46 @@ const makeTomorrowBroadcast = async (
   }
   return await supabase.insert(broadcasts).value(newBroadcast);
 };
+
+const insertBroadcastSegment = async (
+  broadcastSegment: BroadcastSegment,
+  nextBroadcast: Broadcast,
+) => {
+  // every user receives 2 messages
+  const messages = [
+    { message: nextBroadcast.firstMessage, delay: "00:00:00" },
+    { message: nextBroadcast.secondMessage, delay: nextBroadcast.delay },
+  ];
+  const limit = Math.floor(
+    (broadcastSegment.ratio * nextBroadcast.noUsers!) / 100, // TODO: Not sure why we need ! here
+  );
+  try {
+    await supabase.transaction(async (tx: PgTransaction) => {
+      for (const outgoing of messages) {
+        const statement = `
+            INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id,
+                                           segment_id, message,
+                                           run_at)
+            SELECT DISTINCT ON (phone_number) phone_number                                                                                   AS recipient_phone_number,
+                                              '${nextBroadcast.id}'                                                                          AS broadcast_id,
+                                              '${broadcastSegment.segment.id}'                                                               AS segment_id,
+                                              '${outgoing.message}'                                                                          AS message,
+                                              TIMESTAMP WITH TIME ZONE '${nextBroadcast.runAt.toISOString()}' + INTERVAL '${outgoing.delay}' AS run_at
+            FROM (${broadcastSegment.segment.query}) AS foo
+            LIMIT ${limit}
+        `;
+        await tx.execute(sql.raw(statement));
+      }
+    });
+  } catch (e) {
+    log.error(e);
+    await slack({ "failureDetails": e });
+  }
+};
+
+export default {
+  make,
+  sendDraftMessage,
+  getAll,
+  patch,
+} as const;

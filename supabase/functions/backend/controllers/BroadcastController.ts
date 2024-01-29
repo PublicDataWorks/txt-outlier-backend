@@ -1,7 +1,7 @@
 import BroadcastService from "../services/BroadcastService.ts";
 import { Request, Response } from "express";
 import { body, param, query } from "express-validator";
-import { BroadcastUpdate } from "../models/BroadcastRequestRespond.ts";
+import { BroadcastUpdate } from "../dto/BroadcastRequestRespond.ts";
 import { validateAndRespond } from "../misc/validator.ts";
 
 async function make(_req: Request, res: Response) {
@@ -21,20 +21,7 @@ async function getAll(req: Request, res: Response) {
   ];
   await validateAndRespond(validations, req, res);
   const { limit, cursor } = req.query;
-
   const result = await BroadcastService.getAll(limit, cursor);
-  return res.status(200).json(result); //TODO create response function
-}
-
-async function getOne(req: Request, res: Response) {
-  const validations = [
-    param("id").isInt().toInt(),
-  ];
-
-  await validateAndRespond(validations, req, res);
-  const id = Number(req.params.id);
-
-  const result = await BroadcastService.getOne(id);
   return res.status(200).json(result); //TODO create response function
 }
 
@@ -61,7 +48,7 @@ async function patch(req: Request, res: Response) {
       }
 
       return true;
-    }),
+    }), // TODO: Make it a helper function
   ];
 
   await validateAndRespond(validations, req, res);
@@ -76,6 +63,5 @@ export default {
   make,
   sendDraft,
   getAll,
-  getOne,
   patch,
 } as const;
