@@ -1,5 +1,5 @@
 export default {
-  Base: "/backend3",
+  Base: "/backend",
   Users: {
     Base: "/users",
     All: "/all",
