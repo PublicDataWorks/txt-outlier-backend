@@ -6,7 +6,6 @@
     "express-validator": "npm:express-validator@^7.0.1",
     "helmet": "npm:helmet@^7.1.0",
     "drizzle-orm": "npm:drizzle-orm",
-    "drizzle-pagination": "npm:drizzle-pagination",
     "morgan": "npm:morgan",
     "cors": "npm:cors",
     "drizzle-orm/postgres-js": "npm:drizzle-orm/postgres-js",
