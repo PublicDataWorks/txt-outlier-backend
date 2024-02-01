@@ -1,76 +1,60 @@
-import BroadcastService from "../services/BroadcastService.ts";
-import { Request, Response } from "express";
-import { body, param, query } from "express-validator";
-import { BroadcastUpdate } from "../dto/BroadcastRequestRespond.ts";
-import { validateAndRespond } from "../misc/validator.ts";
+import BroadcastService from '../services/BroadcastService.ts'
+import { Request, Response } from 'express'
+import { body, param, query } from 'express-validator'
+import { BroadcastUpdate } from '../dto/BroadcastRequestResponse.ts'
+import { validateAndResponse } from '../misc/validator.ts'
+import AppResponse from '../misc/AppResponse.ts'
 
 async function make(_req: Request, res: Response) {
-  await BroadcastService.make();
-  return res.status(204).send({}); //TODO create response function
+	await BroadcastService.make()
+	return AppResponse.ok(res, {}, 204)
 }
 
 async function sendDraft(req: Request, res: Response) {
-  const validations = [
-    param("broadcastID").isInt().toInt(),
-    query("isSecond").optional().isBoolean().toBoolean(),
-  ];
-  await validateAndRespond(validations, req, res);
+	const validations = [
+		param('broadcastID').isInt().toInt(),
+		query('isSecond').optional().isBoolean().toBoolean(),
+	]
+	await validateAndResponse(validations, req, res)
 
-  const id = Number(req.params.broadcastID);
-  const { isSecond } = req.query;
+	const id = Number(req.params.broadcastID)
+	const { isSecond } = req.query
 
-  await BroadcastService.sendBroadcastMessage(id, Boolean(isSecond));
-  return res.status(204).send({}); //TODO create response function
+	await BroadcastService.sendBroadcastMessage(id, Boolean(isSecond))
+	return AppResponse.ok(res)
 }
 
 async function getAll(req: Request, res: Response) {
-  const validations = [
-    query("limit").optional().isInt().toInt(),
-    query("cursor").optional().isInt().toInt(),
-  ];
-  await validateAndRespond(validations, req, res);
-  const { limit, cursor } = req.query;
-  const result = await BroadcastService.getAll(limit, cursor);
-  return res.status(200).json(result); //TODO create response function
+	const validations = [
+		query('limit').optional().isInt().toInt(),
+		query('cursor').optional().isInt().toInt(),
+	]
+	await validateAndResponse(validations, req, res)
+	const { limit, cursor } = req.query
+	const result = await BroadcastService.getAll(limit, cursor)
+	return AppResponse.ok(res, result)
 }
 
 async function patch(req: Request, res: Response) {
-  const validations = [
-    param("id").isInt().toInt(),
-    body("firstMessage").optional().isString().notEmpty(),
-    body("secondMessage").optional().isString().notEmpty(),
-    body("runAt").optional().isDecimal(),
-    body("delay").optional().isString().notEmpty(),
-    body().custom((value: BroadcastUpdate, { req }) => {
-      const validKeys = ["firstMessage", "secondMessage", "runAt", "delay"];
-      const invalidKeys = Object.keys(value).filter((key) =>
-        !validKeys.includes(key)
-      );
+	const validations = [
+		param('id').isInt().toInt(),
+		body('firstMessage').optional().isString().notEmpty(),
+		body('secondMessage').optional().isString().notEmpty(),
+		body('runAt').optional().isDecimal(),
+		body('delay').optional().isString().notEmpty(),
+	]
 
-      if (invalidKeys.length > 0) {
-        throw new Error(
-          `Invalid keys in request body: ${invalidKeys.join(", ")}`,
-        );
-      }
-      if (Object.keys(req.body).length === 0) {
-        throw new Error("Request body is empty");
-      }
+	await validateAndResponse(validations, req, res)
+	const id = Number(req.params.id)
+	const broadcast: BroadcastUpdate = req.body
 
-      return true;
-    }), // TODO: Make it a helper function
-  ];
-
-  await validateAndRespond(validations, req, res);
-  const id = Number(req.params.id);
-  const broadcast: BroadcastUpdate = req.body;
-
-  const result = await BroadcastService.patch(id, broadcast);
-  return res.status(200).json(result); //TODO create response function
+	const result = await BroadcastService.patch(id, broadcast)
+	return AppResponse.ok(res, result)
 }
 
 export default {
-  make,
-  sendDraft,
-  getAll,
-  patch,
-} as const;
+	make,
+	sendDraft,
+	getAll,
+	patch,
+} as const
