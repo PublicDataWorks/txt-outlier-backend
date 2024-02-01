@@ -53,6 +53,20 @@ function convertToBroadcastWithoutTotalSent(
   };
 }
 
+function convertToFutureBroadcast(
+    broadcast: broadcasts,
+): broadcasts {
+  return {
+    firstMessage: broadcast.firstMessage,
+    secondMessage: broadcast.secondMessage,
+    runAt: broadcast.runAt,
+    updatedAt: broadcast.updatedAt,
+    delay: broadcast.delay,
+    editable: broadcast.editable,
+    noUsers: broadcast.noUsers,
+  };
+}
+
 interface ReturnModel {
   upcoming: BroadcastWithTotalSent;
   past: BroadcastWithoutTotalSent[];
@@ -65,5 +79,6 @@ export {
   BroadcastWithTotalSent,
   convertToBroadcastWithoutTotalSent,
   convertToBroadcastWithTotalSent,
+  convertToFutureBroadcast,
   ReturnModel,
 };

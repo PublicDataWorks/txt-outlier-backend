@@ -1,5 +1,5 @@
 export default {
-  Base: "/backend",
+  Base: "/backend3",
   Users: {
     Base: "/users",
     All: "/all",
@@ -8,7 +8,7 @@ export default {
     Base: "/broadcasts",
     All: "",
     Make: "/make",
-    Draft: "/draft",
+    Draft: "/draft/:broadcastID",
     ID: "/:id",
   },
 } as const;
