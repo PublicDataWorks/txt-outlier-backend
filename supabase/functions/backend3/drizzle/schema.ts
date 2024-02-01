@@ -366,8 +366,8 @@ export const outgoingMessages = pgTable("outgoing_messages", {
     { onUpdate: "cascade" },
   ),
   message: text("message").notNull(),
-  runAt: timestamp("run_at", { withTimezone: true, mode: "string" }).notNull(),
   processed: boolean("processed").default(false).notNull(),
+  isSecond: boolean("is_second").default(false).notNull(),
   // You can use { mode: "bigint" } if numbers are exceeding js number limitations
   broadcastId: bigint("broadcast_id", { mode: "number" }).notNull().references(
     () => broadcasts.id,

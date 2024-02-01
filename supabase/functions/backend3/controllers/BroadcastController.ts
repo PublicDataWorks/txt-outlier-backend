@@ -9,8 +9,17 @@ async function make(_req: Request, res: Response) {
   return res.status(204).send({}); //TODO create response function
 }
 
-async function sendDraft(_req: Request, res: Response) {
-  await BroadcastService.sendDraftMessage();
+async function sendDraft(req: Request, res: Response) {
+  const validations = [
+    param("broadcastID").isInt().toInt(),
+    query("isSecond").optional().isBoolean().toBoolean(),
+  ];
+  await validateAndRespond(validations, req, res);
+
+  const id = Number(req.params.broadcastID);
+  const { isSecond } = req.query;
+
+  await BroadcastService.sendBroadcastMessage(id, Boolean(isSecond));
   return res.status(204).send({}); //TODO create response function
 }
 

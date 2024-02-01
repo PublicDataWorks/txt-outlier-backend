@@ -31,6 +31,7 @@ app.use((
 ) => {
   let status = 400;
   if (err instanceof SystemError) {
+    console.log(err)
     return res.status(204).send();
     // TODO: send slack
   }
