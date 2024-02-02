@@ -29,15 +29,11 @@ app.use((
 	res: Response,
 	_next: NextFunction,
 ) => {
-	let status = 400
+	let status = 500
 	if (err instanceof SystemError) {
-		console.log(err)
-		return res.status(204).send()
-		// TODO: send slack
+    // TODO: send slack
 	}
-	if (err instanceof RouteError) {
-		status = err.status
-	}
-	return res.status(status).json({ error: err.message })
+	if (err instanceof RouteError) status = err.status
+	return res.status(status).json({ errors: JSON.parse(err.message) })
 })
 export default app

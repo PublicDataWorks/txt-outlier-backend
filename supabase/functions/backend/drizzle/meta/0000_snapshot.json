@@ -1,5 +1,5 @@
 {
-  "id": "e138e9d4-43cd-4a82-9d58-72e2ed9200b9",
+  "id": "76b965f1-2ca6-47d5-9ccb-d7df64cde742",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "5",
   "dialect": "pg",
@@ -80,6 +80,120 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
+    },
+    "broadcast_messages_sent_status": {
+      "name": "broadcast_messages_sent_status",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "recipient_phone_number": {
+          "name": "recipient_phone_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "broadcast_id": {
+          "name": "broadcast_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "segment_id": {
+          "name": "segment_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_second": {
+          "name": "is_second",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "run_at": {
+          "name": "run_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processed": {
+          "name": "processed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "missive_message_id": {
+          "name": "missive_message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "missive_conversation_id": {
+          "name": "missive_conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "broadcast_messages_sent_status_missive_message_id_twilio_messages_id_fk": {
+          "name": "broadcast_messages_sent_status_missive_message_id_twilio_messages_id_fk",
+          "tableFrom": "broadcast_messages_sent_status",
+          "tableTo": "twilio_messages",
+          "columnsFrom": [
+            "missive_message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "broadcast_messages_sent_status_missive_conversation_id_conversations_id_fk": {
+          "name": "broadcast_messages_sent_status_missive_conversation_id_conversations_id_fk",
+          "tableFrom": "broadcast_messages_sent_status",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "missive_conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "broadcast_sent_messages_missive_message_id_key": {
+          "name": "broadcast_sent_messages_missive_message_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "missive_message_id"
+          ]
+        }
+      }
     },
     "broadcasts": {
       "name": "broadcasts",
@@ -197,7 +311,16 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "broadcasts_segments_broadcast_id_segment_id_idx": {
+          "name": "broadcasts_segments_broadcast_id_segment_id_idx",
+          "columns": [
+            "broadcast_id",
+            "segment_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "broadcasts_segments_broadcast_id_broadcasts_id_fk": {
           "name": "broadcasts_segments_broadcast_id_broadcasts_id_fk",
@@ -227,7 +350,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {
+        "broadcast_id_segment_id_unique": {
+          "name": "broadcast_id_segment_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "broadcast_id",
+            "segment_id"
+          ]
+        }
+      }
     },
     "comments": {
       "name": "comments",
@@ -1356,19 +1488,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "run_at": {
-          "name": "run_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "processed": {
-          "name": "processed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "broadcast_id": {
           "name": "broadcast_id",
           "type": "bigint",
@@ -1380,6 +1499,26 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "is_second": {
+          "name": "is_second",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "run_at": {
+          "name": "run_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processed": {
+          "name": "processed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         }
       },
       "indexes": {},
@@ -1425,19 +1564,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "outgoing_messages_broadcast_id_segment_id_message_run_at_re_key": {
-          "name": "outgoing_messages_broadcast_id_segment_id_message_run_at_re_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "recipient_phone_number",
-            "message",
-            "run_at",
-            "broadcast_id",
-            "segment_id"
-          ]
-        }
-      }
+      "uniqueConstraints": {}
     },
     "rules": {
       "name": "rules",

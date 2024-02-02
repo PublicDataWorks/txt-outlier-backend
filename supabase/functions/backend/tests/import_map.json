@@ -1,5 +1,7 @@
 {
   "imports": {
+    "testing/": "https://deno.land/std@0.210.0/testing/",
+    "node-mocks-http": "npm:node-mocks-http",
     "express": "npm:express",
     "express-async-errors": "npm:express-async-errors@^3.1.1",
     "express-validator": "npm:express-validator@^7.0.1",

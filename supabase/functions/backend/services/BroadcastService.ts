@@ -1,5 +1,4 @@
-import { and, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm'
-import supabase from '../lib/supabase.ts'
+import { and, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm'
 import { Broadcast, broadcasts, BroadcastSegment, OutgoingMessage, outgoingMessages } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import type { PgTransaction } from 'drizzle-orm/pg-core/session'
@@ -21,14 +20,14 @@ import {
 } from '../dto/BroadcastRequestResponse.ts'
 import Missive from '../constants/Missive.ts'
 import * as log from 'log'
+import supabase from '../lib/supabase.ts';
 
 const makeBroadcast = async () => {
-	const now = new Date()
+  const next24Hours = new Date(Date.now() + 24 * 60 * 60 * 1000);
 	const nextBroadcast = await supabase.query.broadcasts.findFirst({
 		where: and(
 			eq(broadcasts.editable, true),
-			gt(broadcasts.runAt, now.getTime()),
-			lt(broadcasts.runAt, now.getTime() + 24 * 60 * 60 * 1000),
+			lte(broadcasts.runAt, next24Hours),
 		),
 		with: {
 			broadcastToSegments: {
@@ -237,13 +236,13 @@ const insertBroadcastSegmentRecipients = async (broadcastSegment: BroadcastSegme
 				await tx.execute(sql.raw(statement))
 			}
 		})
-	} catch (_e) {
+	} catch (e) {
 		log.debug(e) // TODO: setup log properly
 		// await slack({ "failureDetails": e });
 	}
 }
 export default {
-	make: makeBroadcast,
+	makeBroadcast,
 	getAll,
 	patch,
 	sendBroadcastMessage,

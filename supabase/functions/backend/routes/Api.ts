@@ -1,7 +1,7 @@
 import { Router } from 'express'
 
 import Paths from '../constants/Paths.ts'
-import broadcastController from '../controllers/BroadcastController.ts'
+import BroadcastController from '../controllers/BroadcastController.ts'
 
 const apiRouter = Router()
 const userRouter = Router()
@@ -9,22 +9,22 @@ const broadcastRouter = Router()
 
 broadcastRouter.get(
 	Paths.Broadcast.Make,
-	broadcastController.make,
+	BroadcastController.makeBroadcast,
 )
 
 broadcastRouter.get(
 	Paths.Broadcast.Draft,
-	broadcastController.sendDraft,
+	BroadcastController.sendDraft,
 )
 
 broadcastRouter.get(
 	Paths.Broadcast.All,
-	broadcastController.getAll,
+	BroadcastController.getAll,
 )
 
 broadcastRouter.patch(
 	Paths.Broadcast.ID,
-	broadcastController.patch,
+	BroadcastController.patch,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)

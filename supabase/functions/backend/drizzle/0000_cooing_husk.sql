@@ -13,6 +13,21 @@ CREATE TABLE IF NOT EXISTS "authors" (
 	"unsubscribed" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "broadcast_messages_sent_status" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"recipient_phone_number" text NOT NULL,
+	"message" text NOT NULL,
+	"broadcast_id" bigint NOT NULL,
+	"segment_id" bigint NOT NULL,
+	"is_second" boolean DEFAULT false NOT NULL,
+	"run_at" timestamp with time zone,
+	"processed" boolean DEFAULT false NOT NULL,
+	"missive_message_id" uuid NOT NULL,
+	"missive_conversation_id" uuid NOT NULL,
+	CONSTRAINT "broadcast_sent_messages_missive_message_id_key" UNIQUE("missive_message_id")
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "broadcasts" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -32,7 +47,8 @@ CREATE TABLE IF NOT EXISTS "broadcasts_segments" (
 	"segment_id" bigint NOT NULL,
 	"ratio" double precision NOT NULL,
 	"first_message" text,
-	"second_message" text
+	"second_message" text,
+	CONSTRAINT "broadcast_id_segment_id_unique" UNIQUE("broadcast_id","segment_id")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "comments" (
@@ -188,11 +204,11 @@ CREATE TABLE IF NOT EXISTS "outgoing_messages" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"recipient_phone_number" text NOT NULL,
 	"message" text NOT NULL,
-	"run_at" timestamp with time zone NOT NULL,
-	"processed" boolean DEFAULT false NOT NULL,
 	"broadcast_id" bigint NOT NULL,
 	"segment_id" bigint NOT NULL,
-	CONSTRAINT "outgoing_messages_broadcast_id_segment_id_message_run_at_re_key" UNIQUE("recipient_phone_number","message","run_at","broadcast_id","segment_id")
+	"is_second" boolean DEFAULT false NOT NULL,
+	"run_at" timestamp with time zone,
+	"processed" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "rules" (
@@ -250,10 +266,23 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"id" uuid PRIMARY KEY NOT NULL
 );
 --> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "broadcasts_segments_broadcast_id_segment_id_idx" ON "broadcasts_segments" ("broadcast_id","segment_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "conversation_label" ON "conversations_labels" ("conversation_id","label_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "invoke_history_request_body_idx" ON "invoke_history" ("request_body");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "twilio_messages_delivered_at_idx" ON "twilio_messages" ("delivered_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_user_history_id" ON "user_history" ("id");--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "broadcast_messages_sent_status" ADD CONSTRAINT "broadcast_messages_sent_status_missive_message_id_twilio_messages_id_fk" FOREIGN KEY ("missive_message_id") REFERENCES "twilio_messages"("id") ON DELETE no action ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "broadcast_messages_sent_status" ADD CONSTRAINT "broadcast_messages_sent_status_missive_conversation_id_conversations_id_fk" FOREIGN KEY ("missive_conversation_id") REFERENCES "conversations"("id") ON DELETE no action ON UPDATE cascade;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "broadcasts_segments" ADD CONSTRAINT "broadcasts_segments_broadcast_id_broadcasts_id_fk" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE no action ON UPDATE cascade;
 EXCEPTION
