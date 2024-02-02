@@ -1,6 +1,6 @@
 import { faker } from 'https://deno.land/x/deno_faker@v1.0.3/mod.ts'
 import { twilioMessages } from '../../drizzle/schema.ts'
-import { supabaseInTest } from '../utils.ts'
+import supabase from '../../lib/supabase.ts';
 import { createAuthors } from './authors.ts'
 
 const createTwilioMessages = async (times = 1) => {
@@ -18,7 +18,7 @@ const createTwilioMessages = async (times = 1) => {
 		}
 		newMessages.push(message)
 	}
-	return supabaseInTest.insert(twilioMessages).values(newMessages)
+	return supabase.insert(twilioMessages).values(newMessages)
 		.onConflictDoNothing().returning()
 }
 

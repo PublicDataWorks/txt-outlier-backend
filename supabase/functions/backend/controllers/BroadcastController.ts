@@ -5,8 +5,8 @@ import { BroadcastUpdate } from '../dto/BroadcastRequestResponse.ts'
 import { validateAndResponse } from '../misc/validator.ts'
 import AppResponse from '../misc/AppResponse.ts'
 
-async function make(_req: Request, res: Response) {
-	await BroadcastService.make()
+async function makeBroadcast(_req: Request, res: Response) {
+	await BroadcastService.makeBroadcast()
 	return AppResponse.ok(res, {}, 204)
 }
 
@@ -15,7 +15,7 @@ async function sendDraft(req: Request, res: Response) {
 		param('broadcastID').isInt().toInt(),
 		query('isSecond').optional().isBoolean().toBoolean(),
 	]
-	await validateAndResponse(validations, req, res)
+	await validateAndResponse(validations, req)
 
 	const id = Number(req.params.broadcastID)
 	const { isSecond } = req.query
@@ -29,7 +29,7 @@ async function getAll(req: Request, res: Response) {
 		query('limit').optional().isInt().toInt(),
 		query('cursor').optional().isInt().toInt(),
 	]
-	await validateAndResponse(validations, req, res)
+	await validateAndResponse(validations, req)
 	const { limit, cursor } = req.query
 	const result = await BroadcastService.getAll(limit, cursor)
 	return AppResponse.ok(res, result)
@@ -53,7 +53,7 @@ async function patch(req: Request, res: Response) {
 }
 
 export default {
-	make,
+	makeBroadcast,
 	sendDraft,
 	getAll,
 	patch,

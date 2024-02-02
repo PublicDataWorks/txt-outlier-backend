@@ -1,6 +1,6 @@
 import { faker } from 'https://deno.land/x/deno_faker@v1.0.3/mod.ts'
 import { audienceSegments, broadcastsSegments } from '../../drizzle/schema.ts'
-import { supabaseInTest } from '../utils.ts'
+import supabase from '../../lib/supabase.ts';
 
 const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
 	const newSegments = []
@@ -13,7 +13,7 @@ const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
 		}
 		newSegments.push(segment)
 	}
-	const segments = await supabaseInTest.insert(audienceSegments).values(
+	const segments = await supabase.insert(audienceSegments).values(
 		newSegments,
 	).onConflictDoNothing().returning()
 	const newBroadcastSegments = []
@@ -24,7 +24,7 @@ const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
 			ratio: 20,
 		})
 	}
-	await supabaseInTest.insert(broadcastsSegments).values(newBroadcastSegments)
+	await supabase.insert(broadcastsSegments).values(newBroadcastSegments)
 		.onConflictDoNothing()
 }
 

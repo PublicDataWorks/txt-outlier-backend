@@ -1,6 +1,6 @@
 import { faker } from 'https://deno.land/x/deno_faker@v1.0.3/mod.ts'
 import { authors } from '../../drizzle/schema.ts'
-import { supabaseInTest } from '../utils.ts'
+import supabase from '../../lib/supabase.ts';
 
 const createAuthors = (times = 1) => {
 	const newAuthors = []
@@ -10,7 +10,7 @@ const createAuthors = (times = 1) => {
 		}
 		newAuthors.push(author)
 	}
-	return supabaseInTest.insert(authors).values(newAuthors).onConflictDoNothing()
+	return supabase.insert(authors).values(newAuthors).onConflictDoNothing()
 		.returning()
 }
 
