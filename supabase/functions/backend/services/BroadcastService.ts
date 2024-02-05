@@ -1,8 +1,10 @@
 import { and, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm'
+import type { PgTransaction } from 'drizzle-orm/pg-core/session'
+import * as log from 'log'
 import { Broadcast, broadcasts, BroadcastSegment, OutgoingMessage, outgoingMessages } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
-import type { PgTransaction } from 'drizzle-orm/pg-core/session'
 import {
+	insertOutgoingMessagesQuery,
 	invokeBroadcastCron,
 	sendFirstMessagesCron,
 	sendSecondMessagesCron,
@@ -19,11 +21,10 @@ import {
 	UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import Missive from '../constants/Missive.ts'
-import * as log from 'log'
-import supabase from '../lib/supabase.ts';
+import supabase from '../lib/supabase.ts'
 
 const makeBroadcast = async () => {
-  const next24Hours = new Date(Date.now() + 24 * 60 * 60 * 1000);
+	const next24Hours = new Date(Date.now() + 24 * 60 * 60 * 1000)
 	const nextBroadcast = await supabase.query.broadcasts.findFirst({
 		where: and(
 			eq(broadcasts.editable, true),
@@ -112,14 +113,15 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
 		if (response.ok) {
 			processed.push(outgoing.id)
 		} else {
-			log.debug(response)
+			log.error(await response.text())
 			// TODO: Saved to DB
 		}
+		// await response.json(); // TODO: save to DB
 		const elapsedTime = Date.now() - startTime
 
 		// We break because CRON job will run every minute
 		if (elapsedTime >= 60000) {
-			log.debug('Hard limit reached. Exiting loop.')
+			log.info('Hard limit reached. Exiting loop.')
 			break
 		}
 
@@ -130,11 +132,15 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
 		await supabase
 			.delete(outgoingMessages)
 			.where(inArray(outgoingMessages.id, processed))
-		const idsToUpdate = results
-			.map((outgoing: OutgoingMessage) => outgoing.id)
-			.filter((id: number) => !processed.includes(id))
-		// Give these messages back to the pool
-		await supabase.update(outgoingMessages).set({ processed: false }).where(inArray(outgoingMessages.id, idsToUpdate))
+	}
+	const idsFailedToSend = results
+		.map((outgoing: OutgoingMessage) => outgoing.id)
+		.filter((id: number) => !processed.includes(id))
+	// Give these messages back to the pool
+	if (idsFailedToSend.length > 0) {
+		await supabase.update(outgoingMessages).set({ processed: false }).where(
+			inArray(outgoingMessages.id, idsFailedToSend),
+		)
 	}
 }
 
@@ -223,21 +229,17 @@ const insertBroadcastSegmentRecipients = async (broadcastSegment: BroadcastSegme
 	try {
 		await supabase.transaction(async (tx: PgTransaction) => {
 			for (const outgoing of messages) {
-				const statement = `
-          INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
-          SELECT DISTINCT ON (phone_number) phone_number                                            AS recipient_phone_number,
-                                            '${nextBroadcast.id}'                                   AS broadcast_id,
-                                            '${broadcastSegment.segment.id}'                        AS segment_id,
-                                            '${outgoing.message}'                                   AS message,
-                                            '${(outgoing.message === nextBroadcast.secondMessage)}' AS isSecond
-          FROM (${broadcastSegment.segment.query}) AS foo
-          LIMIT ${limit}
-        `
+				const statement = insertOutgoingMessagesQuery(
+					broadcastSegment,
+					nextBroadcast,
+					outgoing.message,
+					limit,
+				)
 				await tx.execute(sql.raw(statement))
 			}
 		})
 	} catch (e) {
-		log.debug(e) // TODO: setup log properly
+		log.error(e) // TODO: setup log properly
 		// await slack({ "failureDetails": e });
 	}
 }

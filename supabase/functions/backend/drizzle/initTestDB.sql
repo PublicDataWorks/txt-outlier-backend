@@ -1,4 +1,4 @@
-CREATE SCHEMA IF NOT EXISTS cron AUTHORIZATION postgres;
+CREATE SCHEMA IF NOT EXISTS cron AUTHORIZATION supabase_admin;
 
 CREATE OR REPLACE FUNCTION cron.schedule(a text, b text, c text)
 RETURNS VOID AS $$
