@@ -1,8 +1,8 @@
 import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
 
 const invokeBroadcastCron = (runAt: Date): string => {
-	const runTime = dateToCron(new Date(runAt))
-	return `
+  const runTime = dateToCron(new Date(runAt))
+  return `
     SELECT cron.schedule(
       'invoke-broadcast',
       '${runTime}',
@@ -10,8 +10,8 @@ const invokeBroadcastCron = (runAt: Date): string => {
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcast/make',
         headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-		'SUPABASE_SERVICE_ROLE_KEY',
-	)!}"}'::jsonb
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
       ) as request_id;
       $$
     );
@@ -19,7 +19,7 @@ const invokeBroadcastCron = (runAt: Date): string => {
 }
 
 const sendFirstMessagesCron = (broadcastId: number): string => {
-	return `
+  return `
     SELECT cron.schedule(
       'send-first-messages',
       '* * * * *',
@@ -27,8 +27,8 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}',
         headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-		'SUPABASE_SERVICE_ROLE_KEY',
-	)!}"}'::jsonb
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
       ) as request_id;
       $$
     );
@@ -36,11 +36,11 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
 }
 
 const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: number) => {
-	const date = new Date(startTime)
-	const newDate = new Date(date.getTime() + delay * 60 * 1000)
-	const runTime = dateToCron(newDate)
+  const date = new Date(startTime)
+  const newDate = new Date(date.getTime() + delay * 60 * 1000)
+  const runTime = dateToCron(newDate)
 
-	return `
+  return `
     SELECT cron.schedule(
              'delay-send-second-messages',
              '${runTime}',
@@ -60,8 +60,8 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
         'SELECT net.http_get(
           url:=''${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}?isSecond=true'',
           headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-		'SUPABASE_SERVICE_ROLE_KEY',
-	)!}"}''::jsonb
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}''::jsonb
         ) as request_id'
       );
       $$
@@ -70,12 +70,12 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
 }
 
 const insertOutgoingMessagesQuery = (
-	broadcastSegment: BroadcastSegment,
-	nextBroadcast: Broadcast,
-	message: string,
-	limit: number,
+  broadcastSegment: BroadcastSegment,
+  nextBroadcast: Broadcast,
+  message: string,
+  limit: number,
 ): string => {
-	return `
+  return `
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
     SELECT DISTINCT ON (phone_number) phone_number                                            AS recipient_phone_number,
                                       '${nextBroadcast.id}'                                   AS broadcast_id,
@@ -92,21 +92,21 @@ const UNSCHEDULE_SEND_SECOND_MESSAGES = `SELECT cron.unschedule('send-second-mes
 const UNSCHEDULE_INVOKE_BROADCAST = `SELECT cron.unschedule('invoke-broadcast');`
 
 const dateToCron = (date: Date) => {
-	const minutes = date.getMinutes()
-	const hours = date.getHours()
-	const days = date.getDate()
-	const months = date.getMonth() + 1
-	const dayOfWeek = date.getDay()
+  const minutes = date.getMinutes()
+  const hours = date.getHours()
+  const days = date.getDate()
+  const months = date.getMonth() + 1
+  const dayOfWeek = date.getDay()
 
-	return `${minutes} ${hours} ${days} ${months} ${dayOfWeek}`
+  return `${minutes} ${hours} ${days} ${months} ${dayOfWeek}`
 }
 
 export {
-	insertOutgoingMessagesQuery,
-	invokeBroadcastCron,
-	sendFirstMessagesCron,
-	sendSecondMessagesCron,
-	UNSCHEDULE_INVOKE_BROADCAST,
-	UNSCHEDULE_SEND_FIRST_MESSAGES,
-	UNSCHEDULE_SEND_SECOND_MESSAGES,
+  insertOutgoingMessagesQuery,
+  invokeBroadcastCron,
+  sendFirstMessagesCron,
+  sendSecondMessagesCron,
+  UNSCHEDULE_INVOKE_BROADCAST,
+  UNSCHEDULE_SEND_FIRST_MESSAGES,
+  UNSCHEDULE_SEND_SECOND_MESSAGES,
 }
