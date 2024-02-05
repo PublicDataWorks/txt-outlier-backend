@@ -24,16 +24,16 @@ app.use(helmet())
 app.use(Paths.Base, BaseRouter)
 
 app.use((
-	err: Error,
-	_: Request,
-	res: Response,
-	_next: NextFunction,
+  err: Error,
+  _: Request,
+  res: Response,
+  _next: NextFunction,
 ) => {
-	let status = 500
-	if (err instanceof SystemError) {
-		// TODO: send slack
-	}
-	if (err instanceof RouteError) status = err.status
-	return res.status(status).json({ errors: JSON.parse(err.message) })
+  let status = 500
+  if (err instanceof SystemError) {
+    // TODO: send slack
+  }
+  if (err instanceof RouteError) status = err.status
+  return res.status(status).json({ errors: JSON.parse(err.message) })
 })
 export default app

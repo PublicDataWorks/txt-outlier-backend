@@ -8,23 +8,23 @@ const userRouter = Router()
 const broadcastRouter = Router()
 
 broadcastRouter.get(
-	Paths.Broadcast.Make,
-	BroadcastController.makeBroadcast,
+  Paths.Broadcast.Make,
+  BroadcastController.makeBroadcast,
 )
 
 broadcastRouter.get(
-	Paths.Broadcast.Draft,
-	BroadcastController.sendDraft,
+  Paths.Broadcast.Draft,
+  BroadcastController.sendDraft,
 )
 
 broadcastRouter.get(
-	Paths.Broadcast.All,
-	BroadcastController.getAll,
+  Paths.Broadcast.All,
+  BroadcastController.getAll,
 )
 
 broadcastRouter.patch(
-	Paths.Broadcast.ID,
-	BroadcastController.patch,
+  Paths.Broadcast.ID,
+  BroadcastController.patch,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)

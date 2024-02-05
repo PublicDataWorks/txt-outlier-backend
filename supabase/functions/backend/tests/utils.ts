@@ -1,24 +1,30 @@
 import { sql } from 'drizzle-orm'
-import { afterAll, beforeEach } from 'testing/bdd.ts'
+import { afterAll, afterEach, beforeEach } from 'testing/bdd.ts'
 import httpMocks from 'node-mocks-http'
+import * as mf from 'mock-fetch'
 
 import supabase, { client } from '../lib/supabase.ts'
 
 beforeEach(async () => {
-	await supabase.execute(sql.raw(DROP_ALL_TABLES))
-	const sqlScript = Deno.readTextFileSync(
-		'supabase/functions/backend/drizzle/0000_cooing_husk.sql',
-	)
-	await supabase.execute(sql.raw(sqlScript))
+  mf.install()
+  await supabase.execute(sql.raw(DROP_ALL_TABLES))
+  const sqlScript = Deno.readTextFileSync(
+    'supabase/functions/backend/drizzle/0000_cooing_husk.sql',
+  )
+  await supabase.execute(sql.raw(sqlScript))
 
-	const initTestDB = Deno.readTextFileSync(
-		'supabase/functions/backend/drizzle/initTestDB.sql',
-	)
-	await supabase.execute(sql.raw(initTestDB))
+  const initTestDB = Deno.readTextFileSync(
+    'supabase/functions/backend/drizzle/initTestDB.sql',
+  )
+  await supabase.execute(sql.raw(initTestDB))
+})
+
+afterEach(() => {
+  mf.uninstall()
 })
 
 afterAll(async () => {
-	await client.end()
+  await client.end()
 })
 
 export const DROP_ALL_TABLES = `
@@ -49,12 +55,12 @@ export const DROP_ALL_TABLES = `
 `
 
 const req = (path: string, params?: object, query?: object) => {
-	return httpMocks.createRequest({
-		method: 'GET',
-		url: path,
-		params,
-		query,
-	})
+  return httpMocks.createRequest({
+    method: 'GET',
+    url: path,
+    params,
+    query,
+  })
 }
 
 const res = () => httpMocks.createResponse()
