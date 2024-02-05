@@ -1,3 +1,5 @@
+import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
+
 const invokeBroadcastCron = (runAt: Date): string => {
 	const runTime = dateToCron(new Date(runAt))
 	return `
@@ -40,9 +42,9 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
 
 	return `
     SELECT cron.schedule(
-      'delay-send-second-messages',
-      '${runTime}',
-      $$
+             'delay-send-second-messages',
+             '${runTime}',
+             $$
       DELETE FROM outgoing_messages o
         WHERE
           o.broadcast_id = ${broadcastId}
@@ -63,13 +65,31 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
         ) as request_id'
       );
       $$
-    );
+           );
   `
 }
 
-const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
-const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
-const UNSCHEDULE_INVOKE_BROADCAST = "SELECT cron.unschedule('invoke-broadcast');"
+const insertOutgoingMessagesQuery = (
+	broadcastSegment: BroadcastSegment,
+	nextBroadcast: Broadcast,
+	message: string,
+	limit: number,
+): string => {
+	return `
+    INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
+    SELECT DISTINCT ON (phone_number) phone_number                                            AS recipient_phone_number,
+                                      '${nextBroadcast.id}'                                   AS broadcast_id,
+                                      '${broadcastSegment.segment.id}'                        AS segment_id,
+                                      '${message}'                                            AS message,
+                                      '${message === nextBroadcast.secondMessage}' AS isSecond
+    FROM (${broadcastSegment.segment.query}) AS foo
+    LIMIT ${limit}
+  `
+}
+
+const UNSCHEDULE_SEND_FIRST_MESSAGES = `SELECT cron.unschedule('send-first-messages');`
+const UNSCHEDULE_SEND_SECOND_MESSAGES = `SELECT cron.unschedule('send-second-messages');`
+const UNSCHEDULE_INVOKE_BROADCAST = `SELECT cron.unschedule('invoke-broadcast');`
 
 const dateToCron = (date: Date) => {
 	const minutes = date.getMinutes()
@@ -82,6 +102,7 @@ const dateToCron = (date: Date) => {
 }
 
 export {
+	insertOutgoingMessagesQuery,
 	invokeBroadcastCron,
 	sendFirstMessagesCron,
 	sendSecondMessagesCron,

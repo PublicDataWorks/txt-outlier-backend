@@ -2,6 +2,9 @@
   "imports": {
     "testing/": "https://deno.land/std@0.210.0/testing/",
     "node-mocks-http": "npm:node-mocks-http",
+    "mock-fetch": "https://deno.land/x/mock_fetch@0.3.0/mod.ts",
+    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts",
+
     "express": "npm:express",
     "express-async-errors": "npm:express-async-errors@^3.1.1",
     "express-validator": "npm:express-validator@^7.0.1",

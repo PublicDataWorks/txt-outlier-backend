@@ -1,6 +1,6 @@
-import { faker } from 'https://deno.land/x/deno_faker@v1.0.3/mod.ts'
+import { faker } from 'faker'
 import { authors } from '../../drizzle/schema.ts'
-import supabase from '../../lib/supabase.ts';
+import supabase from '../../lib/supabase.ts'
 
 const createAuthors = (times = 1) => {
 	const newAuthors = []
