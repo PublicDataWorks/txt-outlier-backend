@@ -8,23 +8,28 @@ const userRouter = Router()
 const broadcastRouter = Router()
 
 broadcastRouter.get(
-	Paths.Broadcast.Make,
-	broadcastController.make,
+  Paths.Broadcast.Make,
+  broadcastController.make,
 )
 
 broadcastRouter.get(
-	Paths.Broadcast.Draft,
-	broadcastController.sendDraft,
+  Paths.Broadcast.Draft,
+  broadcastController.sendDraft,
 )
 
 broadcastRouter.get(
-	Paths.Broadcast.All,
-	broadcastController.getAll,
+  Paths.Broadcast.All,
+  broadcastController.getAll,
 )
 
 broadcastRouter.patch(
-	Paths.Broadcast.ID,
-	broadcastController.patch,
+  Paths.Broadcast.ID,
+  broadcastController.patch,
+)
+
+broadcastRouter.get(
+  Paths.Broadcast.UpdateTwilioStatus,
+  broadcastController.updateTwilioStatus,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)
