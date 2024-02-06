@@ -114,5 +114,6 @@ export {
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
   type PastBroadcastResponse,
+  type TwilioMessage,
   type UpcomingBroadcastResponse,
 }

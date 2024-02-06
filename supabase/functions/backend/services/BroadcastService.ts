@@ -1,4 +1,7 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
+import type { PgTransaction } from 'drizzle-orm/pg-core/session'
+import * as log from 'log'
+
 import supabase from '../lib/supabase.ts'
 import {
   Broadcast,
@@ -10,7 +13,6 @@ import {
   outgoingMessages,
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
-import type { PgTransaction } from 'drizzle-orm/pg-core/session'
 import {
   invokeBroadcastCron,
   sendFirstMessagesCron,
@@ -32,7 +34,6 @@ import {
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import Missive from '../constants/Missive.ts'
-import * as log from 'log'
 import * as base64 from 'https://denopkg.com/chiefbiiko/base64/mod.ts'
 
 const makeBroadcast = async () => {
@@ -342,8 +343,8 @@ const insertBroadcastSegmentRecipients = async (broadcastSegment: BroadcastSegme
         await tx.execute(sql.raw(statement))
       }
     })
-  } catch (_e) {
-    log.debug(e) // TODO: setup log properly
+  } catch (e) {
+    log.error(e) // TODO: setup log properly
     // await slack({ "failureDetails": e });
   }
 }
