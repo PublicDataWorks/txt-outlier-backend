@@ -1,16 +1,16 @@
-import { defineConfig } from "drizzle-kit";
+import { defineConfig } from 'drizzle-kit'
 
 export default defineConfig({
-  out: ".",
-  schema: "./schema.ts",
-  driver: "pg",
+  out: '.',
+  schema: './schema.ts',
+  driver: 'pg',
   dbCredentials: {
-    user: "postgres",
-    password: "",
-    host: "",
+    user: 'postgres',
+    password: '',
+    host: '',
     port: 5432,
-    database: "postgres",
+    database: 'postgres',
   },
   verbose: true,
   strict: true,
-});
+})

@@ -1,14 +1,14 @@
 export default {
-  Base: "/backend",
+  Base: '/backend',
   Users: {
-    Base: "/users",
-    All: "/all",
+    Base: '/users',
+    All: '/all',
   },
   Broadcast: {
-    Base: "/broadcasts",
-    All: "",
-    Make: "/make",
-    Draft: "/draft",
-    ID: "/:id",
+    Base: '/broadcasts',
+    All: '',
+    Make: '/make',
+    Draft: '/draft/:broadcastID',
+    ID: '/:id',
   },
-} as const;
+} as const
