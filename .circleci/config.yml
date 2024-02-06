@@ -7,18 +7,21 @@ jobs:
     steps:
       - checkout
       - run: curl -fsSL https://deno.land/install.sh | sh
-      - run: /home/circleci/.deno/bin/deno lint
-      - run: /home/circleci/.deno/bin/deno fmt --check
+      - run:
+          name: Run lint
+          command: |
+            cd supabase/functions
+            /home/circleci/.deno/bin/deno task lint
+      - run:
+          name: Run fmt
+          command: |
+            cd supabase/functions
+            /home/circleci/.deno/bin/deno task fmt --check
 
       - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
       - run: npx supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
       - run:
-          name: Serve Edge function
-          command: npx supabase functions serve --no-verify-jwt --env-file=supabase/functions/backend/tests/.env.test
-          background: true
-      - run:
           name: Run the tests
           command: |
             sleep 5
-            cd supabase/functions/backend
-            /home/circleci/.deno/bin/deno test --no-check --allow-all --env=tests/.env.test -q
+            /home/circleci/.deno/bin/deno test --no-check --allow-all --env=supabase/functions/backend/tests/.env.test --import-map=supabase/functions/backend/tests/import_map.json

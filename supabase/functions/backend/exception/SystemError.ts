@@ -1,7 +1,7 @@
 class SystemError extends Error {
   public constructor(message: string) {
-    super(message);
+    super(message)
   }
 }
 
-export default SystemError;
+export default SystemError
