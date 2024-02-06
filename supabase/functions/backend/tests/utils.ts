@@ -55,12 +55,13 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
 `
 
-const req = (path: string, params?: object, query?: object) => {
+const req = (path: string, params?: object, query?: object, body?: object) => {
   return httpMocks.createRequest({
     method: 'GET',
     url: path,
     params,
     query,
+    body,
   })
 }
 

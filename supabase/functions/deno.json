@@ -17,11 +17,6 @@
     "rules": {
       "tags": [
         "recommended"
-      ],
-      "include": [
-      ],
-      "exclude": [
-        "no-unused-vars"
       ]
     }
   },

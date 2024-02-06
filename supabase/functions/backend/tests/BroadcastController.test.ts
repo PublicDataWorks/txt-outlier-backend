@@ -1,8 +1,8 @@
-import { assert, assertEquals, assertRejects } from 'testing/asserts.ts'
+import { assert, assertEquals, assertNotEquals, assertRejects } from 'testing/asserts.ts'
 import { describe, it } from 'testing/bdd.ts'
 import { FakeTime } from 'testing/time.ts'
 import * as mf from 'mock-fetch'
-import { sql } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 
 import { createBroadcast } from './fixtures/broadcast.ts'
 import { createSegment } from './fixtures/segment.ts'
@@ -13,6 +13,7 @@ import BroadcastController from '../controllers/BroadcastController.ts'
 import supabase from '../lib/supabase.ts'
 import SystemError from '../exception/SystemError.ts'
 import RouteError from '../exception/RouteError.ts'
+import { PastBroadcastResponse } from '../dto/BroadcastRequestResponse.ts'
 
 describe(
   'Make',
@@ -187,6 +188,248 @@ describe(
   },
 )
 
+describe(
+  'Get all',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    it('invalid limit', () => {
+      const query = {
+        limit: '1a',
+      }
+      const expectedErrors = [
+        {
+          'type': 'field',
+          'value': '1a',
+          'msg': 'Invalid value',
+          'path': 'limit',
+          'location': 'query',
+        },
+      ]
+      assertRejects(
+        async () => await BroadcastController.getAll(req(DRAFT_PATH, {}, query), res()),
+        RouteError,
+        JSON.stringify(expectedErrors),
+      )
+    })
+
+    it('invalid cursor', () => {
+      const query = {
+        cursor: '1.1',
+      }
+      const expectedErrors = [
+        {
+          'type': 'field',
+          'value': '1.1',
+          'msg': 'Invalid value',
+          'path': 'cursor',
+          'location': 'query',
+        },
+      ]
+      assertRejects(
+        async () => await BroadcastController.getAll(req(DRAFT_PATH, {}, query), res()),
+        RouteError,
+        JSON.stringify(expectedErrors),
+      )
+    })
+
+    it('invalid limit and cursor', () => {
+      const query = {
+        limit: 'true',
+        cursor: '2a2',
+      }
+      const expectedErrors = [
+        {
+          'type': 'field',
+          'value': 'true',
+          'msg': 'Invalid value',
+          'path': 'limit',
+          'location': 'query',
+        },
+        {
+          'type': 'field',
+          'value': '2a2',
+          'msg': 'Invalid value',
+          'path': 'cursor',
+          'location': 'query',
+        },
+      ]
+      assertRejects(
+        async () => await BroadcastController.getAll(req(DRAFT_PATH, {}, query), res()),
+        RouteError,
+        JSON.stringify(expectedErrors),
+      )
+    })
+
+    it('successfully without params', async () => {
+      await seedPast(2, 'A similique dolores ut.', 'Id saepe magni aut quas.')
+      await seed()
+
+      const response = await BroadcastController.getAll(req(DRAFT_PATH), res())
+      assertEquals(response.statusCode, 200)
+      const data = JSON.parse(response._getData())
+      assertEquals(data.past.length, 3)
+      assertEquals(data.past[1].firstMessage, 'A similique dolores ut.')
+      assertEquals(data.past[2].firstMessage, 'A similique dolores ut.')
+
+      assertEquals(data.past[1].secondMessage, 'Id saepe magni aut quas.')
+      assertEquals(data.past[2].secondMessage, 'Id saepe magni aut quas.')
+
+      assertEquals(data.past[1].runAt, 1706851016)
+      assertEquals(data.past[2].runAt, 1706851015)
+      assert(data.currentCursor)
+
+      const upcoming = await supabase.select().from(broadcasts).where(eq(broadcasts.editable, true))
+      assertEquals(Number(upcoming[0].id), data.upcoming.id)
+    })
+    it('pagination', async () => {
+      await seedPast(20, 'A similique dolores ut.', 'Id saepe magni aut quas.')
+      await seed()
+
+      const response = await BroadcastController.getAll(req(DRAFT_PATH), res())
+      const data = JSON.parse(response._getData())
+      assertEquals(data.past.length, 5)
+      const minId = Math.min(...data.past.map((broadcast: PastBroadcastResponse) => broadcast.id))
+
+      const query = {
+        cursor: data.currentCursor,
+      }
+      const nextPage = await BroadcastController.getAll(req(DRAFT_PATH, {}, query), res())
+      const nextData = JSON.parse(nextPage._getData())
+      assert(nextData.past[0].runAt < data.past[4].runAt)
+      const expectedNextPageUpcoming = {
+        delay: '',
+        firstMessage: '',
+        id: null,
+        runAt: -1,
+        secondMessage: '',
+      }
+      assertEquals(nextData.upcoming, expectedNextPageUpcoming)
+      const maxNextId = Math.max(...nextData.past.map((broadcast: PastBroadcastResponse) => broadcast.id))
+      assert(minId > maxNextId)
+    })
+  },
+)
+
+describe(
+  'Patch',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    it('invalid id', () => {
+      const param = {
+        id: 'true',
+      }
+      const expectedErrors = [
+        {
+          'type': 'field',
+          'value': 'true',
+          'msg': 'Invalid value',
+          'path': 'id',
+          'location': 'params',
+        },
+      ]
+      assertRejects(
+        async () => await BroadcastController.patch(req(DRAFT_PATH, param), res()),
+        RouteError,
+        JSON.stringify(expectedErrors),
+      )
+    })
+  },
+  it('invalid runAt', () => {
+    const param = {
+      id: 1,
+    }
+    const body = {
+      runAt: 'aaaa',
+    }
+    const expectedErrors = [
+      {
+        'type': 'field',
+        'value': 'aaaa',
+        'msg': 'Invalid value',
+        'path': 'runAt',
+        'location': 'body',
+      },
+    ]
+    assertRejects(
+      async () => await BroadcastController.patch(req(DRAFT_PATH, param, {}, body), res()),
+      RouteError,
+      JSON.stringify(expectedErrors),
+    )
+  }),
+  it('update first message', async () => {
+    await seed()
+    const { id } =
+      (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(desc(broadcasts.id)).limit(1))[0]
+    const param = { id }
+    const before = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+
+    const body = { firstMessage: 'new msg' }
+    const response = await BroadcastController.patch(req('', param, {}, body), res())
+    assertEquals(response.statusCode, 200)
+
+    const after = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+    assertEquals(after[0].firstMessage, 'new msg')
+    assertNotEquals(after[0].firstMessage, before[0].firstMessage)
+    assertEquals(after[0].secondMessage, before[0].secondMessage)
+    assertEquals(after[0].runAt, before[0].runAt)
+    assertEquals(after[0].delay, before[0].delay)
+  }),
+  it('update second message', async () => {
+    await seed()
+    const { id } =
+      (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(desc(broadcasts.id)).limit(1))[0]
+    const param = { id }
+    const before = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+
+    const body = { secondMessage: 'another new msg' }
+    const response = await BroadcastController.patch(req('', param, {}, body), res())
+    assertEquals(response.statusCode, 200)
+
+    const after = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+    assertEquals(after[0].secondMessage, 'another new msg')
+    assertNotEquals(after[0].secondMessage, before[0].secondMessage)
+    assertEquals(after[0].firstMessage, before[0].firstMessage)
+    assertEquals(after[0].runAt, before[0].runAt)
+    assertEquals(after[0].delay, before[0].delay)
+  }),
+  it('update run at', async () => {
+    await seed()
+    const { id } =
+      (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(desc(broadcasts.id)).limit(1))[0]
+    const param = { id }
+    const before = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+
+    const body = { runAt: 1707212766 }
+    const response = await BroadcastController.patch(req('', param, {}, body), res())
+    assertEquals(response.statusCode, 200)
+
+    const after = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+    assertEquals(after[0].runAt, new Date('2024-02-06T09:46:06.000Z'))
+    assertNotEquals(after[0].runAt, before[0].runAt)
+    assertEquals(after[0].firstMessage, before[0].firstMessage)
+    assertEquals(after[0].secondMessage, before[0].secondMessage)
+    assertEquals(after[0].delay, before[0].delay)
+  }),
+  it('update delay', async () => {
+    await seed()
+    const { id } =
+      (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(desc(broadcasts.id)).limit(1))[0]
+    const param = { id }
+    const before = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+
+    const body = { delay: '00:12:00' }
+    const response = await BroadcastController.patch(req('', param, {}, body), res())
+    assertEquals(response.statusCode, 200)
+
+    const after = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
+    assertEquals(after[0].delay, '00:12:00')
+    assertNotEquals(after[0].delay, before[0].delay)
+    assertEquals(after[0].firstMessage, before[0].firstMessage)
+    assertEquals(after[0].secondMessage, before[0].secondMessage)
+    assertEquals(after[0].runAt, before[0].runAt)
+  }),
+)
+
 /* =====================================Utils===================================== */
 // TODO: test make get order by id
 const DRAFT_PATH = 'broadcasts/draft'
@@ -212,4 +455,15 @@ const seed = async (noUsers = 60, noSegments = 1, noTwilioMessages = 30): Promis
   const response = await BroadcastController.makeBroadcast(req(MAKE_PATH), res())
   assertEquals(response.statusCode, 204)
   return broadcast.id!
+}
+
+const seedPast = async (noBroadcasts: number, firstMessage: string, secondMessage: string) => {
+  const pastDate = new Date('2024-02-02T05:16:57.000Z')
+  for (let i = 0; i < noBroadcasts; i++) {
+    const runAt = new Date(pastDate)
+    runAt.setSeconds(runAt.getSeconds() - noBroadcasts + i)
+    const broadcast = await createBroadcast(70, runAt, firstMessage, secondMessage)
+    await createSegment(2, broadcast.id!)
+    await createTwilioMessages(40)
+  }
 }
