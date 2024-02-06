@@ -1,4 +1,4 @@
-import { faker } from 'https://deno.land/x/deno_faker@v1.0.3/mod.ts'
+import { faker } from 'faker'
 import { audienceSegments, broadcastsSegments } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 
