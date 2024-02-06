@@ -5,7 +5,7 @@ import { BroadcastUpdate } from '../dto/BroadcastRequestResponse.ts'
 import { validateAndResponse } from '../misc/validator.ts'
 import AppResponse from '../misc/AppResponse.ts'
 
-async function make(_req: Request, res: Response) {
+async function makeBroadcast(_req: Request, res: Response) {
   await BroadcastService.make()
   return AppResponse.ok(res, {}, 204)
 }
@@ -19,7 +19,6 @@ async function sendDraft(req: Request, res: Response) {
 
   const id = Number(req.params.broadcastID)
   const { isSecond } = req.query
-
   await BroadcastService.sendBroadcastMessage(id, Boolean(isSecond))
   return AppResponse.ok(res)
 }
@@ -63,7 +62,7 @@ async function updateTwilioStatus(req: Request, res: Response) {
 }
 
 export default {
-  make,
+  makeBroadcast,
   sendDraft,
   getAll,
   patch,

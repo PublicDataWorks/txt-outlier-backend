@@ -101,7 +101,7 @@ function convertToBroadcastMessagesStatus(
     message: outgoing.message,
     isSecond: outgoing.isSecond,
     broadcastId: outgoing.broadcastId,
-    missiveMessageId: missiveID,
+    missiveId: missiveID,
     missiveConversationId: convoID,
   }
 }

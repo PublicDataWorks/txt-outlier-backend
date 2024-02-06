@@ -1,11 +1,11 @@
-import { and, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 import supabase from '../lib/supabase.ts'
 import {
   Broadcast,
-  broadcastMessagesSentStatus,
   BroadcastMessageStatus,
   broadcasts,
   BroadcastSegment,
+  broadcastSentMessageStatus,
   OutgoingMessage,
   outgoingMessages,
 } from '../drizzle/schema.ts'
@@ -40,8 +40,7 @@ const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
-      gt(broadcasts.runAt, now.getTime()),
-      lt(broadcasts.runAt, now.getTime() + 24 * 60 * 60 * 1000),
+      lt(broadcasts.runAt, now.getTime() + 24 * 60 * 60 * 1000), // TODO:
     ),
     with: {
       broadcastToSegments: {
@@ -162,14 +161,14 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
     await supabase
       .delete(outgoingMessages)
       .where(inArray(outgoingMessages.id, outgoingIDsToDelete))
-    await supabase.insert(broadcastMessagesSentStatus).values(messageStatusEntries)
-    const idsToUpdate = results
-      .map((outgoing: OutgoingMessage) => outgoing.id)
-      .filter((id: number) => !processed.some((item) => item.outgoing.id === id))
-    // Give these messages back to the pool
-    if (idsToUpdate.length > 0) {
-      await supabase.update(outgoingMessages).set({ processed: false }).where(inArray(outgoingMessages.id, idsToUpdate))
-    }
+    await supabase.insert(broadcastSentMessageStatus).values(messageStatusEntries)
+  }
+  const idsToUpdate = results
+    .map((outgoing: OutgoingMessage) => outgoing.id)
+    .filter((id: number) => !processed.some((item) => item.outgoing.id === id))
+  // Give these messages back to the pool
+  if (idsToUpdate.length > 0) {
+    await supabase.update(outgoingMessages).set({ processed: false }).where(inArray(outgoingMessages.id, idsToUpdate))
   }
 }
 
@@ -230,17 +229,16 @@ const patch = async (
 }
 
 const updateTwilioHistory = async (broadcastID: number) => {
+  // TODO: move to twilioconfig.ts
   const accountSid = ''
   const authToken = ''
   const twilioBase = 'https://api.twilio.com'
   const broadcastNumber = ''
-
-  const broadcast: Broadcast[] = await supabase.select().from(broadcasts).where(
-    eq(broadcasts.id, broadcastID),
-  )
+  const broadcast: Broadcast[] = await supabase.select().from(broadcasts).where(eq(broadcasts.id, broadcastID))
   if (broadcast.length == 0) {
     return
   }
+  // TODO: move to dateutils.ts
   const currentDate = new Date() // TODO replace with broadcast run day, check edge case spill over day
   const formattedDate = currentDate.toISOString().split('T')[0] // Get the formatted date string
   const credentials = `${accountSid}:${authToken}`
@@ -257,7 +255,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
       `${twilioBase}/2010-04-01/Accounts/${accountSid}/Messages.json?DateSent=${formattedDate}&From=${broadcastNumber}&PageSize=100`
   }
 
-  let updatedArray = []
+  const updatedArray = []
   const response = await fetch(twilioURL, {
     method: 'GET',
     headers,
@@ -280,19 +278,20 @@ const updateTwilioHistory = async (broadcastID: number) => {
     return
   }
   if (updatedArray.length > 0) {
+    // TODO: move to cron.ts
     const updateRaw = `
-    WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
-           AS (VALUES
-                 ${updatedArray.join(',')})
-    UPDATE broadcast_sent_message_status
-    SET twilio_sent_status = new_values.twilio_sent_status,
-        twilio_id          = new_values.twilio_id,
-        twilio_sent_at     = new_values.twilio_sent_at
-    FROM new_values
-    WHERE broadcast_sent_message_status.recipient_phone_number = new_values.recipient_phone_number
-      AND broadcast_sent_message_status.broadcast_id = new_values.broadcast_id
-      AND broadcast_sent_message_status.message = new_values.body;
-  `
+      WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
+             AS (VALUES
+                   ${updatedArray.join(',')})
+      UPDATE broadcast_sent_message_status
+      SET twilio_sent_status = new_values.twilio_sent_status,
+          twilio_id          = new_values.twilio_id,
+          twilio_sent_at     = new_values.twilio_sent_at
+      FROM new_values
+      WHERE broadcast_sent_message_status.recipient_phone_number = new_values.recipient_phone_number
+        AND broadcast_sent_message_status.broadcast_id = new_values.broadcast_id
+        AND broadcast_sent_message_status.message = new_values.body;
+    `
     await supabase.execute(sql.raw(updateRaw))
   } else {
     if (!broadcast[0].twilioPaging) {
