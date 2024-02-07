@@ -9,7 +9,7 @@ const broadcastRouter = Router()
 
 broadcastRouter.get(
   Paths.Broadcast.Make,
-  broadcastController.make,
+  broadcastController.makeBroadcast,
 )
 
 broadcastRouter.get(
