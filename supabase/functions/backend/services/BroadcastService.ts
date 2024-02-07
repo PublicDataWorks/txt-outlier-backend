@@ -116,8 +116,8 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
           'phone_number': '+18336856203', // TODO: Get it from ENV
           'type': 'twilio',
         },
-        'send_at': 1994540565,
-        // 'send': true, // Send right away
+        // 'send_at': 1994540565,
+        'send': true, // Send right away
       },
     }
 
@@ -231,10 +231,10 @@ const patch = async (
 
 const updateTwilioHistory = async (broadcastID: number) => {
   // TODO: move to twilioconfig.ts
-  const accountSid = ''
-  const authToken = ''
+  const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID') || ''
+  const authToken = Deno.env.get('TWILIO_AUTH_TOKEN') || ''
   const twilioBase = 'https://api.twilio.com'
-  const broadcastNumber = ''
+  const broadcastNumber = Deno.env.get('BROADCASTNUMBER') || ''
   const broadcast: Broadcast[] = await supabase.select().from(broadcasts).where(eq(broadcasts.id, broadcastID))
   if (broadcast.length == 0) {
     return
@@ -244,7 +244,6 @@ const updateTwilioHistory = async (broadcastID: number) => {
   const formattedDate = currentDate.toISOString().split('T')[0] // Get the formatted date string
   const credentials = `${accountSid}:${authToken}`
   const authHeader = `Basic ${base64.fromUint8Array(new TextEncoder().encode(credentials))}`
-  const failedStatus = ['undelivered', 'failed']
   const headers = new Headers()
   headers.set('Authorization', authHeader)
   let twilioURL = ''
@@ -261,15 +260,13 @@ const updateTwilioHistory = async (broadcastID: number) => {
     method: 'GET',
     headers,
   })
-
   if (response.ok) {
     const data = await response.json()
+    console.log(data)
     data.messages.forEach((message: TwilioMessage) => {
-      if (failedStatus.includes(message.status)) {
         const updated =
           `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
         updatedArray.push(updated)
-      }
     })
     await supabase.update(broadcasts)
       .set({ twilioPaging: data.next_page_uri })
@@ -278,6 +275,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
     console.error('Failed to fetch messages:', response.status, response.statusText)
     return
   }
+
   if (updatedArray.length > 0) {
     // TODO: move to cron.ts
     const updateRaw = `

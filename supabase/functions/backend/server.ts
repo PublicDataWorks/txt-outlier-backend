@@ -34,6 +34,6 @@ app.use((
     // TODO: send slack
   }
   if (err instanceof RouteError) status = err.status
-  return res.status(status).json({ errors: JSON.parse(err.message) })
+  return res.status(status).json({ errors: err.message })
 })
 export default app

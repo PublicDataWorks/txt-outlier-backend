@@ -14,7 +14,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
-} from 'drizzle-orm/pg-core'
+} from 'npm:drizzle-orm/pg-core' //must have npm:
 
 export const aalLevel = pgEnum('aal_level', ['aal1', 'aal2', 'aal3'])
 export const codeChallengeMethod = pgEnum('code_challenge_method', ['s256', 'plain'])
