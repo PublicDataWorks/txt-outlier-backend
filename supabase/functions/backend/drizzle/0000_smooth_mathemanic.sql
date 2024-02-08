@@ -312,7 +312,8 @@ CREATE TABLE IF NOT EXISTS "outgoing_messages" (
 	"broadcast_id" bigint NOT NULL,
 	"segment_id" bigint NOT NULL,
 	"is_second" boolean DEFAULT false NOT NULL,
-	"processed" boolean DEFAULT false NOT NULL
+	"processed" boolean DEFAULT false NOT NULL,
+	"reply_received" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "broadcasts_segments_broadcast_id_segment_id_idx" ON "broadcasts_segments" ("broadcast_id","segment_id");--> statement-breakpoint
