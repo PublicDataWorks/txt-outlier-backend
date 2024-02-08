@@ -1,4 +1,4 @@
-export const intervalToString = (interval: string) => {
+const intervalToString = (interval: string) => {
   const [hours, minutes, seconds] = interval.split(':').map(Number)
 
   if (hours > 0) {
@@ -12,6 +12,12 @@ export const intervalToString = (interval: string) => {
   }
 }
 
-export default {
+const sleep = (ms: number) => {
+  return new Promise((resolve) => {setTimeout(resolve, ms)});
+}
+
+
+export {
   intervalToString,
-} as const
+  sleep
+}
