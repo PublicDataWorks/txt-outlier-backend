@@ -1,3 +1,5 @@
+import { TwilioMessage } from '../dto/BroadcastRequestResponse.ts'
+
 const invokeBroadcastCron = (runAt: Date): string => {
   const runTime = dateToCron(new Date(runAt))
   return `
@@ -7,9 +9,10 @@ const invokeBroadcastCron = (runAt: Date): string => {
       $$
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcast/make',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-    'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
+    .env.get(
+      'SUPABASE_SERVICE_ROLE_KEY',
+    )!}"}'::jsonb
       ) as request_id;
       $$
     );
@@ -24,16 +27,21 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
       $$
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-    'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
+    .env.get(
+      'SUPABASE_SERVICE_ROLE_KEY',
+    )!}"}'::jsonb
       ) as request_id;
       $$
     );
   `
 }
 
-const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: number) => {
+const sendSecondMessagesCron = (
+  startTime: number,
+  broadcastId: number,
+  delay: number,
+) => {
   const date = new Date(startTime)
   const newDate = new Date(date.getTime() + delay * 60 * 1000)
   const runTime = dateToCron(newDate)
@@ -56,10 +64,13 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
         'send-second-messages',
         '* * * * *',
         'SELECT net.http_get(
-          url:=''${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}?isSecond=true'',
-          headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-    'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}''::jsonb
+          url:=''${Deno.env.get(
+    'BACKEND_URL',
+  )!}/broadcasts/draft/${broadcastId}?isSecond=true'',
+          headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
+    .env.get(
+      'SUPABASE_SERVICE_ROLE_KEY',
+    )!}"}''::jsonb
         ) as request_id'
       );
       $$
@@ -75,14 +86,32 @@ const updateTwilioStatusCron = (broadcastId: number): string => {
       $$
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/twilio/${broadcastId}',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-    'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
+    .env.get(
+      'SUPABASE_SERVICE_ROLE_KEY',
+    )!}"}'::jsonb
       ) as request_id;
       $$
     );
   `
 }
+
+const updateTwilioStatusRaw = (updatedArray: TwilioMessage[]): string => {
+  return `
+      WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
+             AS (VALUES
+                   ${updatedArray.join(',')})
+      UPDATE broadcast_sent_message_status
+      SET twilio_sent_status = new_values.twilio_sent_status,
+          twilio_id          = new_values.twilio_id,
+          twilio_sent_at     = new_values.twilio_sent_at
+      FROM new_values
+      WHERE broadcast_sent_message_status.recipient_phone_number = new_values.recipient_phone_number
+        AND broadcast_sent_message_status.broadcast_id = new_values.broadcast_id
+        AND broadcast_sent_message_status.message = new_values.body;
+    `
+}
+
 const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
@@ -107,4 +136,5 @@ export {
   UNSCHEDULE_SEND_SECOND_MESSAGES,
   UNSCHEDULE_TWILIO_STATUS_UPDATE,
   updateTwilioStatusCron,
+  updateTwilioStatusRaw,
 }

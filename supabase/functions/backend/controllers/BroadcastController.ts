@@ -15,7 +15,7 @@ async function sendDraft(req: Request, res: Response) {
     param('broadcastID').isInt().toInt(),
     query('isSecond').optional().isBoolean().toBoolean(),
   ]
-  await validateAndResponse(validations, req, res)
+  await validateAndResponse(validations, req)
 
   const id = Number(req.params.broadcastID)
   const { isSecond } = req.query
@@ -54,7 +54,7 @@ async function updateTwilioStatus(req: Request, res: Response) {
   const validations = [
     param('broadcastID').isInt().toInt(),
   ]
-  await validateAndResponse(validations, req, res)
+  await validateAndResponse(validations, req)
   const id = Number(req.params.broadcastID)
   await BroadcastService.updateTwilioHistory(id)
   return AppResponse.ok(res, {}, 204)
