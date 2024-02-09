@@ -99,7 +99,7 @@ function convertToBroadcastMessagesStatus(
   return {
     recipientPhoneNumber: outgoing.recipientPhoneNumber,
     message: outgoing.message,
-    isSecond: outgoing.isSecond,
+    isSecond: outgoing.isSecond!,
     broadcastId: outgoing.broadcastId,
     missiveId: missiveID,
     missiveConversationId: convoID,
