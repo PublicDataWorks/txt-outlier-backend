@@ -10,7 +10,7 @@ const getTwilioHeaders = (): Headers => {
   return headers
 }
 
-const getTwilioMessages = async (
+const getTwilioMessagesFromAPI = async (
   nextPage: string,
   broadcastDate: Date,
 ): Response => {
@@ -32,4 +32,4 @@ const getTwilioMessages = async (
   })
 }
 
-export { getTwilioHeaders, getTwilioMessages }
+export { getTwilioHeaders, getTwilioMessagesFromAPI }

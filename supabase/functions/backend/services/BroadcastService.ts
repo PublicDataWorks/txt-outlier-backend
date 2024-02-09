@@ -36,7 +36,7 @@ import {
 } from '../dto/BroadcastRequestResponse.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { sleep } from '../misc/utils.ts'
-import { getTwilioMessages } from '../lib/twilio.ts'
+import { getTwilioMessagesFromAPI } from '../lib/twilio.ts'
 
 const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -104,7 +104,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       await supabase.execute(sql.raw(updateStatusCron))
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
       // TODO: Delete all rows of outgoing messages
-      return
+      break;
     }
     const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id)
     // Temporarily mark these messages as processed, so later requests don't pick them up
@@ -255,35 +255,46 @@ const updateTwilioHistory = async (broadcastID: number) => {
   if (broadcast.length === 0) {
     return
   }
-
+  console.log(broadcast)
   let updatedArray: TwilioMessage[] = []
-  const response = await getTwilioMessages(
-    broadcast[0].twilioPaging,
-    broadcast[0].runAt,
-  )
-
-  if (response.ok) {
-    const data = await response.json()
-    updatedArray = data.messages.map((message: TwilioMessage) => {
-      return `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
-    })
-    await supabase.update(broadcasts)
-      .set({ twilioPaging: data.next_page_uri })
-      .where(eq(broadcasts.id, broadcastID))
-  } else {
-    console.error(
-      'Failed to fetch messages:',
-      response.status,
-      response.statusText,
+  if (broadcast[0].twilioPaging !== 'DONE'){
+    const response = await getTwilioMessagesFromAPI(
+      broadcast[0].twilioPaging,
+      broadcast[0].runAt,
     )
-    // await slack({ "failureDetails": e });
-    return
+
+    console.log(response)
+    if (response.ok) {
+      const data = await response.json()
+      updatedArray = data.messages.map((message: TwilioMessage) => {
+        return `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
+      })
+      if (data.next_page_uri === null) {
+        await supabase.update(broadcasts)
+          .set({ twilioPaging: 'DONE' })
+          .where(eq(broadcasts.id, broadcastID))
+      }else{
+        await supabase.update(broadcasts)
+          .set({ twilioPaging: data.next_page_uri })
+          .where(eq(broadcasts.id, broadcastID))
+      }
+    } else {
+      console.error(
+        'Failed to fetch messages:',
+        response.status,
+        response.statusText,
+      )
+      // await slack({ "failureDetails": e });
+      return
+    }
   }
 
+  console.log(updatedArray)
   if (updatedArray.length > 0) {
     const updateRaw = updateTwilioStatusRaw(updatedArray)
+    console.log(updateRaw)
     await supabase.execute(sql.raw(updateRaw))
-  } else if (!broadcast[0].twilioPaging) {
+  } else {
     await supabase.execute(sql.raw(UNSCHEDULE_TWILIO_STATUS_UPDATE))
   }
 }
