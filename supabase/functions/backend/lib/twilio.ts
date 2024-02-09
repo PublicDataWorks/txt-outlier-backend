@@ -1,6 +1,5 @@
 import * as base64 from 'base64'
-import { twilioBase } from '../constants/Missive.ts'
-
+export const twilioBase = 'https://api.twilio.com'
 const ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID')!
 const getTwilioHeaders = (): Headers => {
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')!

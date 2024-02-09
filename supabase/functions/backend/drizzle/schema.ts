@@ -477,7 +477,6 @@ export const outgoingMessages = pgTable('outgoing_messages', {
   ),
   isSecond: boolean('is_second').default(false).notNull(),
   processed: boolean('processed').default(false).notNull(),
-  replyReceived: boolean('reply_received').default(false).notNull(),
 })
 
 export type Rule = typeof rules.$inferInsert

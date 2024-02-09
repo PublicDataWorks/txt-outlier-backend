@@ -1,4 +1,4 @@
-const createMessageUrl = 'https://public.missiveapp.com/v1/drafts'
+const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const headers = {
   'Content-Type': 'application/json',
   'Authorization': `Bearer ${Deno.env.get('MISSIVE_SECRET')}`,
@@ -19,7 +19,7 @@ const sendMessage = (message: string, toPhone: string) => {
       'send': true, // Send right away
     },
   }
-  return fetch(createMessageUrl, {
+  return fetch(CREATE_MESSAGE_URL, {
     method: 'POST',
     headers: headers,
     body: JSON.stringify(body),
@@ -27,5 +27,6 @@ const sendMessage = (message: string, toPhone: string) => {
 }
 
 export default {
-  sendMessage
+  sendMessage,
+  CREATE_MESSAGE_URL,
 } as const

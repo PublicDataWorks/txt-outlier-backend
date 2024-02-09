@@ -13,11 +13,9 @@ const intervalToString = (interval: string) => {
 }
 
 const sleep = (ms: number) => {
-  return new Promise((resolve) => {setTimeout(resolve, ms)});
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
-
-export {
-  intervalToString,
-  sleep
-}
+export { intervalToString, sleep }
