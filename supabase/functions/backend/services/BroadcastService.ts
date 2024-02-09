@@ -197,21 +197,20 @@ const getAll = async (
   limit = 5, // Limit past batches
   cursor?: number,
 ): Promise<BroadcastResponse> => {
-  let results: Broadcast[] = []
-  if (cursor) {
-    results = await supabase.query.broadcasts.findMany({
-      where: lt(broadcasts.runAt, new Date(cursor * 1000)),
-      limit: limit,
-      orderBy: [desc(broadcasts.runAt)],
-    })
-  } else {
-    results = await supabase.query.broadcasts.findMany(
-      {
-        limit: limit + 1,
-        orderBy: [desc(broadcasts.runAt)],
+  const results: (Broadcast & { sentMessageStatuses: BroadcastMessageStatus[] })[] = await supabase.query.broadcasts.findMany({
+    where: cursor ? lt(broadcasts.runAt, new Date(cursor * 1000)) : undefined,
+    limit: cursor ? limit : limit + 1,
+    orderBy: [desc(broadcasts.runAt)],
+    with: {
+      sentMessageStatuses: {
+        where: (sentMessageStatuses, { isNotNull }) => isNotNull(sentMessageStatuses.twilioSentAt),
+        columns: {
+          isSecond: true,
+          twilioSentStatus: true,
+        },
       },
-    )
-  }
+    },
+  })
 
   const response = new BroadcastResponse()
   if (results.length === 0) {

@@ -7,7 +7,8 @@ interface PastBroadcastResponse {
   firstMessage: string
   secondMessage: string
   runAt: number
-  totalSent: number
+  totalFirstSent: number
+  totalSecondSent: number
   successfullyDelivered: number
   failedDelivered: number
 }
@@ -36,16 +37,20 @@ interface TwilioMessage {
 }
 
 function convertToPastBroadcast(
-  broadcast: Broadcast,
+  broadcast: Broadcast & { sentMessageStatuses: BroadcastMessageStatus[]},
 ): PastBroadcastResponse {
+  const total = broadcast.sentMessageStatuses.length
+  const totalFirstSent = broadcast.sentMessageStatuses.filter((status: BroadcastMessageStatus) => !status.isSecond).length
+  const successfullyDelivered = broadcast.sentMessageStatuses.filter((status: BroadcastMessageStatus) => status.twilioSentStatus === 'delivered').length
   return {
     id: Number(broadcast.id),
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
-    totalSent: 0,
-    successfullyDelivered: 0,
-    failedDelivered: 0,
+    totalFirstSent,
+    totalSecondSent: total - totalFirstSent,
+    successfullyDelivered,
+    failedDelivered: total - successfullyDelivered,
   }
 }
 
