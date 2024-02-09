@@ -57,7 +57,7 @@ describe(
 
       const history = await call_history()
       assertEquals(history.length, 2)
-      assert(history[0].parameters.startsWith('invoke-broadcast 16 12 1 2 4'))
+      assert(history[0].parameters.startsWith('invoke-broadcast 16 5 1 2 4'))
       assertEquals(history[0].function_name, 'cron.schedule')
       assert(history[1].parameters.startsWith('send-first-messages * * * * *'))
       assertEquals(history[1].function_name, 'cron.schedule')
@@ -148,17 +148,14 @@ describe(
         outgoingMessages.id,
       )
       assertEquals(before.length, 2)
-      const response = await BroadcastController.sendDraft(
-        req(DRAFT_PATH, { broadcastID }),
-        res(),
-      )
+      assert(!before[0].processed)
+      assert(!before[1].processed)
 
-      const after = await supabase.select().from(outgoingMessages).orderBy(
-        outgoingMessages.id,
-      )
-      assertEquals(after.length, 1)
-      assert(after[0].isSecond)
-      assertEquals(after[0], before[1])
+      const response = await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
+      const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
+      assertEquals(after.length, 2)
+      assert(after[0].processed)
+      assert(!after[1].processed)
 
       assertEquals(response.statusCode, 200)
     })
@@ -199,10 +196,8 @@ describe(
         res(),
       )
       assertEquals(response.statusCode, 200)
-      const after = await supabase.select().from(outgoingMessages).orderBy(
-        outgoingMessages.id,
-      )
-      assertEquals(after.length, 0)
+      const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
+      assertEquals(after.length, 2)
     })
 
     it('not do anything if failed to call Missive', async () => {
