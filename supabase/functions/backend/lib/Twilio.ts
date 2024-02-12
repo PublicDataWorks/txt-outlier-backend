@@ -1,6 +1,9 @@
 import * as base64 from 'base64'
+
 export const twilioBase = 'https://api.twilio.com'
 const ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID')!
+const PAGINATION_DONE = 'DONE'
+const SUCCESS_STATUSES = ['received', 'delivered']
 const getTwilioHeaders = (): Headers => {
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')!
   const credentials = `${ACCOUNT_SID}:${authToken}`
@@ -32,4 +35,4 @@ const getTwilioMessages = async (
   })
 }
 
-export { getTwilioHeaders, getTwilioMessages }
+export default { getTwilioHeaders, getTwilioMessages, PAGINATION_DONE, SUCCESS_STATUSES }

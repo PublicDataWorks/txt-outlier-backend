@@ -527,7 +527,6 @@ describe(
         .orderBy(
           broadcastSentMessageStatus.id,
         )
-      console.log(after)
       assertEquals(after.length, 2)
 
       assertExists(after[0].twilioId)

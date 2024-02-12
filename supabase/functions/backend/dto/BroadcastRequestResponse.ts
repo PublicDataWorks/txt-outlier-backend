@@ -1,6 +1,7 @@
 import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/schema.ts'
 
 import { intervalToString } from '../misc/utils.ts'
+import Twilio from "../lib/Twilio.ts";
 
 interface BroadcastSentDetail {
   totalFirstSent: number
@@ -9,7 +10,7 @@ interface BroadcastSentDetail {
   failedDelivered: number
 }
 
-interface PastBroadcastResponse extends BroadcastSentDetail{
+interface PastBroadcastResponse extends BroadcastSentDetail {
   id: number
   firstMessage: string
   secondMessage: string
@@ -39,17 +40,11 @@ interface TwilioMessage {
   date_sent: string
 }
 
-function convertToPastBroadcast(
-  broadcast: Broadcast & { sentMessageStatuses: BroadcastMessageStatus[]},
-): PastBroadcastResponse {
-  const total = broadcast.sentMessageStatuses.length
-  const totalFirstSent = broadcast.sentMessageStatuses.filter((status: BroadcastMessageStatus) => !status.isSecond).length
-  const successfullyDelivered = broadcast.sentMessageStatuses.filter((status: BroadcastMessageStatus) => status.twilioSentStatus === 'delivered').length
+const broadcastDetail = (sentMessageStatuses: BroadcastMessageStatus[]): BroadcastSentDetail => {
+  const total = sentMessageStatuses.length
+  const totalFirstSent = sentMessageStatuses.filter((status: BroadcastMessageStatus) => !status.isSecond).length
+  const successfullyDelivered = sentMessageStatuses.filter((status: BroadcastMessageStatus) => status.twilioSentStatus && Twilio.SUCCESS_STATUSES.includes(status.twilioSentStatus)).length
   return {
-    id: Number(broadcast.id),
-    firstMessage: broadcast.firstMessage,
-    secondMessage: broadcast.secondMessage,
-    runAt: Math.floor(broadcast.runAt.getTime() / 1000),
     totalFirstSent,
     totalSecondSent: total - totalFirstSent,
     successfullyDelivered,
@@ -57,9 +52,20 @@ function convertToPastBroadcast(
   }
 }
 
-function convertToUpcomingBroadcast(
-  broadcast: Broadcast,
-): UpcomingBroadcastResponse {
+const convertToPastBroadcast = (broadcast: Broadcast & {
+  sentMessageStatuses: BroadcastMessageStatus[]
+}): PastBroadcastResponse => {
+  const detail = broadcastDetail(broadcast.sentMessageStatuses)
+  return {
+    id: Number(broadcast.id),
+    firstMessage: broadcast.firstMessage,
+    secondMessage: broadcast.secondMessage,
+    runAt: Math.floor(broadcast.runAt.getTime() / 1000),
+    ...detail
+  }
+}
+
+const convertToUpcomingBroadcast = (broadcast: Broadcast): UpcomingBroadcastResponse => {
   return {
     id: Number(broadcast.id),
     firstMessage: broadcast.firstMessage,
@@ -68,6 +74,30 @@ function convertToUpcomingBroadcast(
     delay: intervalToString(broadcast.delay!), // TODO: Not sure why we need to add ! here
   }
 }
+
+const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
+  return {
+    firstMessage: broadcast.firstMessage,
+    secondMessage: broadcast.secondMessage,
+    runAt: broadcast.runAt,
+    updatedAt: broadcast.updatedAt,
+    delay: broadcast.delay,
+    editable: broadcast.editable,
+    noUsers: broadcast.noUsers,
+  }
+}
+
+const convertToBroadcastMessagesStatus = (outgoing: OutgoingMessage, missiveID: string, convoID: string): BroadcastMessageStatus => {
+  return {
+    recipientPhoneNumber: outgoing.recipientPhoneNumber,
+    message: outgoing.message,
+    isSecond: outgoing.isSecond!,
+    broadcastId: outgoing.broadcastId,
+    missiveId: missiveID,
+    missiveConversationId: convoID,
+  }
+}
+
 
 class BroadcastResponse {
   upcoming: UpcomingBroadcastResponse
@@ -87,33 +117,6 @@ class BroadcastResponse {
   }
 }
 
-function convertToFutureBroadcast(broadcast: Broadcast): Broadcast {
-  return {
-    firstMessage: broadcast.firstMessage,
-    secondMessage: broadcast.secondMessage,
-    runAt: broadcast.runAt,
-    updatedAt: broadcast.updatedAt,
-    delay: broadcast.delay,
-    editable: broadcast.editable,
-    noUsers: broadcast.noUsers,
-  }
-}
-
-function convertToBroadcastMessagesStatus(
-  outgoing: OutgoingMessage,
-  missiveID: string,
-  convoID: string,
-): BroadcastMessageStatus {
-  return {
-    recipientPhoneNumber: outgoing.recipientPhoneNumber,
-    message: outgoing.message,
-    isSecond: outgoing.isSecond!,
-    broadcastId: outgoing.broadcastId,
-    missiveId: missiveID,
-    missiveConversationId: convoID,
-  }
-}
-
 export {
   BroadcastResponse,
   type BroadcastUpdate,
@@ -121,8 +124,9 @@ export {
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
+  broadcastDetail,
   type PastBroadcastResponse,
   type TwilioMessage,
   type UpcomingBroadcastResponse,
-  type BroadcastSentDetail
+  type BroadcastSentDetail,
 }
