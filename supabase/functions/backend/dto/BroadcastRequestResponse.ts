@@ -2,15 +2,18 @@ import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/s
 
 import { intervalToString } from '../misc/utils.ts'
 
-interface PastBroadcastResponse {
-  id: number
-  firstMessage: string
-  secondMessage: string
-  runAt: number
+interface BroadcastSentDetail {
   totalFirstSent: number
   totalSecondSent: number
   successfullyDelivered: number
   failedDelivered: number
+}
+
+interface PastBroadcastResponse extends BroadcastSentDetail{
+  id: number
+  firstMessage: string
+  secondMessage: string
+  runAt: number
 }
 
 interface UpcomingBroadcastResponse {
@@ -121,4 +124,5 @@ export {
   type PastBroadcastResponse,
   type TwilioMessage,
   type UpcomingBroadcastResponse,
+  type BroadcastSentDetail
 }

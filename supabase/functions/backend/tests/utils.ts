@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach } from 'testing/bdd.ts'
 import httpMocks from 'node-mocks-http'
 import * as mf from 'mock-fetch'
 
-import supabase, { client } from '../lib/supabase.ts'
+import supabase, { postgresClient } from '../lib/supabase.ts'
 
 beforeEach(async () => {
   mf.install()
@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 afterAll(async () => {
-  await client.end()
+  await postgresClient.end()
 })
 
 export const DROP_ALL_TABLES = `
