@@ -193,11 +193,14 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
   }
   await postSendBroadcastMessage(processed, idsMarkedAsProcessed)
 }
+
 const getAll = async (
   limit = 5, // Limit past batches
   cursor?: number,
 ): Promise<BroadcastResponse> => {
-  const results: (Broadcast & { sentMessageStatuses: BroadcastMessageStatus[] })[] = await supabase.query.broadcasts.findMany({
+  const results: (Broadcast & {
+    sentMessageStatuses: BroadcastMessageStatus[]
+  })[] = await supabase.query.broadcasts.findMany({
     where: cursor ? lt(broadcasts.runAt, new Date(cursor * 1000)) : undefined,
     limit: cursor ? limit : limit + 1,
     orderBy: [desc(broadcasts.runAt)],
@@ -211,7 +214,6 @@ const getAll = async (
       },
     },
   })
-
   const response = new BroadcastResponse()
   if (results.length === 0) {
     return response
@@ -228,6 +230,13 @@ const getAll = async (
   const lastRunAtTimestamp = results[results.length - 1].runAt.getTime() / 1000
   response.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0)
 
+
+  sendMostRecentBroadcastDetail({
+      totalFirstSent: 1,
+      totalSecondSent: 2,
+      successfullyDelivered: 3123123,
+      failedDelivered: 4,
+    })
   return response
 }
 
@@ -303,12 +312,12 @@ const updateTwilioHistory = async (broadcastID: number) => {
 const makeTomorrowBroadcastSchedule = async (previousBroadcast: Broadcast) => {
   let noAdvancedDate = 1
   switch (previousBroadcast.runAt.getDay() + 1) {
-    case 6: // Tomorrow is Saturday
-      noAdvancedDate = 3
-      break
-    case 0: // Tomorrow is Sunday
-      noAdvancedDate = 2
-      break
+  case 6: // Tomorrow is Saturday
+    noAdvancedDate = 3
+    break
+  case 0: // Tomorrow is Sunday
+    noAdvancedDate = 2
+    break
   }
 
   previousBroadcast.runAt.setUTCDate(
