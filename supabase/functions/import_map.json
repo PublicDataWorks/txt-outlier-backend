@@ -1,6 +1,5 @@
 {
   "imports": {
-    "assert": "https://deno.land/std@0.210.0/assert/mod.ts",
     "express": "npm:express",
     "express-async-errors": "npm:express-async-errors@^3.1.1",
     "express-validator": "npm:express-validator@^7.0.1",
@@ -9,6 +8,7 @@
     "morgan": "npm:morgan",
     "cors": "npm:cors",
     "drizzle-orm/postgres-js": "npm:drizzle-orm/postgres-js",
+    "drizzle-orm/pg-core": "npm:drizzle-orm/pg-core",
     "slack-API": "https://deno.land/x/deno_slack_api@2.1.1/mod.ts",
     "postgres": "https://deno.land/x/postgresjs/mod.js",
     "log": "https://deno.land/std@0.212.0/log/mod.ts",

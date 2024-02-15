@@ -10,10 +10,10 @@ const getTwilioHeaders = (): Headers => {
   return headers
 }
 
-const getTwilioMessagesFromAPI = async (
-  nextPage: string,
+const getTwilioMessages = async (
+  nextPage: string | undefined | null,
   broadcastDate: Date,
-): Response => {
+): Promise<Response> => {
   const broadcastNumber = Deno.env.get('BROADCASTNUMBER')!
   const formattedDate = broadcastDate.toISOString().split('T')[0]
   const headers = getTwilioHeaders()
@@ -32,4 +32,4 @@ const getTwilioMessagesFromAPI = async (
   })
 }
 
-export { getTwilioHeaders, getTwilioMessagesFromAPI }
+export { getTwilioHeaders, getTwilioMessages }

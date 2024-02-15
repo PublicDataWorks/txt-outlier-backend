@@ -6,7 +6,7 @@ import AppResponse from '../misc/AppResponse.ts'
 import BroadcastService from '../services/BroadcastService.ts'
 
 async function makeBroadcast(_req: Request, res: Response) {
-  await BroadcastService.make()
+  await BroadcastService.makeBroadcast()
   return AppResponse.ok(res, {}, 204)
 }
 
