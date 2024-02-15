@@ -1,7 +1,7 @@
 import { Router } from 'express'
 
 import Paths from '../constants/Paths.ts'
-import broadcastController from '../controllers/BroadcastController.ts'
+import BroadcastController from '../controllers/BroadcastController.ts'
 
 const apiRouter = Router()
 const userRouter = Router()
