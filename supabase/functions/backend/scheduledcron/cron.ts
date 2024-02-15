@@ -138,6 +138,7 @@ const dateToCron = (date: Date) => {
 }
 
 export {
+  insertOutgoingMessagesQuery,
   invokeBroadcastCron,
   sendFirstMessagesCron,
   sendSecondMessagesCron,

@@ -12,9 +12,9 @@ const getTwilioHeaders = (): Headers => {
 }
 
 const getTwilioMessages = async (
-  nextPage: string,
+  nextPage: string | undefined | null,
   broadcastDate: Date,
-): Response => {
+): Promise<Response> => {
   const broadcastNumber = Deno.env.get('BROADCASTNUMBER')!
   const formattedDate = broadcastDate.toISOString().split('T')[0]
   const headers = getTwilioHeaders()

@@ -1,8 +1,9 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 import type { PgTransaction } from 'drizzle-orm/pg-core/session'
 import * as log from 'log'
-
 import supabase from '../lib/supabase.ts'
+import { getTwilioMessages } from '../lib/twilio.ts'
+import DateUtils from '../misc/DateUtils.ts'
 import {
   Broadcast,
   BroadcastMessageStatus,
@@ -14,6 +15,7 @@ import {
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import {
+  insertOutgoingMessagesQuery,
   invokeBroadcastCron,
   sendFirstMessagesCron,
   sendSecondMessagesCron,
@@ -35,13 +37,12 @@ import {
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import Missive from '../constants/Missive.ts'
-import { getTwilioMessages } from '../lib/twilio.ts'
 
 const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
-      lt(broadcasts.runAt, advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
+      lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
     ),
     with: {
       broadcastToSegments: {
@@ -114,8 +115,8 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
 
   const processed: {
     outgoing: OutgoingMessage
-    id: number
-    conversation: string
+    id: string // Missive message ID
+    conversation: string // Missive conversation ID
   }[] = []
   for (const outgoing of results) {
     const loopStartTime = Date.now()
@@ -168,7 +169,7 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
     const outgoingIDsToDelete: number[] = []
     const messageStatusEntries: BroadcastMessageStatus[] = []
     for (const item of processed) {
-      outgoingIDsToDelete.push(item.outgoing.id)
+      outgoingIDsToDelete.push(item.outgoing.id!)
       messageStatusEntries.push(
         convertToBroadcastMessagesStatus(
           item.outgoing,
@@ -340,13 +341,8 @@ const insertBroadcastSegmentRecipients = async (
   }
 }
 
-const advance = (milis: number): Date => {
-  const date = new Date()
-  date.setMilliseconds(date.getMilliseconds() + milis)
-  return date
-}
 export default {
-  make: makeBroadcast,
+  makeBroadcast,
   getAll,
   patch,
   sendBroadcastMessage,

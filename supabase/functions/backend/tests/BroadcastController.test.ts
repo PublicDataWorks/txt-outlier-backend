@@ -57,7 +57,7 @@ describe(
 
       const history = await call_history()
       assertEquals(history.length, 2)
-      assert(history[0].parameters.startsWith('invoke-broadcast 16 12 1 2 4'))
+      assert(history[0].parameters.startsWith('invoke-broadcast 16 5 1 2 4'))
       assertEquals(history[0].function_name, 'cron.schedule')
       assert(history[1].parameters.startsWith('send-first-messages * * * * *'))
       assertEquals(history[1].function_name, 'cron.schedule')
