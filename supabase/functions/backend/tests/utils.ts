@@ -9,7 +9,7 @@ beforeEach(async () => {
   mf.install()
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const sqlScript = Deno.readTextFileSync(
-    'supabase/functions/backend/drizzle/0000_cooing_husk.sql',
+    'supabase/functions/backend/drizzle/0000_smooth_mathemanic.sql',
   )
   await supabase.execute(sql.raw(sqlScript))
 
@@ -52,14 +52,16 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "twilio_messages" CASCADE;
   DROP TABLE IF EXISTS "user_history" CASCADE;
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
+  DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
 `
 
-const req = (path: string, params?: object, query?: object) => {
+const req = (path: string, params?: object, query?: object, body?: object) => {
   return httpMocks.createRequest({
     method: 'GET',
     url: path,
     params,
     query,
+    body,
   })
 }
 

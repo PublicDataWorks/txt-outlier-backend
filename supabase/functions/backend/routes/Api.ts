@@ -1,7 +1,7 @@
 import { Router } from 'express'
 
 import Paths from '../constants/Paths.ts'
-import BroadcastController from '../controllers/BroadcastController.ts'
+import broadcastController from '../controllers/BroadcastController.ts'
 
 const apiRouter = Router()
 const userRouter = Router()
@@ -9,22 +9,27 @@ const broadcastRouter = Router()
 
 broadcastRouter.get(
   Paths.Broadcast.Make,
-  BroadcastController.makeBroadcast,
+  broadcastController.makeBroadcast,
 )
 
 broadcastRouter.get(
   Paths.Broadcast.Draft,
-  BroadcastController.sendDraft,
+  broadcastController.sendDraft,
 )
 
 broadcastRouter.get(
   Paths.Broadcast.All,
-  BroadcastController.getAll,
+  broadcastController.getAll,
 )
 
 broadcastRouter.patch(
   Paths.Broadcast.ID,
-  BroadcastController.patch,
+  broadcastController.patch,
+)
+
+broadcastRouter.get(
+  Paths.Broadcast.UpdateTwilioStatus,
+  broadcastController.updateTwilioStatus,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)

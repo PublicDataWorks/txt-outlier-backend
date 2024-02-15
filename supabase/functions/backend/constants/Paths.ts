@@ -10,5 +10,6 @@ export default {
     Make: '/make',
     Draft: '/draft/:broadcastID',
     ID: '/:id',
+    UpdateTwilioStatus: '/twilio/:broadcastID',
   },
 } as const
