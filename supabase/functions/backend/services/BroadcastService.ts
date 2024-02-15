@@ -129,7 +129,6 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
           'phone_number': '+18336856203', // TODO: Get it from ENV
           'type': 'twilio',
         },
-        // 'send_at': 1994540565,
         'send': true, // Send right away
       },
     }
@@ -322,23 +321,16 @@ const insertBroadcastSegmentRecipients = async (
     { message: nextBroadcast.firstMessage },
     { message: nextBroadcast.secondMessage },
   ]
-  const limit = Math.floor(
-    broadcastSegment.ratio * nextBroadcast.noUsers! / 100,
-  )
+  const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
   try {
     await supabase.transaction(async (tx: PgTransaction) => {
       for (const outgoing of messages) {
-        const statement = `
-          INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
-          SELECT DISTINCT ON (phone_number) phone_number                                            AS recipient_phone_number,
-                                            '${nextBroadcast.id}'                                   AS broadcast_id,
-                                            '${broadcastSegment.segment.id}'                        AS segment_id,
-                                            '${outgoing.message}'                                   AS message,
-                                            '${(outgoing.message ===
-          nextBroadcast.secondMessage)}' AS isSecond
-          FROM (${broadcastSegment.segment.query}) AS foo
-          LIMIT ${limit}
-        `
+        const statement = insertOutgoingMessagesQuery(
+          broadcastSegment,
+          nextBroadcast,
+          outgoing.message,
+          limit,
+        )
         await tx.execute(sql.raw(statement))
       }
     })

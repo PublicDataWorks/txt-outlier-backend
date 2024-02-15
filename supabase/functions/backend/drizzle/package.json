@@ -9,7 +9,7 @@
   "author": "Outlier Media",
   "license": "",
   "devDependencies": {
+    "drizzle-kit": "^0.20.7",
     "drizzle-orm": "^0.29.1",
-    "drizzle-kit": "^0.20.7"
   }
 }

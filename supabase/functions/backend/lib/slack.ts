@@ -18,10 +18,7 @@ const slack = async function sendToSlack(data: ErrorDetail) {
   }
 }
 
-function replacePlaceholders(
-  template: string,
-  replacements: ErrorDetail,
-): string {
+function replacePlaceholders(template: string, replacements: ErrorDetail): string {
   return template.replace(/<%=\s*(\w+)\s*%>/g, (match, p1) => {
     return replacements[p1] !== undefined ? replacements[p1] : match
   })

@@ -1,3 +1,4 @@
+import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
 import { TwilioMessage } from '../dto/BroadcastRequestResponse.ts'
 
 const invokeBroadcastCron = (runAt: Date): string => {
@@ -9,10 +10,9 @@ const invokeBroadcastCron = (runAt: Date): string => {
       $$
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcast/make',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
-    .env.get(
-      'SUPABASE_SERVICE_ROLE_KEY',
-    )!}"}'::jsonb
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
       ) as request_id;
       $$
     );
@@ -27,30 +27,25 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
       $$
       SELECT net.http_get(
         url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
-    .env.get(
-      'SUPABASE_SERVICE_ROLE_KEY',
-    )!}"}'::jsonb
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
       ) as request_id;
       $$
     );
   `
 }
 
-const sendSecondMessagesCron = (
-  startTime: number,
-  broadcastId: number,
-  delay: number,
-) => {
+const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: number) => {
   const date = new Date(startTime)
   const newDate = new Date(date.getTime() + delay * 60 * 1000)
   const runTime = dateToCron(newDate)
 
   return `
     SELECT cron.schedule(
-      'delay-send-second-messages',
-      '${runTime}',
-      $$
+             'delay-send-second-messages',
+             '${runTime}',
+             $$
       DELETE FROM outgoing_messages o
         WHERE
           o.broadcast_id = ${broadcastId}
@@ -64,17 +59,32 @@ const sendSecondMessagesCron = (
         'send-second-messages',
         '* * * * *',
         'SELECT net.http_get(
-          url:=''${Deno.env.get(
-    'BACKEND_URL',
-  )!}/broadcasts/draft/${broadcastId}?isSecond=true'',
-          headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
-    .env.get(
-      'SUPABASE_SERVICE_ROLE_KEY',
-    )!}"}''::jsonb
+          url:=''${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}?isSecond=true'',
+          headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}''::jsonb
         ) as request_id'
       );
       $$
-    );
+           );
+  `
+}
+
+const insertOutgoingMessagesQuery = (
+  broadcastSegment: BroadcastSegment,
+  nextBroadcast: Broadcast,
+  message: string,
+  limit: number,
+): string => {
+  return `
+    INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
+    SELECT DISTINCT ON (phone_number) phone_number                                            AS recipient_phone_number,
+                                      '${nextBroadcast.id}'                                   AS broadcast_id,
+                                      '${broadcastSegment.segment.id}'                        AS segment_id,
+                                      '${message}'                                            AS message,
+                                      '${message === nextBroadcast.secondMessage}' AS isSecond
+    FROM (${broadcastSegment.segment.query}) AS foo
+    LIMIT ${limit}
   `
 }
 
