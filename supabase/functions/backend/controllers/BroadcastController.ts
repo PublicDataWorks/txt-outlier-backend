@@ -1,9 +1,9 @@
-import BroadcastService from '../services/BroadcastService.ts'
 import { Request, Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { BroadcastUpdate } from '../dto/BroadcastRequestResponse.ts'
 import { validateAndResponse } from '../misc/validator.ts'
 import AppResponse from '../misc/AppResponse.ts'
+import BroadcastService from '../services/BroadcastService.ts'
 
 async function makeBroadcast(_req: Request, res: Response) {
   await BroadcastService.makeBroadcast()
@@ -19,7 +19,6 @@ async function sendDraft(req: Request, res: Response) {
 
   const id = Number(req.params.broadcastID)
   const { isSecond } = req.query
-
   await BroadcastService.sendBroadcastMessage(id, Boolean(isSecond))
   return AppResponse.ok(res)
 }
@@ -44,12 +43,21 @@ async function patch(req: Request, res: Response) {
     body('delay').optional().isString().notEmpty(),
   ]
 
-  await validateAndResponse(validations, req, res)
+  await validateAndResponse(validations, req)
   const id = Number(req.params.id)
   const broadcast: BroadcastUpdate = req.body
-
   const result = await BroadcastService.patch(id, broadcast)
   return AppResponse.ok(res, result)
+}
+
+async function updateTwilioStatus(req: Request, res: Response) {
+  const validations = [
+    param('broadcastID').isInt().toInt(),
+  ]
+  await validateAndResponse(validations, req)
+  const id = Number(req.params.broadcastID)
+  await BroadcastService.updateTwilioHistory(id)
+  return AppResponse.ok(res, {}, 204)
 }
 
 export default {
@@ -57,4 +65,5 @@ export default {
   sendDraft,
   getAll,
   patch,
+  updateTwilioStatus,
 } as const

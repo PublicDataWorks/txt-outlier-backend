@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION cron.schedule(a text, b text, c text)
 $$
 BEGIN
   INSERT INTO cron.call_history (function_name, parameters)
-  VALUES ('cron.schedule', a || ' ' ||  b || ' ' || c);
+  VALUES ('cron.schedule', a || ' ' || b || ' ' || c);
 END;
 $$ LANGUAGE plpgsql;
 

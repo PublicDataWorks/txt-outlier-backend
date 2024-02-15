@@ -13,4 +13,6 @@ node_modules/
 /.vscode/
 /supabase/functions/.vscode/extensions.json
 /supabase/functions/.vscode/
-cov_profile
+cov_profile/
+scheduledcron.iml
+**/.branch

@@ -11,6 +11,8 @@
     "drizzle-orm/pg-core": "npm:drizzle-orm/pg-core",
     "slack-API": "https://deno.land/x/deno_slack_api@2.1.1/mod.ts",
     "postgres": "https://deno.land/x/postgresjs/mod.js",
-    "log": "https://deno.land/std@0.210.0/log/mod.ts"
+    "log": "https://deno.land/std@0.212.0/log/mod.ts",
+    "twilio": "npm:twilio@^4.21.0",
+    "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts"
   }
 }

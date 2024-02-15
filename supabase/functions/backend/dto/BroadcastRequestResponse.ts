@@ -1,4 +1,4 @@
-import { Broadcast } from '../drizzle/schema.ts'
+import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/schema.ts'
 
 import { intervalToString } from '../misc/utils.ts'
 
@@ -25,6 +25,14 @@ interface BroadcastUpdate {
   secondMessage?: string
   runAt?: number
   delay?: string
+}
+
+interface TwilioMessage {
+  body: string
+  to: string
+  sid: number
+  status: string
+  date_sent: string
 }
 
 function convertToPastBroadcast(
@@ -83,12 +91,29 @@ function convertToFutureBroadcast(broadcast: Broadcast): Broadcast {
   }
 }
 
+function convertToBroadcastMessagesStatus(
+  outgoing: OutgoingMessage,
+  missiveID: string,
+  convoID: string,
+): BroadcastMessageStatus {
+  return {
+    recipientPhoneNumber: outgoing.recipientPhoneNumber,
+    message: outgoing.message,
+    isSecond: outgoing.isSecond!,
+    broadcastId: outgoing.broadcastId,
+    missiveId: missiveID,
+    missiveConversationId: convoID,
+  }
+}
+
 export {
   BroadcastResponse,
   type BroadcastUpdate,
+  convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
   type PastBroadcastResponse,
+  type TwilioMessage,
   type UpcomingBroadcastResponse,
 }
