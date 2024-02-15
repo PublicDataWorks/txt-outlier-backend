@@ -5,16 +5,17 @@ import * as mf from 'mock-fetch'
 import { desc, eq, sql } from 'drizzle-orm'
 import { faker } from 'faker'
 
-import { createBroadcast } from './fixtures/broadcast.ts'
-import { createSegment } from './fixtures/segment.ts'
-import { req, res } from './utils.ts'
-import { createTwilioMessages } from './fixtures/twilioMessage.ts'
-import { broadcasts, broadcastSentMessageStatus, outgoingMessages } from '../drizzle/schema.ts'
-import BroadcastController from '../controllers/BroadcastController.ts'
-import supabase from '../lib/supabase.ts'
-import RouteError from '../exception/RouteError.ts'
-import { PastBroadcastResponse } from '../dto/BroadcastRequestResponse.ts'
-import { createBroadcastStatus } from './fixtures/broadcastStatus.ts'
+import { createBroadcast } from '../fixtures/broadcast.ts'
+import { createSegment } from '../fixtures/segment.ts'
+import { req, res } from '../utils.ts'
+import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
+import { broadcasts, broadcastSentMessageStatus, outgoingMessages } from '../../drizzle/schema.ts'
+import BroadcastController from '../../controllers/BroadcastController.ts'
+import supabase from '../../lib/supabase.ts'
+import RouteError from '../../exception/RouteError.ts'
+import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
+import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
+import SystemError from '../../exception/SystemError.ts'
 
 describe(
   'Make',
@@ -81,12 +82,11 @@ describe(
     })
 
     it('next broadcast not found', () => {
-      // assertRejects(
-      //   async () =>
-      //     await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
-      //   SystemError,
-      //   "Unable to retrieve the next broadcast.",
-      // );
+      assertRejects(
+        async () => await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
+        SystemError,
+        'Unable to retrieve the next broadcast.',
+      )
     })
   },
 )
