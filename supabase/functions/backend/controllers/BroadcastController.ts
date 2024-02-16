@@ -19,7 +19,11 @@ async function sendDraft(req: Request, res: Response) {
 
   const id = Number(req.params.broadcastID)
   const { isSecond } = req.query
-  await BroadcastService.sendBroadcastMessage(id, Boolean(isSecond))
+  if (isSecond) {
+    await BroadcastService.sendBroadcastSecondMessage(id)
+  } else {
+    await BroadcastService.sendBroadcastFirstMessage(id)
+  }
   return AppResponse.ok(res)
 }
 

@@ -27,7 +27,7 @@
 - Once the cron job is scheduled, trigger an API call to the
   `/broadcasts/draft/:broadcastID` endpoint.
 - This cron job runs every minute.
-- Under the hood, call the `sendBroadcastMessage` service function to get 50
+- Under the hood, call the `sendBroadcastFirstMessage` service function to get 50
   pending broadcast messages according to the `:broadcastID` parameter, with the
   default `isSecond` query parameter set to false.
 - If no results are found, proceed to unschedule itself and create the
@@ -45,18 +45,12 @@
 - Proceed to the next step if the API endpoint executes the logic successfully.
 
 4. **Test Flow: `send-second-messages`**
-
-- This cron job combines `delay-send-second-messages` and
-  `send-second-messages`.
-- `delay-send-second-messages` runs once with a scheduled time 10 minutes
-  (configurable) from the `startTime` of the last batch of `first-messages`.
-- Run a query to delete all pending second broadcast messages that have received
-  a reply within the timeframe and then create the `send-second-messages` cron.
+- On webhook side `user-actions`, when `incoming-message` rule is triggered we check the phone number and timestamp against `outgoing-messages`
+- If the received message belongs to broadcast recipients we consider it as reply to broadcast and delete the pending second message.
 - The logic is relatively the same as `send-first-messages`, running every
   minute, calling the `/broadcasts/draft/:broadcastID?isSecond=true` endpoint
   with the `isSecond` query parameter.
-- When no more rows can be retrieved, unschedule itself and
-  `delay-send-second-messages`, and start the `twilio-status` cron.
+- When no more rows can be retrieved, unschedule itself and start the `twilio-status` cron.
 - Proceed to the next step.
 
 5. **Test Flow: `twilio-status`**

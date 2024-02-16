@@ -5,16 +5,17 @@ import * as mf from 'mock-fetch'
 import { desc, eq, sql } from 'drizzle-orm'
 import { faker } from 'faker'
 
-import { createBroadcast } from './fixtures/broadcast.ts'
-import { createSegment } from './fixtures/segment.ts'
-import { req, res } from './utils.ts'
-import { createTwilioMessages } from './fixtures/twilioMessage.ts'
-import { broadcasts, broadcastSentMessageStatus, outgoingMessages } from '../drizzle/schema.ts'
-import BroadcastController from '../controllers/BroadcastController.ts'
-import supabase from '../lib/supabase.ts'
-import RouteError from '../exception/RouteError.ts'
-import { PastBroadcastResponse } from '../dto/BroadcastRequestResponse.ts'
-import { createBroadcastStatus } from './fixtures/broadcastStatus.ts'
+import { createBroadcast } from '../fixtures/broadcast.ts'
+import { createSegment } from '../fixtures/segment.ts'
+import { req, res } from '../utils.ts'
+import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
+import { broadcasts, broadcastSentMessageStatus, outgoingMessages } from '../../drizzle/schema.ts'
+import BroadcastController from '../../controllers/BroadcastController.ts'
+import supabase from '../../lib/supabase.ts'
+import RouteError from '../../exception/RouteError.ts'
+import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
+import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
+import SystemError from '../../exception/SystemError.ts'
 
 describe(
   'Make',
@@ -81,12 +82,11 @@ describe(
     })
 
     it('next broadcast not found', () => {
-      // assertRejects(
-      //   async () =>
-      //     await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
-      //   SystemError,
-      //   "Unable to retrieve the next broadcast.",
-      // );
+      assertRejects(
+        async () => await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
+        SystemError,
+        'Unable to retrieve the next broadcast.',
+      )
     })
   },
 )
@@ -148,17 +148,14 @@ describe(
         outgoingMessages.id,
       )
       assertEquals(before.length, 2)
-      const response = await BroadcastController.sendDraft(
-        req(DRAFT_PATH, { broadcastID }),
-        res(),
-      )
+      assert(!before[0].processed)
+      assert(!before[1].processed)
 
-      const after = await supabase.select().from(outgoingMessages).orderBy(
-        outgoingMessages.id,
-      )
-      assertEquals(after.length, 1)
-      assert(after[0].isSecond)
-      assertEquals(after[0], before[1])
+      const response = await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
+      const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
+      assertEquals(after.length, 2)
+      assert(after[0].processed)
+      assert(!after[1].processed)
 
       assertEquals(response.statusCode, 200)
     })
@@ -199,10 +196,8 @@ describe(
         res(),
       )
       assertEquals(response.statusCode, 200)
-      const after = await supabase.select().from(outgoingMessages).orderBy(
-        outgoingMessages.id,
-      )
-      assertEquals(after.length, 0)
+      const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
+      assertEquals(after.length, 2)
     })
 
     it('not do anything if failed to call Missive', async () => {
