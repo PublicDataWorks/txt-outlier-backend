@@ -1,17 +1,26 @@
-export const intervalToString = (interval: string) => {
+const intervalToString = (interval: string) => {
   const [hours, minutes, seconds] = interval.split(':').map(Number)
+  let result = ''
 
-  if (hours > 0) {
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`
-  } else if (minutes > 0) {
-    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`
-  } else if (seconds > 0) {
-    return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
-  } else {
+  if (hours > 0) result += `${hours} ${hours === 1 ? 'hour' : 'hours'}, `
+  if (minutes > 0) result += `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}, `
+  if (seconds > 0) result += `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`
+
+  if (result === '') {
     return 'Invalid interval format'
+  } else {
+    result = result.trim()
+    if (result.endsWith(',')) {
+      result = result.slice(0, -1)
+    }
+    return result
   }
 }
 
-export default {
-  intervalToString,
-} as const
+const sleep = (ms: number) => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+export { intervalToString, sleep }

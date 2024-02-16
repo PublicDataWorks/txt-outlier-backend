@@ -36,7 +36,8 @@ import {
   TwilioMessage,
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
-import Missive from '../constants/Missive.ts'
+import MissiveUtils from '../lib/Missive.ts'
+import { sleep } from '../misc/utils.ts'
 
 const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -81,72 +82,100 @@ const makeBroadcast = async () => {
   )
 }
 
-const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
+const sendBroadcastSecondMessage = async (broadcastID: number) => {
+  // This function is called by a CRON job every minute
+  const startTime = Date.now()
+  const allIdsMarkedAsProcess: number[] = []
+  // Due to Missive API limit, we can only send 5 concurrent requests at any given time
+  const processed: ProcessedItem[] = []
+  for (let i = 0; i < 10; i++) {
+    const loopStartTime = Date.now()
+    const results = await supabase.select().from(outgoingMessages).where(
+      and(
+        eq(outgoingMessages.broadcastId, broadcastID),
+        eq(outgoingMessages.isSecond, true),
+        eq(outgoingMessages.processed, false),
+      ),
+    ).orderBy(outgoingMessages.id).limit(5)
+
+    if (results.length === 0) {
+      // No messages found, time to unschedule cron that set to run every minute
+      const updateStatusCron = updateTwilioStatusCron(broadcastID)
+      await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
+      await supabase.execute(sql.raw(updateStatusCron))
+      await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
+      // TODO: Delete all rows of outgoing messages
+      break
+    }
+    const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id)
+    // Temporarily mark these messages as processed, so later requests don't pick them up
+    await supabase.update(outgoingMessages).set({ processed: true }).where(
+      inArray(outgoingMessages.id, idsToMarkAsProcessed),
+    )
+    allIdsMarkedAsProcess.push(...idsToMarkAsProcessed)
+    const missiveResponses = results.map(async (outgoing: OutgoingMessage) => {
+      const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
+      return ({ response, outgoing })
+    })
+    Promise.allSettled(missiveResponses).then(async (results) => {
+      for (const result of results) {
+        const { response, outgoing } = result.value
+        if (response.ok) {
+          const responseBody = await response.json()
+          const { id, conversation } = responseBody.drafts
+          processed.push({
+            outgoing: outgoing,
+            id,
+            conversation,
+          })
+        } else log.error(response)
+      }
+    })
+    const elapsedTime = Date.now() - startTime
+    // We break because CRON job will run every minute, next time it will pick up the remaining messages
+    if (elapsedTime >= 60000) {
+      log.error('Hard limit reached. Exiting loop.')
+      break
+    }
+    await sleep(Math.max(0, 5000 - (Date.now() - loopStartTime)))
+  }
+
+  await postSendBroadcastMessage(processed, allIdsMarkedAsProcess)
+}
+
+const sendBroadcastFirstMessage = async (broadcastID: number) => {
+  // This function is called by a CRON job every minute
   const startTime = Date.now()
   const results = await supabase.select().from(outgoingMessages).where(
     and(
       eq(outgoingMessages.broadcastId, broadcastID),
-      eq(outgoingMessages.isSecond, useSecond),
+      eq(outgoingMessages.isSecond, false),
+      eq(outgoingMessages.processed, false),
     ),
   ).orderBy(outgoingMessages.id).limit(50) // API limit of 1 request per second
 
   if (results.length === 0) {
-    // No messages, time to unschedule cron that set to run every minute
-    let unschedule: string
-    if (useSecond) {
-      unschedule = UNSCHEDULE_SEND_SECOND_MESSAGES
-      const updateStatusCron = updateTwilioStatusCron(broadcastID)
-      await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
-      await supabase.execute(sql.raw(updateStatusCron))
-    } else {
-      unschedule = UNSCHEDULE_SEND_FIRST_MESSAGES
-      await supabase.execute(
-        sql.raw(sendSecondMessagesCron(startTime, broadcastID, 5)),
-      ) // TODO: replace 5 with delay
-    }
-    await supabase.execute(sql.raw(unschedule))
-  } else {
-    const idsToUpdate = results.map((outgoing: OutgoingMessage) => outgoing.id)
-    // Temporarily mark these messages as processed, so later requests don't pick them up
-    await supabase.update(outgoingMessages).set({ processed: true }).where(
-      inArray(outgoingMessages.id, idsToUpdate),
-    )
+    // No messages found, time to unschedule cron that set to run every minute
+    await supabase.execute(sql.raw(sendSecondMessagesCron(startTime, broadcastID, 5))) // TODO: replace 5 with delay
+    await supabase.execute(sql.raw(UNSCHEDULE_SEND_FIRST_MESSAGES))
+    return
   }
+  const idsMarkedAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id)
+  // Temporarily mark these messages as processed, so later requests don't pick them up
+  await supabase.update(outgoingMessages).set({ processed: true }).where(
+    inArray(outgoingMessages.id, idsMarkedAsProcessed),
+  )
 
-  const processed: {
-    outgoing: OutgoingMessage
-    id: string // Missive message ID
-    conversation: string // Missive conversation ID
-  }[] = []
+  const processed: ProcessedItem[] = []
   for (const outgoing of results) {
     const loopStartTime = Date.now()
-    const body = {
-      drafts: {
-        'body': outgoing.message,
-        'to_fields': [
-          { 'phone_number': outgoing.recipientPhoneNumber },
-        ],
-        'from_field': {
-          'phone_number': '+18336856203', // TODO: Get it from ENV
-          'type': 'twilio',
-        },
-        'send': true, // Send right away
-      },
-    }
-
-    const response = await fetch(Missive.createMessageUrl, {
-      method: 'POST',
-      headers: Missive.headers,
-      body: JSON.stringify(body),
-    })
-
+    const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
     if (response.ok) {
       const responseBody = await response.json()
       const { id, conversation } = responseBody.drafts
-
       processed.push({
         outgoing: outgoing,
-        id: id,
+        id,
         conversation,
       })
     } else {
@@ -154,48 +183,16 @@ const sendBroadcastMessage = async (broadcastID: number, useSecond = false) => {
       // TODO: Saved to DB
     }
     const elapsedTime = Date.now() - startTime
-
-    // We break because CRON job will run every minute
+    // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
       log.error('Hard limit reached. Exiting loop.')
       break
     }
-
     // Wait for 1s, considering the time spent in API call and other operations
-    await new Promise((r) => setTimeout(r, Math.max(0, 1000 - (Date.now() - loopStartTime))))
+    await sleep(Math.max(0, 1000 - (Date.now() - loopStartTime)))
   }
-
-  if (processed.length !== 0) {
-    const outgoingIDsToDelete: number[] = []
-    const messageStatusEntries: BroadcastMessageStatus[] = []
-    for (const item of processed) {
-      outgoingIDsToDelete.push(item.outgoing.id!)
-      messageStatusEntries.push(
-        convertToBroadcastMessagesStatus(
-          item.outgoing,
-          item.id,
-          item.conversation,
-        ),
-      )
-    }
-    await supabase
-      .delete(outgoingMessages)
-      .where(inArray(outgoingMessages.id, outgoingIDsToDelete))
-    await supabase.insert(broadcastSentMessageStatus).values(
-      messageStatusEntries,
-    )
-  }
-  const idsToUpdate = results
-    .map((outgoing: OutgoingMessage) => outgoing.id)
-    .filter((id: number) => !processed.some((item) => item.outgoing.id === id))
-  // Give these messages back to the pool
-  if (idsToUpdate.length > 0) {
-    await supabase.update(outgoingMessages).set({ processed: false }).where(
-      inArray(outgoingMessages.id, idsToUpdate),
-    )
-  }
+  await postSendBroadcastMessage(processed, idsMarkedAsProcessed)
 }
-
 const getAll = async (
   limit = 5, // Limit past batches
   cursor?: number,
@@ -259,35 +256,46 @@ const updateTwilioHistory = async (broadcastID: number) => {
   if (broadcast.length === 0) {
     return
   }
-
+  console.log(broadcast)
   let updatedArray: TwilioMessage[] = []
-  const response = await getTwilioMessages(
-    broadcast[0].twilioPaging,
-    broadcast[0].runAt,
-  )
-
-  if (response.ok) {
-    const data = await response.json()
-    updatedArray = data.messages.map((message: TwilioMessage) => {
-      return `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
-    })
-    await supabase.update(broadcasts)
-      .set({ twilioPaging: data.next_page_uri })
-      .where(eq(broadcasts.id, broadcastID))
-  } else {
-    console.error(
-      'Failed to fetch messages:',
-      response.status,
-      response.statusText,
+  if (broadcast[0].twilioPaging !== 'DONE') {
+    const response = await getTwilioMessages(
+      broadcast[0].twilioPaging,
+      broadcast[0].runAt,
     )
-    // await slack({ "failureDetails": e });
-    return
+
+    console.log(response)
+    if (response.ok) {
+      const data = await response.json()
+      updatedArray = data.messages.map((message: TwilioMessage) => {
+        return `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
+      })
+      if (data.next_page_uri === null) {
+        await supabase.update(broadcasts)
+          .set({ twilioPaging: 'DONE' })
+          .where(eq(broadcasts.id, broadcastID))
+      } else {
+        await supabase.update(broadcasts)
+          .set({ twilioPaging: data.next_page_uri })
+          .where(eq(broadcasts.id, broadcastID))
+      }
+    } else {
+      console.error(
+        'Failed to fetch messages:',
+        response.status,
+        response.statusText,
+      )
+      // await slack({ "failureDetails": e });
+      return
+    }
   }
 
+  console.log(updatedArray)
   if (updatedArray.length > 0) {
     const updateRaw = updateTwilioStatusRaw(updatedArray)
+    console.log(updateRaw)
     await supabase.execute(sql.raw(updateRaw))
-  } else if (!broadcast[0].twilioPaging) {
+  } else {
     await supabase.execute(sql.raw(UNSCHEDULE_TWILIO_STATUS_UPDATE))
   }
 }
@@ -341,10 +349,36 @@ const insertBroadcastSegmentRecipients = async (
   }
 }
 
+const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsProcessed: number[]) => {
+  if (processed.length !== 0) {
+    const sentMessageStatuses: BroadcastMessageStatus[] = []
+    for (const item of processed) {
+      sentMessageStatuses.push(convertToBroadcastMessagesStatus(item.outgoing, item.id, item.conversation))
+    }
+    await supabase.insert(broadcastSentMessageStatus).values(sentMessageStatuses)
+  }
+  // Messages failed to send, we need to reprocess them
+  const idsToUpdate = idsMarkedAsProcessed
+    .filter((id: number) => !processed.some((item) => item.outgoing.id === id))
+  // Give these messages back to the pool
+  if (idsToUpdate.length > 0) {
+    await supabase.update(outgoingMessages).set({ processed: false }).where(inArray(outgoingMessages.id, idsToUpdate))
+  }
+}
+
+/* ======================================== TYPES ======================================== */
+
+interface ProcessedItem {
+  outgoing: OutgoingMessage
+  id: string
+  conversation: string
+}
+
 export default {
   makeBroadcast,
   getAll,
   patch,
-  sendBroadcastMessage,
+  sendBroadcastFirstMessage,
+  sendBroadcastSecondMessage,
   updateTwilioHistory,
 } as const
