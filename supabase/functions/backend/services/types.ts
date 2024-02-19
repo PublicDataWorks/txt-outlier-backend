@@ -1,4 +1,4 @@
-import { OutgoingMessage } from "../drizzle/schema.ts";
+import { OutgoingMessage } from '../drizzle/schema.ts'
 
 interface ProcessedItem {
   outgoing: OutgoingMessage

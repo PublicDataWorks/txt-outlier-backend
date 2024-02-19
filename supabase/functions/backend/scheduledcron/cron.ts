@@ -8,12 +8,11 @@ const invokeBroadcastCron = (runAt: Date): string => {
       'invoke-broadcast',
       '${runTime}',
       $$
-      SELECT net.http_get(
-        url:='${Deno.env.get('BACKEND_URL')!}/broadcast/make',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+        SELECT net.http_get(
+          url:='${Deno.env.get('BACKEND_URL')!}/broadcast/make',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
     'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
-      ) as request_id;
+  )!}"}'::jsonb) as request_id;
       $$
     );
   `
@@ -25,48 +24,74 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
       'send-first-messages',
       '* * * * *',
       $$
-      SELECT net.http_get(
-        url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+        SELECT net.http_get(
+          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
     'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
-      ) as request_id;
+  )!}"}'::jsonb) as request_id;
       $$
     );
   `
 }
 
+/**
+ * @param startTime run time of the last sent first message
+ * @param broadcastId
+ * @param delay in minutes
+ */
 const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: number) => {
-  const date = new Date(startTime)
-  const newDate = new Date(date.getTime() + delay * 60 * 1000)
-  const runTime = dateToCron(newDate)
+  const startTimeInDate = new Date(startTime)
+  const runAt = dateToCron(new Date(startTimeInDate.getTime() + delay * 60 * 1000))
 
   return `
     SELECT cron.schedule(
-             'delay-send-second-messages',
-             '${runTime}',
-             $$
-      DELETE FROM outgoing_messages o
-        WHERE
-          o.broadcast_id = ${broadcastId}
-          AND o.is_second = true
-          AND o.recipient_phone_number IN (
-            SELECT t.from_field
-            FROM twilio_messages t
-            WHERE t.delivered_at >= '${date.toISOString()}' AND t.delivered_at <= now()
-          );
-      SELECT cron.schedule(
-        'send-second-messages',
-        '* * * * *',
-        'SELECT net.http_get(
+      'delay-send-second-messages',
+      '${runAt}',
+      $$
+        SELECT cron.schedule(
+          'send-second-messages',
+          '* * * * *',
+          'SELECT net.http_get(
           url:=''${Deno.env.get('BACKEND_URL')!}/broadcasts/draft/${broadcastId}?isSecond=true'',
           headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
     'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}''::jsonb
-        ) as request_id'
-      );
+  )!}"}''::jsonb) as request_id'
+        );
       $$
-           );
+    );
+  `
+}
+
+/**
+ * @param delay in minutes
+ */
+const unscheduleTwilioStatus = (delay: number) => {
+  const runAt = dateToCron(new Date(Date.now() + delay * 60 * 1000))
+  return `
+    SELECT cron.schedule(
+      'delay-unschedule-twilio-status',
+      '${runAt}',
+      $$
+        SELECT cron.unschedule('twilio-status');
+      $$
+    );
+  `
+}
+
+const updateTwilioStatusCron = (broadcastId: number): string => {
+  return `
+    SELECT cron.schedule(
+      'twilio-status',
+      '* * * * *',
+      $$
+        SELECT net.http_get(
+          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/twilio/${broadcastId}',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
+        ) as request_id;
+      $$
+    );
   `
 }
 
@@ -78,54 +103,35 @@ const insertOutgoingMessagesQuery = (
 ): string => {
   return `
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
-    SELECT DISTINCT ON (phone_number) phone_number                                            AS recipient_phone_number,
-                                      '${nextBroadcast.id}'                                   AS broadcast_id,
-                                      '${broadcastSegment.segment.id}'                        AS segment_id,
-                                      '${message}'                                            AS message,
+    SELECT DISTINCT ON (phone_number) phone_number                                 AS recipient_phone_number,
+                                      '${nextBroadcast.id}'                        AS broadcast_id,
+                                      '${broadcastSegment.segment.id}'             AS segment_id,
+                                      '${message}'                                 AS message,
                                       '${message === nextBroadcast.secondMessage}' AS isSecond
     FROM (${broadcastSegment.segment.query}) AS foo
     LIMIT ${limit}
   `
 }
 
-const updateTwilioStatusCron = (broadcastId: number): string => {
-  return `
-    SELECT cron.schedule(
-      'twilio-status',
-      '* * * * *',
-      $$
-      SELECT net.http_get(
-        url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/twilio/${broadcastId}',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno
-    .env.get(
-      'SUPABASE_SERVICE_ROLE_KEY',
-    )!}"}'::jsonb
-      ) as request_id;
-      $$
-    );
-  `
-}
-
 const updateTwilioStatusRaw = (updatedArray: TwilioMessage[]): string => {
   return `
-      WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
-             AS (VALUES
-                   ${updatedArray.join(',')})
-      UPDATE broadcast_sent_message_status
-      SET twilio_sent_status = new_values.twilio_sent_status,
-          twilio_id          = new_values.twilio_id,
-          twilio_sent_at     = new_values.twilio_sent_at
-      FROM new_values
-      WHERE broadcast_sent_message_status.recipient_phone_number = new_values.recipient_phone_number
-        AND broadcast_sent_message_status.broadcast_id = new_values.broadcast_id
-        AND broadcast_sent_message_status.message = new_values.body;
-    `
+    WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
+           AS (VALUES
+                 ${updatedArray.join(',')})
+    UPDATE broadcast_sent_message_status
+    SET twilio_sent_status = new_values.twilio_sent_status,
+        twilio_id          = new_values.twilio_id,
+        twilio_sent_at     = new_values.twilio_sent_at
+    FROM new_values
+    WHERE broadcast_sent_message_status.recipient_phone_number = new_values.recipient_phone_number
+      AND broadcast_sent_message_status.broadcast_id = new_values.broadcast_id
+      AND broadcast_sent_message_status.message = new_values.body;
+  `
 }
 
 const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
-const UNSCHEDULE_TWILIO_STATUS_UPDATE = "SELECT cron.unschedule('twilio-status');"
 
 const dateToCron = (date: Date) => {
   const minutes = date.getMinutes()
@@ -145,7 +151,7 @@ export {
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
-  UNSCHEDULE_TWILIO_STATUS_UPDATE,
+  unscheduleTwilioStatus,
   updateTwilioStatusCron,
   updateTwilioStatusRaw,
 }

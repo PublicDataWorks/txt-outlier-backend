@@ -12,12 +12,12 @@ const broadcastMessageStatusesRelation = relations(broadcasts, ({ many }) => ({
   }),
 }))
 
-const sendMessageStatusBroadcastRelation =  relations(broadcastSentMessageStatus, ({ one }) => ({
+const sendMessageStatusBroadcastRelation = relations(broadcastSentMessageStatus, ({ one }) => ({
   author: one(broadcasts, {
     fields: [broadcastSentMessageStatus.broadcastId],
     references: [broadcasts.id],
   }),
-}));
+}))
 const segmentBroadcastsRelation = relations(audienceSegments, ({ many }) => ({
   broadcasts: many(broadcastsSegments),
 }))
@@ -36,4 +36,10 @@ const broadcastsSegmentsRelation = relations(
   }),
 )
 
-export { broadcastSegmentsRelation, segmentBroadcastsRelation, broadcastMessageStatusesRelation, sendMessageStatusBroadcastRelation, broadcastsSegmentsRelation}
+export {
+  broadcastMessageStatusesRelation,
+  broadcastSegmentsRelation,
+  broadcastsSegmentsRelation,
+  segmentBroadcastsRelation,
+  sendMessageStatusBroadcastRelation,
+}

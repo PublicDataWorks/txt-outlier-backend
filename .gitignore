@@ -16,3 +16,4 @@ node_modules/
 cov_profile/
 scheduledcron.iml
 **/.branch
+supabase/.branches/_current_branch
