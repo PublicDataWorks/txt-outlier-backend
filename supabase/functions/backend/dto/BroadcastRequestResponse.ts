@@ -1,14 +1,26 @@
 import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/schema.ts'
 
 import { intervalToString } from '../misc/utils.ts'
-import Twilio from "../lib/Twilio.ts";
+import Twilio from '../lib/Twilio.ts'
 
 interface BroadcastSentDetail {
-  totalFirstSent: number
-  totalSecondSent: number
-  successfullyDelivered: number
-  failedDelivered: number
+  totalFirstSent?: number
+  totalSecondSent?: number
+  successfullyDelivered?: number
+  failedDelivered?: number
 }
+
+const createBroadcastSentDetail = (
+  totalFirstSent?: number,
+  totalSecondSent?: number,
+  successfullyDelivered?: number,
+  failedDelivered?: number,
+): BroadcastSentDetail => ({
+  totalFirstSent,
+  totalSecondSent,
+  successfullyDelivered,
+  failedDelivered,
+})
 
 interface PastBroadcastResponse extends BroadcastSentDetail {
   id: number
@@ -43,7 +55,10 @@ interface TwilioMessage {
 const broadcastDetail = (sentMessageStatuses: BroadcastMessageStatus[]): BroadcastSentDetail => {
   const total = sentMessageStatuses.length
   const totalFirstSent = sentMessageStatuses.filter((status: BroadcastMessageStatus) => !status.isSecond).length
-  const successfullyDelivered = sentMessageStatuses.filter((status: BroadcastMessageStatus) => status.twilioSentStatus && Twilio.SUCCESS_STATUSES.includes(status.twilioSentStatus)).length
+  const successfullyDelivered =
+    sentMessageStatuses.filter((status: BroadcastMessageStatus) =>
+      status.twilioSentStatus && Twilio.SUCCESS_STATUSES.includes(status.twilioSentStatus)
+    ).length
   return {
     totalFirstSent,
     totalSecondSent: total - totalFirstSent,
@@ -52,16 +67,18 @@ const broadcastDetail = (sentMessageStatuses: BroadcastMessageStatus[]): Broadca
   }
 }
 
-const convertToPastBroadcast = (broadcast: Broadcast & {
-  sentMessageStatuses: BroadcastMessageStatus[]
-}): PastBroadcastResponse => {
+const convertToPastBroadcast = (
+  broadcast: Broadcast & {
+    sentMessageStatuses: BroadcastMessageStatus[]
+  },
+): PastBroadcastResponse => {
   const detail = broadcastDetail(broadcast.sentMessageStatuses)
   return {
     id: Number(broadcast.id),
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
-    ...detail
+    ...detail,
   }
 }
 
@@ -87,7 +104,11 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
   }
 }
 
-const convertToBroadcastMessagesStatus = (outgoing: OutgoingMessage, missiveID: string, convoID: string): BroadcastMessageStatus => {
+const convertToBroadcastMessagesStatus = (
+  outgoing: OutgoingMessage,
+  missiveID: string,
+  convoID: string,
+): BroadcastMessageStatus => {
   return {
     recipientPhoneNumber: outgoing.recipientPhoneNumber,
     message: outgoing.message,
@@ -97,7 +118,6 @@ const convertToBroadcastMessagesStatus = (outgoing: OutgoingMessage, missiveID: 
     missiveConversationId: convoID,
   }
 }
-
 
 class BroadcastResponse {
   upcoming: UpcomingBroadcastResponse
@@ -118,15 +138,16 @@ class BroadcastResponse {
 }
 
 export {
+  broadcastDetail,
   BroadcastResponse,
+  type BroadcastSentDetail,
   type BroadcastUpdate,
   convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
-  broadcastDetail,
+  createBroadcastSentDetail,
   type PastBroadcastResponse,
   type TwilioMessage,
   type UpcomingBroadcastResponse,
-  type BroadcastSentDetail,
 }
