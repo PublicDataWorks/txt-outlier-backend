@@ -9,7 +9,7 @@ const invokeBroadcastCron = (runAt: Date): string => {
       '${runTime}',
       $$
         SELECT net.http_get(
-          url:='${Deno.env.get('BACKEND_URL')!}/broadcast/make',
+          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/make',
           headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
     'SUPABASE_SERVICE_ROLE_KEY',
   )!}"}'::jsonb) as request_id;
