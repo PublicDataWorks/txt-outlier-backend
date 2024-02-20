@@ -46,7 +46,8 @@
   },
   "tasks": {
     "fmt": "deno fmt **/*.ts",
-    "lint": "deno lint **/*.ts"
+    "lint": "deno lint **/*.ts",
+    "test": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --coverage=cov_profile --quiet ."
   },
   "importMap": "./import_map.json"
 }

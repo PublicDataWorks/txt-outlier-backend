@@ -9,12 +9,12 @@ beforeEach(async () => {
   mf.install()
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const sqlScript = Deno.readTextFileSync(
-    'supabase/functions/backend/drizzle/0000_smooth_mathemanic.sql',
+    'backend/drizzle/0000_smooth_mathemanic.sql',
   )
   await supabase.execute(sql.raw(sqlScript))
 
   const initTestDB = Deno.readTextFileSync(
-    'supabase/functions/backend/drizzle/initTestDB.sql',
+    'backend/drizzle/initTestDB.sql',
   )
   await supabase.execute(sql.raw(initTestDB))
 })
