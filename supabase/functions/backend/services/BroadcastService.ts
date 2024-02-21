@@ -107,8 +107,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       // No messages found, unschedule CRON jobs
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
-      await supabase.execute(sql.raw(unscheduleTwilioStatus(30))) // TODO: replace 30 with actual delay
-      // TODO: Delete all rows of outgoing messages
+      await supabase.execute(sql.raw(unscheduleTwilioStatus(3)))
       break
     }
     const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id)
@@ -365,11 +364,16 @@ const insertBroadcastSegmentRecipients = async (
 
 const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsProcessed: number[]) => {
   if (processed.length !== 0) {
+    const outgoingIDsToDelete: number[] = []
     const sentMessageStatuses: BroadcastMessageStatus[] = []
     for (const item of processed) {
+      outgoingIDsToDelete.push(item.outgoing.id!)
       sentMessageStatuses.push(convertToBroadcastMessagesStatus(item.outgoing, item.id, item.conversation))
     }
     await supabase.insert(broadcastSentMessageStatus).values(sentMessageStatuses)
+    await supabase
+      .delete(outgoingMessages)
+      .where(inArray(outgoingMessages.id, outgoingIDsToDelete))
   }
   // Messages failed to send, we need to reprocess them
   const idsToUpdate = idsMarkedAsProcessed
