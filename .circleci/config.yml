@@ -24,7 +24,7 @@ jobs:
           name: Run the tests
           command: |
             cd supabase/functions
-            /home/circleci/.deno/bin/deno task test
+            /home/circleci/.deno/bin/deno task test:coverage
       - run:
           name: Coverage
           command: |

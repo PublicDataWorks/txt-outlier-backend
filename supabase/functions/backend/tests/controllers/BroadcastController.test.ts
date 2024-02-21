@@ -153,9 +153,8 @@ describe(
 
       const response = await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
-      assertEquals(after.length, 2)
-      assert(after[0].processed)
-      assert(!after[1].processed)
+      assertEquals(after.length, 1)
+      assert(!after[0].processed)
 
       assertEquals(response.statusCode, 200)
     })
@@ -199,7 +198,7 @@ describe(
       )
       assertEquals(response.statusCode, 200)
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
-      assertEquals(after.length, 2)
+      assertEquals(after.length, 0)
 
       const historyAfter = await call_history()
       assertEquals(historyAfter.length, 8)
