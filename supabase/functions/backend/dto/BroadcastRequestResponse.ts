@@ -53,17 +53,20 @@ interface TwilioMessage {
 }
 
 const broadcastDetail = (sentMessageStatuses: BroadcastMessageStatus[]): BroadcastSentDetail => {
-  const total = sentMessageStatuses.length
+  const totalSent = sentMessageStatuses.length
+  const totalSentWithTwilioStatusUpdated =
+    sentMessageStatuses.filter((status: BroadcastMessageStatus) => status.twilioSentAt).length
+
   const totalFirstSent = sentMessageStatuses.filter((status: BroadcastMessageStatus) => !status.isSecond).length
   const successfullyDelivered =
     sentMessageStatuses.filter((status: BroadcastMessageStatus) =>
-      status.twilioSentStatus && Twilio.SUCCESS_STATUSES.includes(status.twilioSentStatus)
+      status.twilioSentAt && Twilio.SUCCESS_STATUSES.includes(status.twilioSentStatus!)
     ).length
   return {
     totalFirstSent,
-    totalSecondSent: total - totalFirstSent,
+    totalSecondSent: totalSent - totalFirstSent,
     successfullyDelivered,
-    failedDelivered: total - successfullyDelivered,
+    failedDelivered: totalSentWithTwilioStatusUpdated - successfullyDelivered,
   }
 }
 

@@ -217,7 +217,6 @@ const getAll = async (
     orderBy: [desc(broadcasts.runAt)],
     with: {
       sentMessageStatuses: {
-        where: (sentMessageStatuses, { isNotNull }) => isNotNull(sentMessageStatuses.twilioSentAt),
         columns: {
           isSecond: true,
           twilioSentStatus: true,
