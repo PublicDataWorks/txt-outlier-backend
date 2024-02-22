@@ -16,7 +16,6 @@ import {
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import {
-  insertOutgoingMessagesQuery,
   invokeBroadcastCron,
   sendFirstMessagesCron,
   sendSecondMessagesCron,
@@ -25,17 +24,15 @@ import {
   UNSCHEDULE_SEND_SECOND_MESSAGES,
   unscheduleTwilioStatus,
   updateTwilioStatusCron,
-  updateTwilioStatusRaw,
 } from '../scheduledcron/cron.ts'
 import {
-  broadcastDetail,
   BroadcastResponse,
+  BroadcastSentDetail,
   BroadcastUpdate,
   convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
-  createBroadcastSentDetail,
   TwilioMessage,
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
@@ -43,6 +40,12 @@ import MissiveUtils from '../lib/Missive.ts'
 import { sleep } from '../misc/utils.ts'
 import Twilio from '../lib/Twilio.ts'
 import { ProcessedItem } from './types.ts'
+import {
+  BroadcastDashBoardQueryReturn,
+  insertOutgoingMessagesQuery,
+  selectBroadcastDashboard,
+  updateTwilioStatusRaw,
+} from '../scheduledcron/queries.ts';
 
 const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -141,11 +144,11 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       break
     }
     // Simulate randomness
-    if (Math.random() < 0.5) sendMostRecentBroadcastDetail(createBroadcastSentDetail(undefined, processed.length))
+    if (Math.random() < 0.5) sendMostRecentBroadcastDetail({ totalSecondSent: processed.length })
     await sleep(Math.max(0, 5000 - (Date.now() - loopStartTime)))
   }
 
-  sendMostRecentBroadcastDetail(createBroadcastSentDetail(undefined, processed.length))
+  sendMostRecentBroadcastDetail({ totalSecondSent: processed.length })
   await postSendBroadcastMessage(processed, allIdsMarkedAsProcess)
 }
 
@@ -196,12 +199,12 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
       break
     }
     // Simulate randomness
-    if (Math.random() < 0.5) sendMostRecentBroadcastDetail(createBroadcastSentDetail(processed.length))
+    if (Math.random() < 0.5) sendMostRecentBroadcastDetail({ totalFirstSent: processed.length })
     // Wait for 1s, considering the time spent in API call and other operations
     await sleep(Math.max(0, 1000 - (Date.now() - loopStartTime)))
   }
 
-  sendMostRecentBroadcastDetail(createBroadcastSentDetail(processed.length))
+  sendMostRecentBroadcastDetail({ totalFirstSent: processed.length })
   await postSendBroadcastMessage(processed, idsMarkedAsProcessed)
 }
 
@@ -209,21 +212,8 @@ const getAll = async (
   limit = 5, // Limit past batches
   cursor?: number,
 ): Promise<BroadcastResponse> => {
-  const results: (Broadcast & {
-    sentMessageStatuses: BroadcastMessageStatus[]
-  })[] = await supabase.query.broadcasts.findMany({
-    where: cursor ? lt(broadcasts.runAt, new Date(cursor * 1000)) : undefined,
-    limit: cursor ? limit : limit + 1,
-    orderBy: [desc(broadcasts.runAt)],
-    with: {
-      sentMessageStatuses: {
-        columns: {
-          isSecond: true,
-          twilioSentStatus: true,
-        },
-      },
-    },
-  })
+  const selectQuery = selectBroadcastDashboard(cursor ? limit : limit + 1, cursor)
+  const results: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
   const response = new BroadcastResponse()
   if (results.length === 0) {
     return response
@@ -267,7 +257,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
   if (response.ok) {
     const data = await response.json()
     updatedArray = data.messages.map((message: TwilioMessage) =>
-      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
+      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`,
     )
     if (data.next_page_uri) {
       await supabase.update(broadcasts)
@@ -284,19 +274,16 @@ const updateTwilioHistory = async (broadcastID: number) => {
     const updateRaw = updateTwilioStatusRaw(updatedArray)
     await supabase.execute(sql.raw(updateRaw))
     // Send realtime update to the sidebar
-    const detail = await supabase.query.broadcasts.findFirst({
-      where: eq(broadcasts.id, broadcastID),
-      with: {
-        sentMessageStatuses: {
-          where: (sentMessageStatuses, { isNotNull }) => isNotNull(sentMessageStatuses.twilioSentAt),
-          columns: {
-            isSecond: true,
-            twilioSentStatus: true,
-          },
-        },
-      },
-    })
-    sendMostRecentBroadcastDetail(broadcastDetail(detail.sentMessageStatuses))
+    const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)
+    const result: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
+    const payload: BroadcastSentDetail = {
+      totalFirstSent: Number(result[0].totalFirstSent),
+      totalSecondSent: Number(result[0].totalSecondSent),
+      successfullyDelivered: Number(result[0].successfullyDelivered),
+      failedDelivered: Number(result[0].failedDelivered),
+      totalUnsubscribed: Number(result[0].totalUnsubscribed),
+    }
+    sendMostRecentBroadcastDetail(payload)
   }
 }
 
