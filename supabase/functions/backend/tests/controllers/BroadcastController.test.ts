@@ -350,7 +350,7 @@ describe(
       const expectedNextPageUpcoming = {
         delay: '',
         firstMessage: '',
-        id: null,
+        id: -1,
         runAt: -1,
         secondMessage: '',
       }
