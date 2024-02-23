@@ -1,5 +1,5 @@
-import { TwilioMessage } from "../dto/BroadcastRequestResponse.ts";
-import { Broadcast, BroadcastSegment } from "../drizzle/schema.ts";
+import { TwilioMessage } from '../dto/BroadcastRequestResponse.ts'
+import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
 
 const updateTwilioStatusRaw = (updatedArray: TwilioMessage[]): string => {
   return `
@@ -15,7 +15,6 @@ const updateTwilioStatusRaw = (updatedArray: TwilioMessage[]): string => {
       AND broadcast_sent_message_status.message = new_values.body;
   `
 }
-
 
 const insertOutgoingMessagesQuery = (
   broadcastSegment: BroadcastSegment,
@@ -60,16 +59,21 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
 }
 
 interface BroadcastDashBoardQueryReturn {
-  id: number,
-  runAt: Date,
-  delay: string, // 00:10:00
-  firstMessage: string,
-  secondMessage: string,
-  totalFirstSent: string,
-  totalSecondSent: string,
-  successfullyDelivered: string,
-  failedDelivered: string,
+  id: number
+  runAt: Date
+  delay: string // 00:10:00
+  firstMessage: string
+  secondMessage: string
+  totalFirstSent: string
+  totalSecondSent: string
+  successfullyDelivered: string
+  failedDelivered: string
   totalUnsubscribed: string
 }
 
-export { updateTwilioStatusRaw, insertOutgoingMessagesQuery, selectBroadcastDashboard, type BroadcastDashBoardQueryReturn }
+export {
+  type BroadcastDashBoardQueryReturn,
+  insertOutgoingMessagesQuery,
+  selectBroadcastDashboard,
+  updateTwilioStatusRaw,
+}

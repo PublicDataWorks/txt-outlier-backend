@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import type { PgTransaction } from 'drizzle-orm/pg-core/session'
 import * as log from 'log'
 import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
@@ -45,7 +45,7 @@ import {
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
   updateTwilioStatusRaw,
-} from '../scheduledcron/queries.ts';
+} from '../scheduledcron/queries.ts'
 
 const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -257,7 +257,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
   if (response.ok) {
     const data = await response.json()
     updatedArray = data.messages.map((message: TwilioMessage) =>
-      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`,
+      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
     )
     if (data.next_page_uri) {
       await supabase.update(broadcasts)
