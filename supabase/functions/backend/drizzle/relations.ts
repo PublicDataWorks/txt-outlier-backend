@@ -1,11 +1,5 @@
 import { relations } from 'drizzle-orm'
-import {
-  audienceSegments,
-  broadcasts,
-  broadcastSentMessageStatus,
-  broadcastsSegments,
-  unsubscribedMessages,
-} from './schema.ts'
+import { audienceSegments, broadcasts, broadcastSentMessageStatus, broadcastsSegments } from './schema.ts'
 
 const broadcastRelation = relations(broadcasts, ({ many }) => ({
   broadcastToSegments: many(broadcastsSegments),
@@ -35,9 +29,4 @@ const broadcastsSegmentsRelation = relations(
   }),
 )
 
-export {
-  broadcastRelation,
-  broadcastsSegmentsRelation,
-  segmentBroadcastsRelation,
-  sendMessageStatusBroadcastRelation,
-}
+export { broadcastRelation, broadcastsSegmentsRelation, segmentBroadcastsRelation, sendMessageStatusBroadcastRelation }

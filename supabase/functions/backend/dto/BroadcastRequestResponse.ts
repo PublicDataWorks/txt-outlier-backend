@@ -1,7 +1,7 @@
 import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/schema.ts'
 
 import { intervalToString } from '../misc/utils.ts'
-import { BroadcastDashBoardQueryReturn } from "../scheduledcron/queries.ts";
+import { BroadcastDashBoardQueryReturn } from '../scheduledcron/queries.ts'
 
 interface BroadcastSentDetail {
   totalFirstSent?: number
