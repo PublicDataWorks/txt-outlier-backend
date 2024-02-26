@@ -15,7 +15,6 @@ import supabase from '../../lib/supabase.ts'
 import RouteError from '../../exception/RouteError.ts'
 import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
 import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
-import SystemError from '../../exception/SystemError.ts'
 
 describe(
   'Make',
@@ -84,7 +83,7 @@ describe(
     it('next broadcast not found', () => {
       assertRejects(
         async () => await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
-        SystemError,
+        RouteError,
         'Unable to retrieve the next broadcast.',
       )
     })
