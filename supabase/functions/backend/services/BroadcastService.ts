@@ -1,5 +1,4 @@
 import { and, eq, inArray, lt, sql } from 'drizzle-orm'
-import type { PgTransaction } from 'drizzle-orm/pg-core/session'
 import * as log from 'log'
 import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
@@ -46,6 +45,7 @@ import {
   selectBroadcastDashboard,
   updateTwilioStatusRaw,
 } from '../scheduledcron/queries.ts'
+import RouteError from '../exception/RouteError.ts'
 
 const makeBroadcast = async () => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -63,12 +63,10 @@ const makeBroadcast = async () => {
   })
 
   if (!nextBroadcast) {
-    throw new SystemError('Unable to retrieve the next broadcast.')
+    throw new RouteError(400, 'Unable to retrieve the next broadcast.')
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
-    throw new SystemError(
-      `Invalid broadcast. Data: ${JSON.stringify(nextBroadcast)}`,
-    )
+    throw new SystemError(`Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
   }
   const insertWaitList: Promise<void>[] = []
   for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
@@ -85,9 +83,7 @@ const makeBroadcast = async () => {
   ])
 
   await supabase.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
-  await supabase.update(broadcasts).set({ editable: false }).where(
-    eq(broadcasts.id, nextBroadcast.id),
-  )
+  await supabase.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
 }
 
 const sendBroadcastSecondMessage = async (broadcastID: number) => {
@@ -134,13 +130,16 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
             id,
             conversation,
           })
-        } else log.error(response)
+        } else {
+          log.error('Failed to send broadcast second messages. Broadcast id: ', broadcastID)
+          // TODO: Not sure what to do here.
+        }
       }
     })
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
-      log.error('Hard limit reached. Exiting loop.')
+      log.info('Hard limit reached. Exiting loop.')
       break
     }
     // Simulate randomness
@@ -189,13 +188,14 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
         conversation,
       })
     } else {
-      log.error(response)
+      log.error('Failed to send broadcast first message. Broadcast id: ', broadcastID)
       // TODO: Saved to DB
+      // TODO: Not sure what to do here.
     }
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
-      log.error('Hard limit reached. Exiting loop.')
+      log.info('Hard limit reached. Exiting loop.')
       break
     }
     // Simulate randomness
@@ -257,7 +257,9 @@ const updateTwilioHistory = async (broadcastID: number) => {
   if (response.ok) {
     const data = await response.json()
     updatedArray = data.messages.map((message: TwilioMessage) =>
-      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${message.body}'::text)`
+      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${
+        message.body.replace(/'/g, "''")
+      }'::text)`
     )
     if (data.next_page_uri) {
       await supabase.update(broadcasts)
@@ -265,7 +267,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
         .where(eq(broadcasts.id, broadcastID))
     }
   } else {
-    console.error('Failed to fetch messages:', response.status, response.statusText)
+    log.error('Failed to fetch twilio messages. Broadcast id: ', broadcastID)
     // await slack({ "failureDetails": e });
     return
   }
@@ -325,27 +327,10 @@ const insertBroadcastSegmentRecipients = async (
   nextBroadcast: Broadcast,
 ) => {
   // every user receives 2 messages
-  const messages = [
-    { message: nextBroadcast.firstMessage },
-    { message: nextBroadcast.secondMessage },
-  ]
+
   const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
-  try {
-    await supabase.transaction(async (tx: PgTransaction) => {
-      for (const outgoing of messages) {
-        const statement = insertOutgoingMessagesQuery(
-          broadcastSegment,
-          nextBroadcast,
-          outgoing.message,
-          limit,
-        )
-        await tx.execute(sql.raw(statement))
-      }
-    })
-  } catch (e) {
-    log.error(e) // TODO: setup log properly
-    // await slack({ "failureDetails": e });
-  }
+  const statement = insertOutgoingMessagesQuery(broadcastSegment, nextBroadcast, limit)
+  await supabase.execute(sql.raw(statement))
 }
 
 const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsProcessed: number[]) => {

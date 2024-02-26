@@ -19,18 +19,29 @@ const updateTwilioStatusRaw = (updatedArray: TwilioMessage[]): string => {
 const insertOutgoingMessagesQuery = (
   broadcastSegment: BroadcastSegment,
   nextBroadcast: Broadcast,
-  message: string,
   limit: number,
 ): string => {
   return `
+    CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query};
+
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
-    SELECT DISTINCT ON (phone_number) phone_number                                 AS recipient_phone_number,
-                                      '${nextBroadcast.id}'                        AS broadcast_id,
-                                      '${broadcastSegment.segment.id}'             AS segment_id,
-                                      '${message}'                                 AS message,
-                                      '${message === nextBroadcast.secondMessage}' AS isSecond
-    FROM (${broadcastSegment.segment.query}) AS foo
-    LIMIT ${limit}
+    SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
+                                      '${nextBroadcast.id}'            AS broadcast_id,
+                                      '${broadcastSegment.segment.id}' AS segment_id,
+                                      '${nextBroadcast.firstMessage}'  AS message,
+                                      FALSE                            AS isSecond
+    FROM phone_numbers_foo
+    LIMIT ${limit};
+    INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
+    SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
+                                      '${nextBroadcast.id}'            AS broadcast_id,
+                                      '${broadcastSegment.segment.id}' AS segment_id,
+                                      '${nextBroadcast.secondMessage}' AS message,
+                                      TRUE                             AS isSecond
+    FROM phone_numbers_foo
+    LIMIT ${limit};
+
+    DROP TABLE phone_numbers_foo;
   `
 }
 
