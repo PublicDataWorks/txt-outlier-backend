@@ -288,6 +288,7 @@ export const twilioMessages = pgTable('twilio_messages', {
   attachments: text('attachments'),
   fromField: text('from_field').notNull().references(() => authors.phoneNumber),
   toField: text('to_field').notNull().references(() => authors.phoneNumber),
+  isBroadcastReply: boolean('is_broadcast_reply').default(false).notNull(),
 }, (table) => {
   return {
     deliveredAtIdx: index('twilio_messages_delivered_at_idx').on(table.deliveredAt),
