@@ -4,8 +4,8 @@
     "node-mocks-http": "npm:node-mocks-http",
     "mock-fetch": "https://deno.land/x/mock_fetch@0.3.0/mod.ts",
     "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts",
-    "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
 
+    "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "express": "npm:express",
     "express-async-errors": "npm:express-async-errors@^3.1.1",
     "express-validator": "npm:express-validator@^7.0.1",
@@ -17,6 +17,7 @@
     "drizzle-orm/pg-core": "npm:drizzle-orm/pg-core",
     "slack-API": "https://deno.land/x/deno_slack_api@2.1.1/mod.ts",
     "postgres": "https://deno.land/x/postgresjs/mod.js",
-    "log": "https://deno.land/std@0.210.0/log/mod.ts"
+    "log": "https://deno.land/std@0.210.0/log/mod.ts",
+    "supabase-js": "https://esm.sh/@supabase/supabase-js@2"
   }
 }

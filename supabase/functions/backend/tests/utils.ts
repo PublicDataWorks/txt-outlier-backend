@@ -3,18 +3,18 @@ import { afterAll, afterEach, beforeEach } from 'testing/bdd.ts'
 import httpMocks from 'node-mocks-http'
 import * as mf from 'mock-fetch'
 
-import supabase, { client } from '../lib/supabase.ts'
+import supabase, { postgresClient } from '../lib/supabase.ts'
 
 beforeEach(async () => {
   mf.install()
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const sqlScript = Deno.readTextFileSync(
-    'supabase/functions/backend/drizzle/0000_smooth_mathemanic.sql',
+    'backend/drizzle/0000_smooth_mathemanic.sql',
   )
   await supabase.execute(sql.raw(sqlScript))
 
   const initTestDB = Deno.readTextFileSync(
-    'supabase/functions/backend/drizzle/initTestDB.sql',
+    'backend/drizzle/initTestDB.sql',
   )
   await supabase.execute(sql.raw(initTestDB))
 })
@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 afterAll(async () => {
-  await client.end()
+  await postgresClient.end()
 })
 
 export const DROP_ALL_TABLES = `
