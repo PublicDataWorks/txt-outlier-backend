@@ -501,3 +501,4 @@ export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
 export type Broadcast = typeof broadcasts.$inferInsert
 export type OutgoingMessage = typeof outgoingMessages.$inferInsert
 export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
+export type AudienceSegment = typeof audienceSegments.$inferInsert

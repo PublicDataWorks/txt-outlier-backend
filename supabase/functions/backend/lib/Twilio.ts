@@ -1,6 +1,9 @@
 import * as base64 from 'base64'
-export const twilioBase = 'https://api.twilio.com'
+
+const TWILIO_BASE = 'https://api.twilio.com'
 const ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID')!
+const PAGINATION_DONE = 'DONE'
+const SUCCESS_STATUSES = ['received', 'delivered']
 const getTwilioHeaders = (): Headers => {
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')!
   const credentials = `${ACCOUNT_SID}:${authToken}`
@@ -20,10 +23,10 @@ const getTwilioMessages = async (
   let twilioURL = ''
 
   if (nextPage) {
-    twilioURL = `${twilioBase}${nextPage}`
+    twilioURL = `${TWILIO_BASE}${nextPage}`
   } else {
     twilioURL =
-      `${twilioBase}/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json?DateSent=${formattedDate}&From=${broadcastNumber}&PageSize=100`
+      `${TWILIO_BASE}/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json?DateSent=${formattedDate}&From=${broadcastNumber}&PageSize=100`
   }
 
   return await fetch(twilioURL, {
@@ -32,4 +35,4 @@ const getTwilioMessages = async (
   })
 }
 
-export { getTwilioHeaders, getTwilioMessages }
+export default { getTwilioHeaders, getTwilioMessages, PAGINATION_DONE, SUCCESS_STATUSES }

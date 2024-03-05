@@ -153,9 +153,8 @@ describe(
 
       const response = await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
-      assertEquals(after.length, 2)
-      assert(after[0].processed)
-      assert(!after[1].processed)
+      assertEquals(after.length, 1)
+      assert(!after[0].processed)
 
       assertEquals(response.statusCode, 200)
     })
@@ -176,20 +175,22 @@ describe(
       )
       assertEquals(response.statusCode, 200)
       const history = await call_history()
-      assertEquals(history.length, 4)
+      assertEquals(history.length, 5)
       assertEquals(history[2].function_name, 'cron.schedule')
       assert(history[2].parameters.startsWith('delay-send-second-messages'))
       assertEquals(history[3].function_name, 'cron.unschedule')
       assert(history[3].parameters.startsWith('send-first-messages'))
+      assertEquals(history[4].function_name, 'cron.schedule')
+      assert(history[4].parameters.startsWith('twilio-status'))
     })
 
     it('successfully send second message', async () => {
       mockDraftMissive(200)
       const broadcastID = await seed(5)
-      await BroadcastController.sendDraft(
-        req(DRAFT_PATH, { broadcastID }),
-        res(),
-      )
+      await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
+      await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
+      const historyBefore = await call_history()
+      assertEquals(historyBefore.length, 5)
 
       const response = await BroadcastController.sendDraft(
         req(DRAFT_PATH, { broadcastID }, { isSecond: true }),
@@ -197,7 +198,16 @@ describe(
       )
       assertEquals(response.statusCode, 200)
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
-      assertEquals(after.length, 2)
+      assertEquals(after.length, 0)
+
+      const historyAfter = await call_history()
+      assertEquals(historyAfter.length, 8)
+      assertEquals(historyAfter[5].function_name, 'cron.unschedule')
+      assert(historyAfter[5].parameters.startsWith('delay-send-second-messages'))
+      assertEquals(historyAfter[6].function_name, 'cron.unschedule')
+      assert(historyAfter[6].parameters.startsWith('send-second-messages'))
+      assertEquals(historyAfter[7].function_name, 'cron.schedule')
+      assert(historyAfter[7].parameters.startsWith('delay-unschedule-twilio-status'))
     })
 
     it('not do anything if failed to call Missive', async () => {
@@ -218,12 +228,10 @@ describe(
       assertEquals(after.length, 2)
       assertEquals(after[0], before[0])
       assertEquals(after[1], before[1])
-
       assertEquals(response.statusCode, 200)
     })
   },
 )
-
 describe(
   'Get all',
   { sanitizeOps: false, sanitizeResources: false },
@@ -485,19 +493,13 @@ describe(
   }),
   it('update delay', async () => {
     await seed()
-    const { id } = (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(
-      desc(broadcasts.id),
-    ).limit(1))[0]
+    const { id } =
+      (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(desc(broadcasts.id)).limit(1))[0]
     const param = { id }
-    const before = await supabase.select().from(broadcasts).where(
-      eq(broadcasts.id, id),
-    )
+    const before = await supabase.select().from(broadcasts).where(eq(broadcasts.id, id))
 
     const body = { delay: '00:12:00' }
-    const response = await BroadcastController.patch(
-      req('', param, {}, body),
-      res(),
-    )
+    const response = await BroadcastController.patch(req('', param, {}, body), res())
     assertEquals(response.statusCode, 200)
 
     const after = await supabase.select().from(broadcasts).where(
@@ -527,7 +529,6 @@ describe(
         .orderBy(
           broadcastSentMessageStatus.id,
         )
-      console.log(after)
       assertEquals(after.length, 2)
 
       assertExists(after[0].twilioId)
@@ -567,7 +568,8 @@ describe(
       assertEquals(after[1].twilioId, null)
       assertEquals(response.statusCode, 204)
     })
-    it('clean up cronjob', async () => {
+
+    it('not clean up cronjob', async () => {
       const broadcast = await createBroadcast(60)
       // await createBroadcastStatus(1, broadcast);
       await mockTwilio(200)
@@ -576,7 +578,7 @@ describe(
         res(),
       )
       const history = await call_history()
-      assertEquals(history[0].function_name, 'cron.unschedule')
+      assertEquals(history.length, 0)
       assertEquals(response.statusCode, 204)
     })
   },
