@@ -326,7 +326,7 @@ export const audienceSegments = pgTable('audience_segments', {
 export const broadcasts = pgTable('broadcasts', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-  runAt: timestamp('run_at', { withTimezone: true, mode: 'string' }).notNull(),
+  runAt: timestamp('run_at', { withTimezone: true, mode: 'date' }).notNull(),
   delay: interval('delay').default('00:10:00').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   editable: boolean('editable').default(true).notNull(),
