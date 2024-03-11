@@ -15,7 +15,6 @@ import supabase from '../../lib/supabase.ts'
 import RouteError from '../../exception/RouteError.ts'
 import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
 import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
-import SystemError from '../../exception/SystemError.ts'
 
 describe(
   'Make',
@@ -84,7 +83,7 @@ describe(
     it('next broadcast not found', () => {
       assertRejects(
         async () => await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
-        SystemError,
+        RouteError,
         'Unable to retrieve the next broadcast.',
       )
     })
@@ -350,7 +349,7 @@ describe(
       const expectedNextPageUpcoming = {
         delay: '',
         firstMessage: '',
-        id: null,
+        id: -1,
         runAt: -1,
         secondMessage: '',
       }
@@ -359,6 +358,30 @@ describe(
         ...nextData.past.map((broadcast: PastBroadcastResponse) => broadcast.id),
       )
       assert(minId > maxNextId)
+    })
+
+    it('gets correct broadcast detail', async () => {
+      mockDraftMissive(200)
+      await seedPast(2, 'A similique dolores ut.', 'Id saepe magni aut quas.')
+      const broadcastID = await seed()
+
+      const getAllBefore = await BroadcastController.getAll(req(DRAFT_PATH), res())
+      const dataBefore = JSON.parse(getAllBefore._getData())
+      assertEquals(dataBefore.past[0].totalFirstSent, 0)
+      assertEquals(dataBefore.past[0].totalSecondSent, 0)
+      assertEquals(dataBefore.past[0].successfullyDelivered, 0)
+      assertEquals(dataBefore.past[0].failedDelivered, 0)
+
+      await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
+      const sentStatuses = await supabase.select().from(broadcastSentMessageStatus)
+      assertEquals(sentStatuses.length, 12)
+
+      const getAllAfter = await BroadcastController.getAll(req(DRAFT_PATH), res())
+      const dataAfter = JSON.parse(getAllAfter._getData())
+      assertEquals(dataAfter.past[0].totalFirstSent, 12)
+      assertEquals(dataAfter.past[0].totalSecondSent, 0)
+      assertEquals(dataAfter.past[0].successfullyDelivered, 0)
+      assertEquals(dataAfter.past[0].failedDelivered, 0)
     })
   },
 )
