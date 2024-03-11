@@ -29,6 +29,7 @@ interface UpcomingBroadcastResponse {
   secondMessage: string
   runAt: number
   delay: string
+  noRecipients: number
 }
 
 interface BroadcastUpdate {
@@ -69,6 +70,7 @@ const convertToUpcomingBroadcast = (broadcast: Broadcast): UpcomingBroadcastResp
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
     delay: intervalToString(broadcast.delay!),
+    noRecipients: broadcast.noUsers,
   }
 }
 
