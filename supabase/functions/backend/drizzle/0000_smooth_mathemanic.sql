@@ -5,7 +5,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ CREATE TYPE "action" AS ENUM('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  CREATE TYPE "code_challenge_method" AS ENUM('s256', 'plain');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "equality_op" AS ENUM('eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -23,19 +35,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "twilio_status" AS ENUM('delivered', 'undelivered', 'failed');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  CREATE TYPE "key_status" AS ENUM('default', 'valid', 'invalid', 'expired');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "key_type" AS ENUM('aead-ietf', 'aead-det', 'hmacsha512', 'hmacsha256', 'auth', 'shorthash', 'generichash', 'kdf', 'secretbox', 'secretstream', 'stream_xchacha20');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -46,19 +46,29 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "broadcasts_segments" (
-	"id" bigserial PRIMARY KEY NOT NULL,
+DO $$ BEGIN
+ CREATE TYPE "twilio_status" AS ENUM('delivered', 'undelivered', 'failed', 'received');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "audience_segments" (
+	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"broadcast_id" bigint NOT NULL,
-	"segment_id" bigint NOT NULL,
-	"ratio" double precision DEFAULT 0 NOT NULL,
-	"first_message" text,
-	"second_message" text,
-	CONSTRAINT "broadcast_id_segment_id_unique" UNIQUE("broadcast_id","segment_id")
+	"query" text NOT NULL,
+	"description" text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "authors" (
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone,
+	"name" text,
+	"phone_number" text PRIMARY KEY NOT NULL,
+	"unsubscribed" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
-	"id" bigserial PRIMARY KEY NOT NULL,
+	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"recipient_phone_number" text NOT NULL,
 	"missive_id" uuid NOT NULL,
@@ -73,12 +83,28 @@ CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
 	CONSTRAINT "broadcast_sent_message_status_missive_id_key" UNIQUE("missive_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "authors" (
+CREATE TABLE IF NOT EXISTS "broadcasts" (
+	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"run_at" timestamp with time zone NOT NULL,
+	"delay" interval DEFAULT '00:10:00' NOT NULL,
 	"updated_at" timestamp with time zone,
-	"name" text,
-	"phone_number" text PRIMARY KEY NOT NULL,
-	"unsubscribed" boolean DEFAULT false NOT NULL
+	"editable" boolean DEFAULT true NOT NULL,
+	"no_users" integer DEFAULT 0 NOT NULL,
+	"first_message" text NOT NULL,
+	"second_message" text NOT NULL,
+	"twilio_paging" text
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "broadcasts_segments" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"broadcast_id" bigint NOT NULL,
+	"segment_id" bigint NOT NULL,
+	"ratio" double precision NOT NULL,
+	"first_message" text,
+	"second_message" text,
+	CONSTRAINT "broadcast_id_segment_id_unique" UNIQUE("broadcast_id","segment_id")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "comments" (
@@ -107,14 +133,6 @@ CREATE TABLE IF NOT EXISTS "conversation_history" (
 	"conversation_id" uuid NOT NULL,
 	"change_type" text,
 	"team_id" uuid
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "conversations_labels" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"conversation_id" uuid NOT NULL,
-	"label_id" uuid NOT NULL,
-	"updated_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "conversations" (
@@ -176,11 +194,12 @@ CREATE TABLE IF NOT EXISTS "conversations_authors" (
 	"author_phone_number" text NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "invoke_history" (
-	"id" bigserial PRIMARY KEY NOT NULL,
+CREATE TABLE IF NOT EXISTS "conversations_labels" (
+	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"conversation_id" uuid,
-	"request_body" jsonb
+	"conversation_id" uuid NOT NULL,
+	"label_id" uuid NOT NULL,
+	"updated_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "conversations_users" (
@@ -210,6 +229,13 @@ CREATE TABLE IF NOT EXISTS "errors" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "invoke_history" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"conversation_id" uuid,
+	"request_body" jsonb
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "labels" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone,
@@ -220,6 +246,24 @@ CREATE TABLE IF NOT EXISTS "labels" (
 	"parent" uuid,
 	"share_with_organization" boolean DEFAULT false NOT NULL,
 	"visibility" text
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "organizations" (
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone,
+	"name" text NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "outgoing_messages" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"recipient_phone_number" text NOT NULL,
+	"message" text NOT NULL,
+	"broadcast_id" bigint NOT NULL,
+	"segment_id" bigint NOT NULL,
+	"is_second" boolean DEFAULT false NOT NULL,
+	"processed" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "rules" (
@@ -257,7 +301,16 @@ CREATE TABLE IF NOT EXISTS "twilio_messages" (
 	"external_id" text,
 	"attachments" text,
 	"from_field" text NOT NULL,
-	"to_field" text NOT NULL
+	"to_field" text NOT NULL,
+	"is_broadcast_reply" boolean DEFAULT false NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "unsubscribed_messages" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"broadcast_id" bigint NOT NULL,
+	"twilio_message_id" uuid NOT NULL,
+	"reply_to" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "user_history" (
@@ -277,231 +330,211 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"id" uuid PRIMARY KEY NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "audience_segments" (
-	"id" bigserial PRIMARY KEY NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"query" text NOT NULL,
-	"description" text NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "broadcasts" (
-	"id" bigserial PRIMARY KEY NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"run_at" timestamp with time zone NOT NULL,
-	"delay" interval DEFAULT '00:10:00' NOT NULL,
-	"updated_at" timestamp with time zone,
-	"editable" boolean DEFAULT true NOT NULL,
-	"no_users" integer DEFAULT 0 NOT NULL,
-	"first_message" text NOT NULL,
-	"second_message" text NOT NULL,
-	"twilio_paging" text DEFAULT ''
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "organizations" (
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone,
-	"name" text NOT NULL,
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "outgoing_messages" (
-	"id" bigserial PRIMARY KEY NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"recipient_phone_number" text NOT NULL,
-	"message" text NOT NULL,
-	"broadcast_id" bigint NOT NULL,
-	"segment_id" bigint NOT NULL,
-	"is_second" boolean DEFAULT false NOT NULL,
-	"processed" boolean DEFAULT false NOT NULL
-);
---> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "broadcasts_segments_broadcast_id_segment_id_idx" ON "broadcasts_segments" ("broadcast_id","segment_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "conversation_label" ON "conversations_labels" ("conversation_id","label_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "invoke_history_request_body_idx" ON "invoke_history" ("request_body");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "twilio_messages_delivered_at_idx" ON "twilio_messages" ("delivered_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_user_history_id" ON "user_history" ("id");--> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "broadcasts_segments" ADD CONSTRAINT "broadcasts_segments_broadcast_id_fkey" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "broadcast_sent_message_status" ADD CONSTRAINT "broadcast_sent_message_status_recipient_phone_number_authors_phone_number_fk" FOREIGN KEY ("recipient_phone_number") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "broadcasts_segments" ADD CONSTRAINT "broadcasts_segments_segment_id_fkey" FOREIGN KEY ("segment_id") REFERENCES "audience_segments"("id") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "broadcast_sent_message_status" ADD CONSTRAINT "broadcast_sent_message_status_broadcast_id_broadcasts_id_fk" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "broadcast_sent_message_status" ADD CONSTRAINT "broadcast_sent_message_status_broadcast_id_fkey" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "broadcasts_segments" ADD CONSTRAINT "broadcasts_segments_broadcast_id_broadcasts_id_fk" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "broadcast_sent_message_status" ADD CONSTRAINT "broadcast_sent_message_status_recipient_phone_number_fkey" FOREIGN KEY ("recipient_phone_number") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "broadcasts_segments" ADD CONSTRAINT "broadcasts_segments_segment_id_audience_segments_id_fk" FOREIGN KEY ("segment_id") REFERENCES "audience_segments"("id") ON DELETE no action ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "comments" ADD CONSTRAINT "comments_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "comments" ADD CONSTRAINT "comments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "comments" ADD CONSTRAINT "comments_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "comments" ADD CONSTRAINT "comments_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "comments_mentions" ADD CONSTRAINT "comments_mentions_comment_id_fkey" FOREIGN KEY ("comment_id") REFERENCES "comments"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "comments_mentions" ADD CONSTRAINT "comments_mentions_comment_id_comments_id_fk" FOREIGN KEY ("comment_id") REFERENCES "comments"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "comments_mentions" ADD CONSTRAINT "comments_mentions_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "comments_mentions" ADD CONSTRAINT "comments_mentions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "comments_mentions" ADD CONSTRAINT "comments_mentions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "comments_mentions" ADD CONSTRAINT "comments_mentions_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversation_history" ADD CONSTRAINT "conversation_history_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversation_history" ADD CONSTRAINT "conversation_history_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversation_history" ADD CONSTRAINT "conversation_history_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversation_history" ADD CONSTRAINT "conversation_history_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_labels" ADD CONSTRAINT "conversations_labels_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations" ADD CONSTRAINT "conversations_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_labels" ADD CONSTRAINT "conversations_labels_label_id_fkey" FOREIGN KEY ("label_id") REFERENCES "labels"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations" ADD CONSTRAINT "conversations_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations" ADD CONSTRAINT "conversations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations_assignees" ADD CONSTRAINT "conversations_assignees_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations" ADD CONSTRAINT "conversations_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations_assignees" ADD CONSTRAINT "conversations_assignees_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_assignees" ADD CONSTRAINT "conversations_assignees_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations_assignees_history" ADD CONSTRAINT "conversations_assignees_history_conversation_history_id_conversation_history_id_fk" FOREIGN KEY ("conversation_history_id") REFERENCES "conversation_history"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_assignees" ADD CONSTRAINT "conversations_assignees_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations_authors" ADD CONSTRAINT "conversations_authors_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_assignees_history" ADD CONSTRAINT "conversations_assignees_history_conversation_history_id_fkey" FOREIGN KEY ("conversation_history_id") REFERENCES "conversation_history"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "conversations_authors" ADD CONSTRAINT "conversations_authors_author_phone_number_authors_phone_number_fk" FOREIGN KEY ("author_phone_number") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_authors" ADD CONSTRAINT "conversations_authors_author_phone_number_fkey" FOREIGN KEY ("author_phone_number") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "conversations_labels" ADD CONSTRAINT "conversations_labels_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_authors" ADD CONSTRAINT "conversations_authors_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "conversations_labels" ADD CONSTRAINT "conversations_labels_label_id_labels_id_fk" FOREIGN KEY ("label_id") REFERENCES "labels"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_users" ADD CONSTRAINT "conversations_users_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "conversations_users" ADD CONSTRAINT "conversations_users_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_users" ADD CONSTRAINT "conversations_users_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "conversations_users" ADD CONSTRAINT "conversations_users_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "tasks_assignees" ADD CONSTRAINT "tasks_assignees_comment_id_fkey" FOREIGN KEY ("comment_id") REFERENCES "comments"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "outgoing_messages" ADD CONSTRAINT "outgoing_messages_recipient_phone_number_authors_phone_number_fk" FOREIGN KEY ("recipient_phone_number") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "tasks_assignees" ADD CONSTRAINT "tasks_assignees_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "outgoing_messages" ADD CONSTRAINT "outgoing_messages_broadcast_id_broadcasts_id_fk" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "teams" ADD CONSTRAINT "teams_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "outgoing_messages" ADD CONSTRAINT "outgoing_messages_segment_id_audience_segments_id_fk" FOREIGN KEY ("segment_id") REFERENCES "audience_segments"("id") ON DELETE no action ON UPDATE cascade;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "twilio_messages" ADD CONSTRAINT "twilio_messages_from_field_fkey" FOREIGN KEY ("from_field") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "tasks_assignees" ADD CONSTRAINT "tasks_assignees_comment_id_comments_id_fk" FOREIGN KEY ("comment_id") REFERENCES "comments"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "twilio_messages" ADD CONSTRAINT "twilio_messages_to_field_fkey" FOREIGN KEY ("to_field") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "tasks_assignees" ADD CONSTRAINT "tasks_assignees_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "user_history" ADD CONSTRAINT "user_history_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "teams" ADD CONSTRAINT "teams_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "outgoing_messages" ADD CONSTRAINT "outgoing_messages_broadcast_id_fkey" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "twilio_messages" ADD CONSTRAINT "twilio_messages_from_field_authors_phone_number_fk" FOREIGN KEY ("from_field") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "outgoing_messages" ADD CONSTRAINT "outgoing_messages_recipient_phone_number_fkey" FOREIGN KEY ("recipient_phone_number") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "twilio_messages" ADD CONSTRAINT "twilio_messages_to_field_authors_phone_number_fk" FOREIGN KEY ("to_field") REFERENCES "authors"("phone_number") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "outgoing_messages" ADD CONSTRAINT "outgoing_messages_segment_id_fkey" FOREIGN KEY ("segment_id") REFERENCES "audience_segments"("id") ON DELETE no action ON UPDATE cascade;
+ ALTER TABLE "unsubscribed_messages" ADD CONSTRAINT "unsubscribed_messages_broadcast_id_broadcasts_id_fk" FOREIGN KEY ("broadcast_id") REFERENCES "broadcasts"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "unsubscribed_messages" ADD CONSTRAINT "unsubscribed_messages_twilio_message_id_twilio_messages_id_fk" FOREIGN KEY ("twilio_message_id") REFERENCES "twilio_messages"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "unsubscribed_messages" ADD CONSTRAINT "unsubscribed_messages_reply_to_broadcast_sent_message_status_id_fk" FOREIGN KEY ("reply_to") REFERENCES "broadcast_sent_message_status"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "user_history" ADD CONSTRAINT "user_history_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

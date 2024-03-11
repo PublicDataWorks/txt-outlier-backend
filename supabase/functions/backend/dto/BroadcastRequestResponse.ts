@@ -1,36 +1,30 @@
 import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/schema.ts'
 
 import { intervalToString } from '../misc/utils.ts'
-import Twilio from '../lib/Twilio.ts'
+import { BroadcastDashBoardQueryReturn } from '../scheduledcron/queries.ts'
 
 interface BroadcastSentDetail {
   totalFirstSent?: number
   totalSecondSent?: number
   successfullyDelivered?: number
   failedDelivered?: number
+  totalUnsubscribed?: number
 }
 
-const createBroadcastSentDetail = (
-  totalFirstSent?: number,
-  totalSecondSent?: number,
-  successfullyDelivered?: number,
-  failedDelivered?: number,
-): BroadcastSentDetail => ({
-  totalFirstSent,
-  totalSecondSent,
-  successfullyDelivered,
-  failedDelivered,
-})
-
-interface PastBroadcastResponse extends BroadcastSentDetail {
+interface PastBroadcastResponse {
   id: number
   firstMessage: string
   secondMessage: string
   runAt: number
+  totalFirstSent: number
+  totalSecondSent: number
+  successfullyDelivered: number
+  failedDelivered: number
+  totalUnsubscribed: number
 }
 
 interface UpcomingBroadcastResponse {
-  id: number | null
+  id: number
   firstMessage: string
   secondMessage: string
   runAt: number
@@ -52,33 +46,19 @@ interface TwilioMessage {
   date_sent: string
 }
 
-const broadcastDetail = (sentMessageStatuses: BroadcastMessageStatus[]): BroadcastSentDetail => {
-  const total = sentMessageStatuses.length
-  const totalFirstSent = sentMessageStatuses.filter((status: BroadcastMessageStatus) => !status.isSecond).length
-  const successfullyDelivered =
-    sentMessageStatuses.filter((status: BroadcastMessageStatus) =>
-      status.twilioSentStatus && Twilio.SUCCESS_STATUSES.includes(status.twilioSentStatus)
-    ).length
-  return {
-    totalFirstSent,
-    totalSecondSent: total - totalFirstSent,
-    successfullyDelivered,
-    failedDelivered: total - successfullyDelivered,
-  }
-}
-
 const convertToPastBroadcast = (
-  broadcast: Broadcast & {
-    sentMessageStatuses: BroadcastMessageStatus[]
-  },
+  broadcast: BroadcastDashBoardQueryReturn,
 ): PastBroadcastResponse => {
-  const detail = broadcastDetail(broadcast.sentMessageStatuses)
   return {
     id: Number(broadcast.id),
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
-    ...detail,
+    totalFirstSent: Number(broadcast.totalFirstSent),
+    totalSecondSent: Number(broadcast.totalSecondSent),
+    successfullyDelivered: Number(broadcast.successfullyDelivered),
+    failedDelivered: Number(broadcast.failedDelivered),
+    totalUnsubscribed: Number(broadcast.totalUnsubscribed),
   }
 }
 
@@ -88,7 +68,7 @@ const convertToUpcomingBroadcast = (broadcast: Broadcast): UpcomingBroadcastResp
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
-    delay: intervalToString(broadcast.delay!), // TODO: Not sure why we need to add ! here
+    delay: intervalToString(broadcast.delay!),
   }
 }
 
@@ -126,7 +106,7 @@ class BroadcastResponse {
 
   constructor() {
     this.upcoming = {
-      id: null,
+      id: -1,
       firstMessage: '',
       secondMessage: '',
       runAt: -1,
@@ -138,7 +118,6 @@ class BroadcastResponse {
 }
 
 export {
-  broadcastDetail,
   BroadcastResponse,
   type BroadcastSentDetail,
   type BroadcastUpdate,
@@ -146,7 +125,6 @@ export {
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
-  createBroadcastSentDetail,
   type PastBroadcastResponse,
   type TwilioMessage,
   type UpcomingBroadcastResponse,
