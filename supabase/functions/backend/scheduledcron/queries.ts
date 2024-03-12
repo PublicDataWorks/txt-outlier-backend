@@ -21,6 +21,8 @@ const insertOutgoingMessagesQuery = (
   nextBroadcast: Broadcast,
   limit: number,
 ): string => {
+  const escapedFirstMessage = nextBroadcast.firstMessage.replace(/'/g, "''")
+  const escapedSecondMessage = nextBroadcast.secondMessage.replace(/'/g, "''")
   return `
     CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query};
 
@@ -28,18 +30,21 @@ const insertOutgoingMessagesQuery = (
     SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
                                       '${nextBroadcast.id}'            AS broadcast_id,
                                       '${broadcastSegment.segment.id}' AS segment_id,
-                                      '${nextBroadcast.firstMessage}'  AS message,
+                                      '${escapedFirstMessage}'         AS message,
                                       FALSE                            AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit};
+    LIMIT ${limit}
+    ON CONFLICT DO NOTHING;
+
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
     SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
                                       '${nextBroadcast.id}'            AS broadcast_id,
                                       '${broadcastSegment.segment.id}' AS segment_id,
-                                      '${nextBroadcast.secondMessage}' AS message,
+                                      '${escapedSecondMessage}'        AS message,
                                       TRUE                             AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit};
+    LIMIT ${limit}
+    ON CONFLICT DO NOTHING;
 
     DROP TABLE phone_numbers_foo;
   `
