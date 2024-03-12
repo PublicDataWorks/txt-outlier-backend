@@ -54,6 +54,7 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
            b.delay,
            b.first_message                                                                                                            AS "firstMessage",
            b.second_message                                                                                                           AS "secondMessage",
+           b.no_users                                                                                                                 AS "noUsers",
            count(bsms.id) FILTER (WHERE bsms.is_second = FALSE)                                                                       AS "totalFirstSent",
            count(bsms.id) FILTER (WHERE bsms.is_second = TRUE)                                                                        AS "totalSecondSent",
            count(bsms.id) FILTER (WHERE bsms.twilio_sent_at IS NOT NULL AND bsms.twilio_sent_status IN ('delivered', 'received'))     AS "successfullyDelivered",

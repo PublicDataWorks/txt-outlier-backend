@@ -325,6 +325,7 @@ describe(
         eq(broadcasts.editable, true),
       )
       assertEquals(Number(upcoming[0].id), data.upcoming.id)
+      assertEquals(Number(upcoming[0].noUsers), 60)
     })
     it('pagination', async () => {
       await seedPast(20, 'A similique dolores ut.', 'Id saepe magni aut quas.')

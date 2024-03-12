@@ -47,7 +47,7 @@ import {
 } from '../scheduledcron/queries.ts'
 import RouteError from '../exception/RouteError.ts'
 
-const makeBroadcast = async () => {
+const makeBroadcast = async (): Promise<void> => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
@@ -109,7 +109,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       await supabase.execute(sql.raw(unscheduleTwilioStatus(3)))
       break
     }
-    const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id)
+    const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
     // Temporarily mark these messages as processed, so later requests don't pick them up
     await supabase.update(outgoingMessages).set({ processed: true }).where(
       inArray(outgoingMessages.id, idsToMarkAsProcessed),
@@ -121,15 +121,21 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
     })
     Promise.allSettled(missiveResponses).then(async (results) => {
       for (const result of results) {
-        const { response, outgoing } = result.value
-        if (response.ok) {
-          const responseBody = await response.json()
-          const { id, conversation } = responseBody.drafts
-          processed.push({
-            outgoing: outgoing,
-            id,
-            conversation,
-          })
+        // TODO: check if result is PromiseRejectedResult
+        if (result.status === 'fulfilled') {
+          const { response, outgoing } = result.value
+          if (response.ok) {
+            const responseBody = await response.json()
+            const { id, conversation } = responseBody.drafts
+            processed.push({
+              outgoing: outgoing,
+              id,
+              conversation,
+            })
+          } else {
+            log.error('Failed to send broadcast second messages. Broadcast id: ', broadcastID, outgoing)
+            // TODO: Not sure what to do here.
+          }
         } else {
           log.error('Failed to send broadcast second messages. Broadcast id: ', broadcastID)
           // TODO: Not sure what to do here.
@@ -169,7 +175,7 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     await supabase.execute(sql.raw(updateTwilioStatusCron(broadcastID)))
     return
   }
-  const idsMarkedAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id)
+  const idsMarkedAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
   // Temporarily mark these messages as processed, so later requests don't pick them up
   await supabase.update(outgoingMessages).set({ processed: true }).where(
     inArray(outgoingMessages.id, idsMarkedAsProcessed),
@@ -214,6 +220,8 @@ const getAll = async (
 ): Promise<BroadcastResponse> => {
   const selectQuery = selectBroadcastDashboard(cursor ? limit : limit + 1, cursor)
   const results: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
+  // "runAt" value should be a date, but it appears as a string when used in Supabase.
+  results.forEach((broadcast) => broadcast.runAt = new Date(broadcast.runAt))
   const response = new BroadcastResponse()
   if (results.length === 0) {
     return response
@@ -243,7 +251,7 @@ const patch = async (
       delay: broadcast.delay,
     })
     .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
-    .returning(broadcasts)
+    .returning()
   if (result.length === 0) return
   return convertToUpcomingBroadcast(result[0])
 }
@@ -306,9 +314,7 @@ const makeTomorrowBroadcastSchedule = async (
       break
   }
 
-  previousBroadcast.runAt.setUTCDate(
-    previousBroadcast.runAt.getDate() + noAdvancedDate,
-  )
+  previousBroadcast.runAt.setUTCDate(previousBroadcast.runAt.getDate() + noAdvancedDate)
   const newBroadcast = convertToFutureBroadcast(previousBroadcast)
   const firstMessageCron = invokeBroadcastCron(newBroadcast.runAt)
   await supabase.execute(sql.raw(firstMessageCron))
@@ -316,8 +322,8 @@ const makeTomorrowBroadcastSchedule = async (
     id: number
   }[] = await supabase.insert(broadcasts).values(newBroadcast).returning({ id: broadcasts.id })
   await supabase.insert(broadcastsSegments).values(previousBroadcast.broadcastToSegments.map((broadcastSegment) => ({
-    broadcastId: insertedIds[0].id,
-    segmentId: broadcastSegment.segment.id,
+    broadcastId: insertedIds[0].id!,
+    segmentId: broadcastSegment.segment.id!,
     ratio: broadcastSegment.ratio,
   })))
 }

@@ -5,6 +5,7 @@ const invokeBroadcastCron = (runAt: Date): string => {
       'invoke-broadcast',
       '${runTime}',
       $$
+        SELECT cron.unschedule('invoke-broadcast');
         SELECT net.http_get(
           url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/make',
           headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
@@ -70,6 +71,7 @@ const unscheduleTwilioStatus = (delay: number) => {
       '${runAt}',
       $$
         SELECT cron.unschedule('twilio-status');
+        SELECT cron.unschedule('delay-unschedule-twilio-status');
       $$
     );
   `
