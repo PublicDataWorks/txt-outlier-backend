@@ -1,6 +1,6 @@
 // deno-lint-ignore no-explicit-any
 export const escapeLiteral = (val: any): string => {
-  if (!val) {
+  if (val == null) {
     return 'NULL'
   }
 
