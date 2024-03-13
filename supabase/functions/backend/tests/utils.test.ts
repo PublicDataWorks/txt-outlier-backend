@@ -1,6 +1,7 @@
 import { assertEquals } from 'testing/asserts.ts'
 import { describe, it } from 'testing/bdd.ts'
-import { intervalToString } from '../../misc/utils.ts'
+import { intervalToString } from '../misc/utils.ts'
+import { escapeLiteral } from '../scheduledcron/helpers.ts'
 
 describe('intervalToString', () => {
   it('should return hours, minutes, and seconds when all are present', () => {
@@ -44,5 +45,32 @@ describe('intervalToString', () => {
 
   it('should return "Invalid interval format" for invalid input', () => {
     assertEquals(intervalToString('invalid'), 'Invalid interval format')
+  })
+})
+
+describe('escapeLiteral', () => {
+  it('should return NULL for null', () => {
+    assertEquals(escapeLiteral(null), 'NULL')
+    assertEquals(escapeLiteral(undefined), 'NULL')
+    console.log(typeof escapeLiteral(''), 'kykykyk')
+    assertEquals(escapeLiteral(''), "''")
+  })
+
+  it('should return a tuple for arrays', () => {
+    assertEquals(escapeLiteral(['foo', 'bar', "baz' DROP TABLE foo;"]), "('foo', 'bar', 'baz'' DROP TABLE foo;')")
+  })
+
+  it('should quote', () => {
+    assertEquals(escapeLiteral('hello world'), "'hello world'")
+    assertEquals(escapeLiteral('105 OR 1=1'), "'105 OR 1=1'")
+    assertEquals(escapeLiteral('105; DROP TABLE Suppliers --'), "'105; DROP TABLE Suppliers --'")
+  })
+
+  it('should escape quotes', () => {
+    assertEquals(escapeLiteral("O'Reilly"), "'O''Reilly'")
+  })
+
+  it('should escape backslashes', () => {
+    assertEquals(escapeLiteral('\\whoop\\'), "E'\\\\whoop\\\\'")
   })
 })
