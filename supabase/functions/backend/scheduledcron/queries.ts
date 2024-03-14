@@ -71,7 +71,10 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
            LEFT JOIN unsubscribed_messages um ON b.id = um.broadcast_id
     ${WHERE_CLAUSE}
     GROUP BY b.id
-    ORDER BY b.run_at DESC
+    ORDER BY
+        CASE WHEN editable = TRUE THEN 1 ELSE 2 END,
+        b.run_at DESC,
+        b.id DESC
     LIMIT ${limit}
   `
 }
