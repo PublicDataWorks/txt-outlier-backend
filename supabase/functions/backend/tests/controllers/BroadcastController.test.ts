@@ -167,21 +167,23 @@ describe(
 
       results = await supabase.select().from(outgoingMessages)
       assertEquals(results.length, 24)
-
-      results = await supabase.select().from(broadcasts).orderBy(broadcasts.id)
-      assert(results[0].editable)
     })
 
-    it('not create tomorrow broadcast', async () => {
+    it('duplicate current broadcast', async () => {
       const broadcast = await createBroadcast(60)
       await createSegment(1, broadcast.id!)
       await createTwilioMessages(30)
 
       await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
 
-      const results = await supabase.select().from(broadcasts)
-      assertEquals(results.length, 1)
+      const results = await supabase.select().from(broadcasts).orderBy(desc(broadcasts.id))
       assert(results[0].editable)
+      assert(!results[1].editable)
+      assertEquals(results[0].firstMessage, results[1].firstMessage)
+      assertEquals(results[0].secondMessage, results[1].secondMessage)
+      assertEquals(results[0].runAt, results[1].runAt)
+      assertEquals(results[0].delay, results[1].delay)
+      assertEquals(results[0].noUsers, results[1].noUsers)
 
       const history = await call_history()
       assertEquals(history.length, 1)
