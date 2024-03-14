@@ -49,6 +49,7 @@ import RouteError from '../exception/RouteError.ts'
 import { escapeLiteral } from '../scheduledcron/helpers.ts'
 
 // Called by Postgres Trigger
+// TODO: me tx
 const makeBroadcast = async (): Promise<void> => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(
@@ -89,6 +90,7 @@ const makeBroadcast = async (): Promise<void> => {
 }
 
 // Called by Missive sidebar
+// TODO: me tx
 const sendNow = async (): Promise<void> => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(eq(broadcasts.editable, true)),
@@ -119,6 +121,8 @@ const sendNow = async (): Promise<void> => {
   await Promise.all([...insertWaitList])
 
   await supabase.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
+  await supabase.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
+  await supabase.insert(broadcasts).values(convertToFutureBroadcast(nextBroadcast))
 }
 
 const sendBroadcastSecondMessage = async (broadcastID: number) => {
