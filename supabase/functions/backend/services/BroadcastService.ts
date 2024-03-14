@@ -48,6 +48,7 @@ import {
 import RouteError from '../exception/RouteError.ts'
 import { escapeLiteral } from '../scheduledcron/helpers.ts'
 
+// Called by Postgres Trigger
 const makeBroadcast = async (): Promise<void> => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(
@@ -85,6 +86,39 @@ const makeBroadcast = async (): Promise<void> => {
 
   await supabase.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
   await supabase.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
+}
+
+// Called by Missive sidebar
+const sendNow = async (): Promise<void> => {
+  const nextBroadcast = await supabase.query.broadcasts.findFirst({
+    where: and(eq(broadcasts.editable, true)),
+    with: {
+      broadcastToSegments: {
+        with: {
+          segment: true,
+        },
+      },
+    },
+  })
+
+  if (!nextBroadcast) {
+    throw new SystemError('SendNow: Unable to retrieve the next broadcast.')
+  }
+  if (nextBroadcast.broadcastToSegments.length === 0) {
+    throw new SystemError(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
+  }
+  const insertWaitList: Promise<void>[] = []
+  for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
+    const insertWait = insertBroadcastSegmentRecipients(
+      broadcastSegment,
+      nextBroadcast,
+    )
+    insertWaitList.push(insertWait)
+  }
+  // Each segment is an independent entity; one failure doesn't affect the others.
+  await Promise.all([...insertWaitList])
+
+  await supabase.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
 }
 
 const sendBroadcastSecondMessage = async (broadcastID: number) => {
@@ -316,8 +350,8 @@ const makeTomorrowBroadcastSchedule = async (
 
   previousBroadcast.runAt.setUTCDate(previousBroadcast.runAt.getDate() + noAdvancedDate)
   const newBroadcast = convertToFutureBroadcast(previousBroadcast)
-  const firstMessageCron = invokeBroadcastCron(newBroadcast.runAt)
-  await supabase.execute(sql.raw(firstMessageCron))
+  const invokeNextBroadcast = invokeBroadcastCron(newBroadcast.runAt)
+  await supabase.execute(sql.raw(invokeNextBroadcast))
   const insertedIds: {
     id: number
   }[] = await supabase.insert(broadcasts).values(newBroadcast).returning({ id: broadcasts.id })
@@ -368,4 +402,5 @@ export default {
   sendBroadcastFirstMessage,
   sendBroadcastSecondMessage,
   updateTwilioHistory,
+  sendNow,
 } as const
