@@ -41,12 +41,12 @@ describe(
       assert(!results[0].editable)
     })
 
-    it('error if no available broadcast', async () => {
+    it('error if no broadcast available', async () => {
       try {
         await BroadcastController.makeBroadcast(req(MAKE_PATH), res())
       } catch (e) {
         assert(e instanceof RouteError)
-        assertEquals(e.message, 'Unable to retrieve the next broadcast.')
+        assertEquals(e.message, 'Unable to retrieve the next broadcast')
         return
       }
       assert(false)
@@ -109,7 +109,7 @@ describe(
         await BroadcastController.makeBroadcast(req(MAKE_PATH), res())
       } catch (e) {
         assert(e instanceof RouteError)
-        assertEquals(e.message, 'Unable to retrieve the next broadcast.')
+        assertEquals(e.message, 'Unable to retrieve the next broadcast')
       }
     })
 
@@ -208,7 +208,7 @@ describe(
         await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
       } catch (e) {
         assert(e instanceof SystemError)
-        assertEquals(e.message, 'SendNow: Unable to retrieve the next broadcast.')
+        assertEquals(e.message, 'SendNow: Unable to retrieve next broadcast')
         return
       }
       assert(false)
@@ -242,6 +242,42 @@ describe(
 
       const results = await supabase.select().from(outgoingMessages)
       assertEquals(results.length, 24)
+    })
+
+    it('a new broadcast is about to run', async () => {
+      const runAt = new Date()
+      runAt.setMinutes(runAt.getMinutes() + 10)
+      const broadcast = await createBroadcast(60, runAt, 'a', 'b', true)
+      await createSegment(1, broadcast.id!)
+      try {
+        await BroadcastController.sendNow(req(MAKE_PATH), res())
+      } catch (e) {
+        assert(e instanceof RouteError)
+        assertEquals(e.message, 'Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+        return
+      }
+      assert(false)
+    })
+  },
+)
+
+describe(
+  'Status',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    it('about to run', async () => {
+      const runAt = new Date()
+      runAt.setMinutes(runAt.getMinutes() + 10)
+      await createBroadcast(60, runAt, 'a', 'b', true)
+      const response = await BroadcastController.status(req(MAKE_PATH), res())
+      assertEquals(response.statusCode, 200)
+      assertEquals(response._getData(), '{"status":"ABOUT TO RUN"}')
+    })
+
+    it('idle', async () => {
+      const response = await BroadcastController.status(req(MAKE_PATH), res())
+      assertEquals(response.statusCode, 200)
+      assertEquals(response._getData(), '{"status":"IDLE"}')
     })
   },
 )

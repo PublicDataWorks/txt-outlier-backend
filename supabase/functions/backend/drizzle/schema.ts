@@ -1,7 +1,6 @@
 import {
   bigint,
   boolean,
-  doublePrecision,
   index,
   integer,
   interval,
@@ -9,6 +8,7 @@ import {
   pgEnum,
   pgTable,
   serial,
+  smallint,
   text,
   timestamp,
   unique,
@@ -37,7 +37,7 @@ export const broadcastsSegments = pgTable('broadcasts_segments', {
   segmentId: bigint('segment_id', { mode: 'number' }).notNull().references(() => audienceSegments.id, {
     onUpdate: 'cascade',
   }),
-  ratio: doublePrecision('ratio').notNull(),
+  ratio: smallint('ratio').notNull(),
   firstMessage: text('first_message'),
   secondMessage: text('second_message'),
 }, (table) => {

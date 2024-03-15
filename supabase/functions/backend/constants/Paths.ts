@@ -9,6 +9,7 @@ export default {
     All: '',
     Make: '/make',
     SendNow: '/send-now',
+    Status: '/status',
     Draft: '/draft/:broadcastID',
     ID: '/:id',
     UpdateTwilioStatus: '/twilio/:broadcastID',
