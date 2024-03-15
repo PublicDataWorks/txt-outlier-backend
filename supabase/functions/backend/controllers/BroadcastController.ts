@@ -15,6 +15,11 @@ async function sendNow(_req: Request, res: Response) {
   return AppResponse.ok(res, {}, 204)
 }
 
+async function status(_req: Request, res: Response) {
+  const status = await BroadcastService.broadcastStatus()
+  return AppResponse.ok(res, status, 200)
+}
+
 async function sendDraft(req: Request, res: Response) {
   const validations = [
     param('broadcastID').isInt().toInt(),
@@ -76,4 +81,5 @@ export default {
   patch,
   updateTwilioStatus,
   sendNow,
+  status,
 } as const
