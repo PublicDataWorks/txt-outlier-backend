@@ -50,20 +50,7 @@ import {
 import RouteError from '../exception/RouteError.ts'
 import { escapeLiteral } from '../scheduledcron/helpers.ts'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
-
-const broadcastStatus = async () => {
-  const upcoming = await supabase.select({
-    runAt: broadcasts.runAt,
-  }).from(broadcasts).where(eq(broadcasts.editable, true))
-  if (upcoming.length === 0) return { status: 'IDLE' }
-
-  const diffInMinutes = DateUtils.diffInMinutes(upcoming[0].runAt)
-  if (0 <= diffInMinutes && diffInMinutes <= 30) return { status: 'ABOUT TO RUN' }
-
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) return { status: 'RUNNING' }
-  else return { status: 'IDLE' }
-}
+import { SEND_NOW_STATUS } from '../misc/AppResponse.ts'
 
 // Called by Postgres Trigger
 const makeBroadcast = async (): Promise<void> => {
@@ -101,7 +88,6 @@ const makeBroadcast = async (): Promise<void> => {
 }
 
 // Called by Missive sidebar
-// TODO: me tx
 const sendNow = async (): Promise<void> => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(eq(broadcasts.editable, true)),
@@ -115,18 +101,24 @@ const sendNow = async (): Promise<void> => {
   })
 
   if (!nextBroadcast) {
-    throw new SystemError('SendNow: Unable to retrieve next broadcast')
+    log.error('SendNow: Unable to retrieve next broadcast')
+    throw new SystemError({ 'SendNow': SEND_NOW_STATUS.Error }) //
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
-    throw new SystemError(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
+    log.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
+    throw new SystemError({ 'SendNow': SEND_NOW_STATUS.Error })
   }
   const diffInMinutes = DateUtils.diffInMinutes(nextBroadcast.runAt)
   if (0 <= diffInMinutes && diffInMinutes <= 30) {
-    throw new RouteError(400, 'Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+    log.error('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+    throw new RouteError(400, { 'SendNow': SEND_NOW_STATUS.AboutToRun })
   }
 
   const isRunning = await isBroadcastRunning()
-  if (isRunning) throw new RouteError(400, `Unable to send now: another broadcast is running`)
+  if (isRunning) {
+    log.error(`Unable to send now: another broadcast is running`)
+    throw new RouteError(400, { 'SendNow': SEND_NOW_STATUS.Running })
+  }
 
   await supabase.transaction(async (tx) => {
     const newId: { id: number }[] = await tx.insert(broadcasts).values(convertToFutureBroadcast(nextBroadcast))
@@ -436,5 +428,4 @@ export default {
   sendBroadcastSecondMessage,
   updateTwilioHistory,
   sendNow,
-  broadcastStatus,
 } as const

@@ -262,27 +262,6 @@ describe(
 )
 
 describe(
-  'Status',
-  { sanitizeOps: false, sanitizeResources: false },
-  () => {
-    it('about to run', async () => {
-      const runAt = new Date()
-      runAt.setMinutes(runAt.getMinutes() + 10)
-      await createBroadcast(60, runAt, 'a', 'b', true)
-      const response = await BroadcastController.status(req(MAKE_PATH), res())
-      assertEquals(response.statusCode, 200)
-      assertEquals(response._getData(), '{"status":"ABOUT TO RUN"}')
-    })
-
-    it('idle', async () => {
-      const response = await BroadcastController.status(req(MAKE_PATH), res())
-      assertEquals(response.statusCode, 200)
-      assertEquals(response._getData(), '{"status":"IDLE"}')
-    })
-  },
-)
-
-describe(
   'Send draft',
   { sanitizeOps: false, sanitizeResources: false },
   () => {
