@@ -52,7 +52,6 @@ describe('escapeLiteral', () => {
   it('should return NULL for null', () => {
     assertEquals(escapeLiteral(null), 'NULL')
     assertEquals(escapeLiteral(undefined), 'NULL')
-    console.log(typeof escapeLiteral(''), 'kykykyk')
     assertEquals(escapeLiteral(''), "''")
   })
 
@@ -72,5 +71,35 @@ describe('escapeLiteral', () => {
 
   it('should escape backslashes', () => {
     assertEquals(escapeLiteral('\\whoop\\'), "E'\\\\whoop\\\\'")
+  })
+
+  it('should handle empty arrays', () => {
+    assertEquals(escapeLiteral([]), '()')
+  })
+
+  it('should handle arrays with mixed values', () => {
+    assertEquals(escapeLiteral(['foo', 42, true, null]), "('foo', '42', 'true', NULL)")
+  })
+
+  it('should handle nested arrays', () => {
+    assertEquals(escapeLiteral(['foo', ['bar', 'baz']]), "('foo', ('bar', 'baz'))")
+  })
+
+  it('should handle strings with special characters', () => {
+    assertEquals(escapeLiteral('hello\nworld'), "'hello\nworld'")
+    assertEquals(escapeLiteral('hello\tworld'), "'hello\tworld'")
+    assertEquals(escapeLiteral('hello\rworld'), "'hello\rworld'")
+    assertEquals(escapeLiteral('hello\0world'), "'hello\0world'")
+  })
+
+  it('should handle strings with Unicode characters', () => {
+    assertEquals(escapeLiteral('hello世界'), "'hello世界'")
+    assertEquals(escapeLiteral('😊'), "'😊'")
+  })
+
+  it('should handle non-string values', () => {
+    assertEquals(escapeLiteral(42), "'42'")
+    assertEquals(escapeLiteral(true), "'true'")
+    assertEquals(escapeLiteral(false), "'false'")
   })
 })

@@ -3,6 +3,12 @@ export const escapeLiteral = (val: any): string => {
   if (val == null) {
     return 'NULL'
   }
+  if (typeof val === 'number') {
+    return `'${val}'`
+  }
+  if (typeof val === 'boolean') {
+    return `'${val.toString()}'`
+  }
 
   if (Array.isArray(val)) {
     const vals = val.map(escapeLiteral)
