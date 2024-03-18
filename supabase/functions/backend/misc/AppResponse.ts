@@ -12,6 +12,13 @@ const invalid = (res: Response, errorMessage: string) => {
 const ok = (res: Response, body = {}, code = 200) => {
   return res.status(code).json(body)
 }
+
+export enum SEND_NOW_STATUS {
+  Error,
+  AboutToRun,
+  Running,
+}
+
 export default {
   unauthorized,
   invalid,

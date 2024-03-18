@@ -20,11 +20,6 @@ broadcastRouter.get(
 )
 
 broadcastRouter.get(
-  Paths.Broadcast.Status,
-  broadcastController.status,
-)
-
-broadcastRouter.get(
   Paths.Broadcast.Draft,
   broadcastController.sendDraft,
 )
