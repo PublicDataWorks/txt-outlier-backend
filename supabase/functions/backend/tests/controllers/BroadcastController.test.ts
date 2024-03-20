@@ -1,10 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertExists,
-  assertNotEquals,
-  assertRejects,
-} from 'testing/asserts.ts'
+import { assert, assertEquals, assertExists, assertNotEquals, assertRejects } from 'testing/asserts.ts'
 import { describe, it } from 'testing/bdd.ts'
 import { FakeTime } from 'testing/time.ts'
 import * as mf from 'mock-fetch'
@@ -687,7 +681,7 @@ describe(
       eq(broadcasts.id, id),
     )
 
-    const body = { firstMessage: 'new msg' }
+    const body = { firstMessage: 'new  msg' }
     const response = await BroadcastController.patch(
       req('', param, {}, body),
       res(),
@@ -713,7 +707,7 @@ describe(
       eq(broadcasts.id, id),
     )
 
-    const body = { secondMessage: 'another new msg' }
+    const body = { secondMessage: 'another  new msg' }
     const response = await BroadcastController.patch(
       req('', param, {}, body),
       res(),
