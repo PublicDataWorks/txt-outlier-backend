@@ -118,6 +118,7 @@ const dateToCron = (date: Date) => {
 }
 
 export {
+  dateToCron,
   invokeBroadcastCron,
   JOB_NAMES,
   SELECT_JOB_NAMES,
