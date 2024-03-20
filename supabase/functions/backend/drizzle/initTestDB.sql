@@ -11,7 +11,8 @@ TRUNCATE cron.call_history;
 
 CREATE TABLE IF NOT EXISTS cron.job (
 	"id" serial PRIMARY KEY NOT NULL,
-	"jobname" text NOT NULL
+	"jobname" text NOT NULL,
+  "schedule" text NOT NULL
 );
 
 CREATE OR REPLACE FUNCTION cron.schedule(a text, b text, c text)
