@@ -10,11 +10,13 @@ import {
   BroadcastSegment,
   broadcastSentMessageStatus,
   broadcastsSegments,
+  cronJob,
   OutgoingMessage,
   outgoingMessages,
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import {
+  dateToCron,
   invokeBroadcastCron,
   JOB_NAMES,
   SELECT_JOB_NAMES,
@@ -102,22 +104,22 @@ const sendNow = async (): Promise<void> => {
 
   if (!nextBroadcast) {
     log.error('SendNow: Unable to retrieve next broadcast')
-    throw new SystemError({ 'SendNow': SEND_NOW_STATUS.Error }) //
+    throw new SystemError(SEND_NOW_STATUS.Error) //
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
     log.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
-    throw new SystemError({ 'SendNow': SEND_NOW_STATUS.Error })
+    throw new SystemError(SEND_NOW_STATUS.Error)
   }
   const diffInMinutes = DateUtils.diffInMinutes(nextBroadcast.runAt)
   if (0 <= diffInMinutes && diffInMinutes <= 30) {
     log.error('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
-    throw new RouteError(400, { 'SendNow': SEND_NOW_STATUS.AboutToRun })
+    throw new RouteError(400, SEND_NOW_STATUS.AboutToRun)
   }
 
   const isRunning = await isBroadcastRunning()
   if (isRunning) {
     log.error(`Unable to send now: another broadcast is running`)
-    throw new RouteError(400, { 'SendNow': SEND_NOW_STATUS.Running })
+    throw new RouteError(400, SEND_NOW_STATUS.Running)
   }
 
   await supabase.transaction(async (tx) => {
@@ -159,7 +161,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       // No messages found, unschedule CRON jobs
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
-      await supabase.execute(sql.raw(unscheduleTwilioStatus(3)))
+      await supabase.execute(sql.raw(unscheduleTwilioStatus(5)))
       break
     }
     const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
@@ -296,17 +298,30 @@ const patch = async (
   id: number,
   broadcast: BroadcastUpdate,
 ): Promise<UpcomingBroadcastResponse | undefined> => {
-  const result: Broadcast[] = await supabase.update(broadcasts)
-    .set({
-      firstMessage: broadcast.firstMessage,
-      secondMessage: broadcast.secondMessage,
-      runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
-      delay: broadcast.delay,
-    })
-    .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
-    .returning()
-  if (result.length === 0) return
-  return convertToUpcomingBroadcast(result[0])
+  await supabase.transaction(async (tx) => {
+    const result: Broadcast[] = await tx.update(broadcasts)
+      .set({
+        firstMessage: broadcast.firstMessage,
+        secondMessage: broadcast.secondMessage,
+        runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
+        delay: broadcast.delay,
+      })
+      .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
+      .returning()
+    if (result.length === 0) {
+      await tx.rollback()
+      return
+    }
+    if (broadcast.runAt) {
+      const cronRunAt = dateToCron(new Date(broadcast.runAt * 1000))
+      await tx
+        .update(cronJob)
+        .set({ schedule: cronRunAt })
+        .where(eq(cronJob.jobname, 'invoke-broadcast'))
+        .execute()
+    }
+    return convertToUpcomingBroadcast(result[0])
+  })
 }
 
 const updateTwilioHistory = async (broadcastID: number) => {
@@ -334,6 +349,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
 
   if (updatedArray.length > 0) {
     const updateRaw = updateTwilioStatusRaw(updatedArray)
+    console.log(updateRaw)
     await supabase.execute(sql.raw(updateRaw))
     // Send realtime update to the sidebar
     const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)

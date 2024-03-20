@@ -1,4 +1,10 @@
-import { assert, assertEquals, assertExists, assertNotEquals, assertRejects } from 'testing/asserts.ts'
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+  assertRejects,
+} from 'testing/asserts.ts'
 import { describe, it } from 'testing/bdd.ts'
 import { FakeTime } from 'testing/time.ts'
 import * as mf from 'mock-fetch'
@@ -16,6 +22,7 @@ import RouteError from '../../exception/RouteError.ts'
 import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
 import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
 import SystemError from '../../exception/SystemError.ts'
+import { SEND_NOW_STATUS } from '../../misc/AppResponse.ts'
 
 describe(
   'Make',
@@ -197,7 +204,7 @@ describe(
         await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
       } catch (e) {
         assert(e instanceof SystemError)
-        assert(e.message.includes('SendNow: Broadcast has no associated segment. Data: {"id":1'))
+        assertEquals(e.message, SEND_NOW_STATUS.Error.toString())
         return
       }
       assert(false)
@@ -208,7 +215,7 @@ describe(
         await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
       } catch (e) {
         assert(e instanceof SystemError)
-        assertEquals(e.message, 'SendNow: Unable to retrieve next broadcast')
+        assertEquals(e.message, SEND_NOW_STATUS.Error.toString())
         return
       }
       assert(false)
@@ -253,7 +260,7 @@ describe(
         await BroadcastController.sendNow(req(MAKE_PATH), res())
       } catch (e) {
         assert(e instanceof RouteError)
-        assertEquals(e.message, 'Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+        assertEquals(e.message, SEND_NOW_STATUS.AboutToRun.toString())
         return
       }
       assert(false)
