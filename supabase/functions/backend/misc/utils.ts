@@ -17,10 +17,12 @@ const intervalToString = (interval: string) => {
   }
 }
 
+const removeExtraSpaces = (str: string) => str.replace(/\s\s+/g, ' ')
+
 const sleep = (ms: number) => {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
 }
 
-export { intervalToString, sleep }
+export { intervalToString, removeExtraSpaces, sleep }

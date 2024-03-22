@@ -97,6 +97,15 @@ const updateTwilioStatusCron = (broadcastId: number): string => {
 const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
+const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
+
+const JOB_NAMES = [
+  'invoke-broadcast',
+  'send-first-messages',
+  'delay-send-second-messages',
+  'delay-unschedule-twilio-status',
+  'twilio-status',
+]
 
 const dateToCron = (date: Date) => {
   const minutes = date.getMinutes()
@@ -109,7 +118,10 @@ const dateToCron = (date: Date) => {
 }
 
 export {
+  dateToCron,
   invokeBroadcastCron,
+  JOB_NAMES,
+  SELECT_JOB_NAMES,
   sendFirstMessagesCron,
   sendSecondMessagesCron,
   UNSCHEDULE_SEND_FIRST_MESSAGES,

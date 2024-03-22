@@ -25,15 +25,24 @@ app.use(Paths.Base, BaseRouter)
 
 app.use((
   err: Error,
-  _: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ) => {
   let status = 500
+  let message = 'Server Error'
   // TODO: send slack if SystemError
-  if (err instanceof RouteError) status = err.status
-  log.error(`Error status code: ${status}, message: ${err.message}`)
+  if (err instanceof RouteError) {
+    status = err.status
+    message = err.message
+  }
+  log.error(`${err}, status code: ${status}.`)
+  log.error(
+    `Request path: ${req.path}, params: ${JSON.stringify(req.params)}, query: ${JSON.stringify(req.query)}, body: ${
+      JSON.stringify(req.body)
+    }`,
+  )
 
-  return res.status(status).json({ errors: err.message })
+  return res.status(status).json({ message })
 })
 export default app

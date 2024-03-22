@@ -70,7 +70,7 @@ const convertToUpcomingBroadcast = (broadcast: Broadcast): UpcomingBroadcastResp
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
     delay: intervalToString(broadcast.delay!),
-    noRecipients: broadcast.noUsers,
+    noRecipients: broadcast.noUsers!,
   }
 }
 
@@ -79,7 +79,6 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
     runAt: broadcast.runAt,
-    updatedAt: broadcast.updatedAt,
     delay: broadcast.delay,
     editable: broadcast.editable,
     noUsers: broadcast.noUsers,

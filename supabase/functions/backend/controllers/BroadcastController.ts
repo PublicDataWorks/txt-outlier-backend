@@ -4,9 +4,15 @@ import { BroadcastUpdate } from '../dto/BroadcastRequestResponse.ts'
 import { validateAndResponse } from '../misc/validator.ts'
 import AppResponse from '../misc/AppResponse.ts'
 import BroadcastService from '../services/BroadcastService.ts'
+import { removeExtraSpaces } from '../misc/utils.ts'
 
 async function makeBroadcast(_req: Request, res: Response) {
   await BroadcastService.makeBroadcast()
+  return AppResponse.ok(res, {}, 204)
+}
+
+async function sendNow(_req: Request, res: Response) {
+  await BroadcastService.sendNow()
   return AppResponse.ok(res, {}, 204)
 }
 
@@ -41,8 +47,16 @@ async function getAll(req: Request, res: Response) {
 async function patch(req: Request, res: Response) {
   const validations = [
     param('id').isInt().toInt(),
-    body('firstMessage').optional().isString().notEmpty(),
-    body('secondMessage').optional().isString().notEmpty(),
+    body('firstMessage')
+      .optional()
+      .isString()
+      .notEmpty()
+      .customSanitizer((value) => removeExtraSpaces(value)),
+    body('secondMessage')
+      .optional()
+      .isString()
+      .notEmpty()
+      .customSanitizer((value) => removeExtraSpaces(value)),
     body('runAt').optional().isDecimal(),
     body('delay').optional().isString().notEmpty(),
   ]
@@ -55,9 +69,7 @@ async function patch(req: Request, res: Response) {
 }
 
 async function updateTwilioStatus(req: Request, res: Response) {
-  const validations = [
-    param('broadcastID').isInt().toInt(),
-  ]
+  const validations = [param('broadcastID').isInt().toInt()]
   await validateAndResponse(validations, req)
   const id = Number(req.params.broadcastID)
   await BroadcastService.updateTwilioHistory(id)
@@ -70,4 +82,5 @@ export default {
   getAll,
   patch,
   updateTwilioStatus,
+  sendNow,
 } as const

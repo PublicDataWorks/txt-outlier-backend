@@ -17,7 +17,7 @@ const getTwilioMessages = async (
   nextPage: string | undefined | null,
   broadcastDate: Date,
 ): Promise<Response> => {
-  const broadcastNumber = Deno.env.get('BROADCASTNUMBER')!
+  const broadcastNumber = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')!
   const formattedDate = broadcastDate.toISOString().split('T')[0]
   const headers = getTwilioHeaders()
   let twilioURL = ''
