@@ -1,5 +1,6 @@
 # dotenv environment variable files
 .env
+.env.sample
 .env.development.local
 .env.test.local
 .env.production.local
@@ -17,3 +18,4 @@ cov_profile/
 scheduledcron.iml
 **/.branch
 supabase/.branches/_current_branch
+/.env.sample
