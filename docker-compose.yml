@@ -6,4 +6,4 @@ services:
     container_name: outlier-backend-deno-container
     image: outlier-backend-deno-image
     ports:
-      - "80:80"
+      - "443:443"
