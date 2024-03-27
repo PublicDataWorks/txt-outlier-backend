@@ -1,7 +1,10 @@
 version: 2.1
 
+orbs:
+  aws-cli: circleci/aws-cli@3.1.4
+
 jobs:
-  build:
+  build-and-test:
     machine:
       image: default
     steps:
@@ -32,4 +35,27 @@ jobs:
             cd backend/tests
             npx supabase stop
 
+  deploy-production:
+    executor: aws-cli/default
+    steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:nellmY2hJL/tZt3X0j9w3qftzo2kQeb18M4+hhzTAXw"
+      - run:
+          command: sleep 1m
+          name: Waiting of SSH Server to start at New EC2 Instance
+      - run:
+          command: ssh $SSH_USER@$SSH_HOST "sh deploy.sh"
+          name: Cloning the project
 
+workflows:
+  test_and_deploy:
+    jobs:
+      - build-and-test
+      - deploy-production:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only:
+                - chores/setup-automatic-deploy-ec2
