@@ -178,6 +178,7 @@ describe(
       await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
 
       const results = await supabase.select().from(broadcasts).orderBy(desc(broadcasts.id))
+      assertEquals(results.length, 2)
       assert(results[0].editable)
       assert(!results[1].editable)
       assertEquals(results[0].firstMessage, results[1].firstMessage)
