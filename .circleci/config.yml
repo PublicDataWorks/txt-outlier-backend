@@ -44,12 +44,13 @@ jobs:
       - run:
           command: sleep 1m
           name: Waiting of SSH Server to start at New EC2 Instance
+      - aws-cli/install
       - run:
           command: |
             public_ip_address=$(wget -qO- http://checkip.amazonaws.com)
             aws ec2 authorize-security-group-ingress --region $AWS_REGION --group-id $AWS_SECURITY_GROUP --ip-permissions "[{\"IpProtocol\": \"tcp\", \"FromPort\": $OPEN_PORT, \"ToPort\": $OPEN_PORT, \"IpRanges\": [{\"CidrIp\": \"${public_ip_address}/32\"}]}]"
       - run:
-          command: ssh $SSH_USER@$SSH_HOST "sh deploy.sh"
+          command: ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "sh deploy.sh"
           name: Run the script to deploy the project
       - run:
           command: |
