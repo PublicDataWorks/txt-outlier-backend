@@ -79,4 +79,4 @@ workflows:
           filters:
             branches:
               only:
-                - chores/setup-automatic-deploy-ec2
+                - main
