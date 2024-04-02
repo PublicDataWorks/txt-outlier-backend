@@ -7,6 +7,7 @@ const createBroadcast = async (
   runAt?: Date,
   firstMessage?: string,
   secondMessage?: string,
+  editable?: boolean,
 ): Promise<Broadcast> => {
   const broadcast = {
     runAt: runAt || new Date(),
@@ -14,7 +15,7 @@ const createBroadcast = async (
     noUsers,
     firstMessage: firstMessage || faker.lorem.sentence(),
     secondMessage: secondMessage || faker.lorem.sentence(),
-    editable: !runAt,
+    editable: editable ? editable : !runAt,
   }
   const results = await supabase.insert(broadcasts).values(broadcast)
     .returning()
