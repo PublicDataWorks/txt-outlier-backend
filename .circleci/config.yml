@@ -43,14 +43,15 @@ jobs:
             - "SHA256:nellmY2hJL/tZt3X0j9w3qftzo2kQeb18M4+hhzTAXw"
       - aws-cli/install
 
-      - run:
-          command: sleep 5
-          name: Waiting of SSH Server to start at New EC2 Instance
       #This command will add the current CircleCI EC2 instance IP to the AWS security group specifically created for CircleCI.
       - run:
           command: |
             public_ip_address=$(wget -qO- http://checkip.amazonaws.com)
             aws ec2 authorize-security-group-ingress --region $AWS_REGION --group-id $AWS_SECURITY_GROUP --ip-permissions "[{\"IpProtocol\": \"tcp\", \"FromPort\": $OPEN_PORT, \"ToPort\": $OPEN_PORT, \"IpRanges\": [{\"CidrIp\": \"${public_ip_address}/32\"}]}]"
+
+      - run:
+          command: sleep 5
+          name: Waiting of SSH Server to start at New EC2 Instance
 
       # This command will run the deploy script
       - run:
