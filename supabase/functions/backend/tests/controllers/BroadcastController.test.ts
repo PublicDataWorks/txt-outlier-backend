@@ -87,6 +87,44 @@ describe(
         'Unable to retrieve the next broadcast.',
       )
     })
+
+    it('first message contains apostrophe', async () => {
+      const broadcast = await createBroadcast(60)
+      broadcast.firstMessage = "'first message"
+      await supabase.update(broadcasts)
+        .set({ firstMessage: "Outlier's" })
+        .where(eq(broadcasts.id, broadcast.id!))
+
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+      const response = await BroadcastController.makeBroadcast(
+        req(MAKE_PATH),
+        res(),
+      )
+      assertEquals(response.statusCode, 204)
+
+      const results = await supabase.select().from(outgoingMessages)
+      assertEquals(results.length, 24)
+    })
+
+    it('second message contains apostrophe', async () => {
+      const broadcast = await createBroadcast(60)
+      broadcast.firstMessage = "'first message"
+      await supabase.update(broadcasts)
+        .set({ secondMessage: "Outlier's" })
+        .where(eq(broadcasts.id, broadcast.id!))
+
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+      const response = await BroadcastController.makeBroadcast(
+        req(MAKE_PATH),
+        res(),
+      )
+      assertEquals(response.statusCode, 204)
+
+      const results = await supabase.select().from(outgoingMessages)
+      assertEquals(results.length, 24)
+    })
   },
 )
 
