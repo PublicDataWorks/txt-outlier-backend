@@ -46,6 +46,7 @@ import {
   updateTwilioStatusRaw,
 } from '../scheduledcron/queries.ts'
 import RouteError from '../exception/RouteError.ts'
+import { escapeLiteral } from '../scheduledcron/helpers.ts'
 
 const makeBroadcast = async (): Promise<void> => {
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
@@ -259,15 +260,14 @@ const patch = async (
 const updateTwilioHistory = async (broadcastID: number) => {
   const broadcast: Broadcast[] = await supabase.select().from(broadcasts).where(eq(broadcasts.id, broadcastID))
   if (broadcast.length === 0) return
-  let updatedArray: TwilioMessage[] = []
+  let updatedArray: string[] = []
   const response = await Twilio.getTwilioMessages(broadcast[0].twilioPaging, broadcast[0].runAt)
 
   if (response.ok) {
     const data = await response.json()
     updatedArray = data.messages.map((message: TwilioMessage) =>
-      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8, '${
-        message.body.replace(/'/g, "''")
-      }'::text)`
+      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8,
+        ${escapeLiteral(message.body)}::text)`
     )
     if (data.next_page_uri) {
       await supabase.update(broadcasts)

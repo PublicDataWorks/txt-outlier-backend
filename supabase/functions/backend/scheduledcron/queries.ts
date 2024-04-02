@@ -1,7 +1,8 @@
-import { TwilioMessage } from '../dto/BroadcastRequestResponse.ts'
 import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
+import { escapeLiteral } from './helpers.ts'
 
-const updateTwilioStatusRaw = (updatedArray: TwilioMessage[]): string => {
+const updateTwilioStatusRaw = (updatedArray: string[]): string => {
+  // updatedArray is already escaped
   return `
     WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
            AS (VALUES ${updatedArray.join(',')})
@@ -21,32 +22,37 @@ const insertOutgoingMessagesQuery = (
   nextBroadcast: Broadcast,
   limit: number,
 ): string => {
+  const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
+  const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
   return `
     CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query};
 
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
     SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
-                                      '${nextBroadcast.id}'            AS broadcast_id,
-                                      '${broadcastSegment.segment.id}' AS segment_id,
-                                      '${nextBroadcast.firstMessage}'  AS message,
+                                      ${nextBroadcast.id}              AS broadcast_id,
+                                      ${broadcastSegment.segment.id}   AS segment_id,
+                                      ${escapedFirstMessage}           AS message,
                                       FALSE                            AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit};
+    LIMIT ${limit}
+    ON CONFLICT DO NOTHING;
+
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
     SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
-                                      '${nextBroadcast.id}'            AS broadcast_id,
-                                      '${broadcastSegment.segment.id}' AS segment_id,
-                                      '${nextBroadcast.secondMessage}' AS message,
+                                      ${nextBroadcast.id}              AS broadcast_id,
+                                      ${broadcastSegment.segment.id}   AS segment_id,
+                                      ${escapedSecondMessage}          AS message,
                                       TRUE                             AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit};
+    LIMIT ${limit}
+    ON CONFLICT DO NOTHING;
 
     DROP TABLE phone_numbers_foo;
   `
 }
 
 const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: number): string => {
-  let WHERE_CLAUSE = cursor ? `WHERE b.run_at < to_timestamp(${cursor})` : 'WHERE TRUE'
+  let WHERE_CLAUSE = (cursor && typeof cursor === 'number') ? `WHERE b.run_at < to_timestamp(${cursor})` : 'WHERE TRUE'
   if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND b.id = ${broadcastId}`)
   return `
     SELECT b.id ,

@@ -15,7 +15,6 @@ const sendMessage = (message: string, toPhone: string) => {
         'phone_number': '+18336856203', // TODO: Get it from ENV
         'type': 'twilio',
       },
-      // 'send_at': 1994540565,
       'send': true, // Send right away
     },
   }
