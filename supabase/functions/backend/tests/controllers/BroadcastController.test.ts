@@ -15,6 +15,8 @@ import supabase from '../../lib/supabase.ts'
 import RouteError from '../../exception/RouteError.ts'
 import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
 import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
+import SystemError from '../../exception/SystemError.ts'
+import { SEND_NOW_STATUS } from '../../misc/AppResponse.ts'
 
 describe(
   'Make',
@@ -38,6 +40,29 @@ describe(
 
       results = await supabase.select().from(broadcasts).orderBy(broadcasts.id)
       assert(!results[0].editable)
+    })
+
+    it('error if no broadcast available', async () => {
+      try {
+        await BroadcastController.makeBroadcast(req(MAKE_PATH), res())
+      } catch (e) {
+        assert(e instanceof RouteError)
+        assertEquals(e.message, 'Unable to retrieve the next broadcast')
+        return
+      }
+      assert(false)
+    })
+
+    it('error if broadcast not have associated segment', async () => {
+      await createBroadcast(1)
+      try {
+        await BroadcastController.makeBroadcast(req(MAKE_PATH), res())
+      } catch (e) {
+        assert(e instanceof SystemError)
+        assert(e.message.includes('Broadcast has no associated segment. Data: {"id":1'))
+        return
+      }
+      assert(false)
     })
 
     it('creates tomorrow broadcast', async () => {
@@ -80,17 +105,17 @@ describe(
       assertEquals(results.length, 48)
     })
 
-    it('next broadcast not found', () => {
-      assertRejects(
-        async () => await BroadcastController.makeBroadcast(req(MAKE_PATH), res()),
-        RouteError,
-        'Unable to retrieve the next broadcast.',
-      )
+    it('next broadcast not found', async () => {
+      try {
+        await BroadcastController.makeBroadcast(req(MAKE_PATH), res())
+      } catch (e) {
+        assert(e instanceof RouteError)
+        assertEquals(e.message, 'Unable to retrieve the next broadcast')
+      }
     })
 
     it('first message contains apostrophe', async () => {
       const broadcast = await createBroadcast(60)
-      broadcast.firstMessage = "'first message"
       await supabase.update(broadcasts)
         .set({ firstMessage: "Outlier's" })
         .where(eq(broadcasts.id, broadcast.id!))
@@ -109,7 +134,6 @@ describe(
 
     it('second message contains apostrophe', async () => {
       const broadcast = await createBroadcast(60)
-      broadcast.firstMessage = "'first message"
       await supabase.update(broadcasts)
         .set({ secondMessage: "Outlier's" })
         .where(eq(broadcasts.id, broadcast.id!))
@@ -124,6 +148,116 @@ describe(
 
       const results = await supabase.select().from(outgoingMessages)
       assertEquals(results.length, 24)
+    })
+  },
+)
+
+describe(
+  'Send now',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    it('successfully', async () => {
+      const broadcast = await createBroadcast(60)
+      let results = await supabase.select().from(broadcasts)
+      assert(results[0].editable)
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+
+      const response = await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+      assertEquals(response.statusCode, 204)
+
+      results = await supabase.select().from(outgoingMessages)
+      assertEquals(results.length, 24)
+    })
+
+    it('duplicate current broadcast', async () => {
+      const broadcast = await createBroadcast(60)
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+
+      await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+
+      const results = await supabase.select().from(broadcasts).orderBy(desc(broadcasts.id))
+      assert(results[0].editable)
+      assert(!results[1].editable)
+      assertEquals(results[0].firstMessage, results[1].firstMessage)
+      assertEquals(results[0].secondMessage, results[1].secondMessage)
+      assertEquals(results[0].runAt, results[1].runAt)
+      assertEquals(results[0].delay, results[1].delay)
+      assertEquals(results[0].noUsers, results[1].noUsers)
+
+      const history = await call_history()
+      assertEquals(history.length, 1)
+      assert(history[0].parameters.startsWith('send-first-messages * * * * *'))
+      assertEquals(history[0].function_name, 'cron.schedule')
+    })
+
+    it('error if broadcast not have associated segment', async () => {
+      await createBroadcast(60)
+      try {
+        await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+      } catch (e) {
+        assert(e instanceof SystemError)
+        assertEquals(e.message, SEND_NOW_STATUS.Error.toString())
+        return
+      }
+      assert(false)
+    })
+
+    it('error if no available broadcast', async () => {
+      try {
+        await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+      } catch (e) {
+        assert(e instanceof SystemError)
+        assertEquals(e.message, SEND_NOW_STATUS.Error.toString())
+        return
+      }
+      assert(false)
+    })
+
+    it('first message contains apostrophe', async () => {
+      const broadcast = await createBroadcast(60)
+      await supabase.update(broadcasts)
+        .set({ firstMessage: "Outlier's" })
+        .where(eq(broadcasts.id, broadcast.id!))
+
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+      const response = await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+      assertEquals(response.statusCode, 204)
+
+      const results = await supabase.select().from(outgoingMessages)
+      assertEquals(results.length, 24)
+    })
+
+    it('second message contains apostrophe', async () => {
+      const broadcast = await createBroadcast(60)
+      await supabase.update(broadcasts)
+        .set({ secondMessage: "'Outlier's" })
+        .where(eq(broadcasts.id, broadcast.id!))
+
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+      const response = await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+      assertEquals(response.statusCode, 204)
+
+      const results = await supabase.select().from(outgoingMessages)
+      assertEquals(results.length, 24)
+    })
+
+    it('a new broadcast is about to run', async () => {
+      const runAt = new Date()
+      runAt.setMinutes(runAt.getMinutes() + 10)
+      const broadcast = await createBroadcast(60, runAt, 'a', 'b', true)
+      await createSegment(1, broadcast.id!)
+      try {
+        await BroadcastController.sendNow(req(MAKE_PATH), res())
+      } catch (e) {
+        assert(e instanceof RouteError)
+        assertEquals(e.message, SEND_NOW_STATUS.AboutToRun.toString())
+        return
+      }
+      assert(false)
     })
   },
 )
@@ -422,6 +556,68 @@ describe(
       assertEquals(dataAfter.past[0].successfullyDelivered, 0)
       assertEquals(dataAfter.past[0].failedDelivered, 0)
     })
+
+    it('order by id desc', async () => {
+      await seedPast(2, 'A similique dolores ut.', 'Id saepe magni aut quas.')
+      await seed()
+      await supabase.update(broadcasts)
+        .set({ runAt: new Date('2024-02-02T05:16:57.000Z') })
+
+      const response = await BroadcastController.getAll(req(DRAFT_PATH), res())
+      assertEquals(response.statusCode, 200)
+      const data = JSON.parse(response._getData())
+      assertEquals(data.past.length, 3)
+      assertEquals(data.past[1].firstMessage, 'A similique dolores ut.')
+      assertEquals(data.past[2].firstMessage, 'A similique dolores ut.')
+
+      assertEquals(data.past[1].secondMessage, 'Id saepe magni aut quas.')
+      assertEquals(data.past[2].secondMessage, 'Id saepe magni aut quas.')
+
+      assertEquals(data.past[0].runAt, 1706851017)
+      assertEquals(data.past[1].runAt, 1706851017)
+      assertEquals(data.past[2].runAt, 1706851017)
+      assertEquals(data.upcoming.runAt, 1706851017)
+      assert(data.upcoming.id > data.past[0].id)
+      assert(data.past[0].id > data.past[1].id)
+      assert(data.past[1].id > data.past[2].id)
+
+      const upcoming = await supabase.select().from(broadcasts).where(
+        eq(broadcasts.editable, true),
+      )
+      assertEquals(Number(upcoming[0].id), data.upcoming.id)
+      assertEquals(Number(upcoming[0].noUsers), 60)
+    })
+
+    it('order by editable', async () => {
+      await seed()
+      await seedPast(2, 'A similique dolores ut.', 'Id saepe magni aut quas.')
+      await supabase.update(broadcasts)
+        .set({ runAt: new Date('2024-02-02T05:16:57.000Z') })
+
+      const response = await BroadcastController.getAll(req(DRAFT_PATH), res())
+      assertEquals(response.statusCode, 200)
+      const data = JSON.parse(response._getData())
+      assertEquals(data.past.length, 3)
+      assertEquals(data.past[0].firstMessage, 'A similique dolores ut.')
+      assertEquals(data.past[1].firstMessage, 'A similique dolores ut.')
+
+      assertEquals(data.past[0].secondMessage, 'Id saepe magni aut quas.')
+      assertEquals(data.past[1].secondMessage, 'Id saepe magni aut quas.')
+
+      assertEquals(data.past[0].runAt, 1706851017)
+      assertEquals(data.past[1].runAt, 1706851017)
+      assertEquals(data.past[2].runAt, 1706851017)
+      assertEquals(data.upcoming.runAt, 1706851017)
+      assert(data.upcoming.id < data.past[0].id)
+      assert(data.past[0].id > data.past[1].id)
+      assert(data.past[1].id > data.past[2].id)
+
+      const upcoming = await supabase.select().from(broadcasts).where(
+        eq(broadcasts.editable, true),
+      )
+      assertEquals(Number(upcoming[0].id), data.upcoming.id)
+      assertEquals(Number(upcoming[0].noUsers), 60)
+    })
   },
 )
 
@@ -485,7 +681,7 @@ describe(
       eq(broadcasts.id, id),
     )
 
-    const body = { firstMessage: 'new msg' }
+    const body = { firstMessage: 'new  msg' }
     const response = await BroadcastController.patch(
       req('', param, {}, body),
       res(),
@@ -511,7 +707,7 @@ describe(
       eq(broadcasts.id, id),
     )
 
-    const body = { secondMessage: 'another new msg' }
+    const body = { secondMessage: 'another  new msg' }
     const response = await BroadcastController.patch(
       req('', param, {}, body),
       res(),
@@ -650,6 +846,8 @@ describe(
 const DRAFT_PATH = 'broadcasts/draft'
 const MAKE_PATH = 'broadcasts/make'
 const TWILIO_PATH = 'broadcasts/twilio'
+const SEND_NOW_PATH = 'broadcasts/send-now'
+
 const mockDraftMissive = (code: number) => {
   mf.mock(`POST@/v1/drafts`, () =>
     Response.json({

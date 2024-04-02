@@ -10,12 +10,16 @@ import {
   BroadcastSegment,
   broadcastSentMessageStatus,
   broadcastsSegments,
+  cronJob,
   OutgoingMessage,
   outgoingMessages,
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import {
+  dateToCron,
   invokeBroadcastCron,
+  JOB_NAMES,
+  SELECT_JOB_NAMES,
   sendFirstMessagesCron,
   sendSecondMessagesCron,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
@@ -47,8 +51,12 @@ import {
 } from '../scheduledcron/queries.ts'
 import RouteError from '../exception/RouteError.ts'
 import { escapeLiteral } from '../scheduledcron/helpers.ts'
+import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
+import { SEND_NOW_STATUS } from '../misc/AppResponse.ts'
 
+// Called by Postgres Trigger
 const makeBroadcast = async (): Promise<void> => {
+  // TODO: A broadcast may be running now
   const nextBroadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
@@ -64,27 +72,73 @@ const makeBroadcast = async (): Promise<void> => {
   })
 
   if (!nextBroadcast) {
-    throw new RouteError(400, 'Unable to retrieve the next broadcast.')
+    throw new RouteError(400, 'Unable to retrieve the next broadcast')
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
     throw new SystemError(`Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
   }
-  const insertWaitList: Promise<void>[] = []
-  for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
-    const insertWait = insertBroadcastSegmentRecipients(
-      broadcastSegment,
-      nextBroadcast,
-    )
-    insertWaitList.push(insertWait)
-  }
-  // Each segment is an independent entity; one failure doesn't affect the others.
-  await Promise.all([
-    ...insertWaitList,
-    makeTomorrowBroadcastSchedule(nextBroadcast),
-  ])
 
-  await supabase.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
-  await supabase.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
+  await supabase.transaction(async (tx) => {
+    for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
+      await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
+    }
+    await makeTomorrowBroadcastSchedule(tx, nextBroadcast)
+    await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
+    await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
+  })
+  // TODO: If this fails, recreate Postgres trigger
+}
+
+// Called by Missive sidebar
+const sendNow = async (): Promise<void> => {
+  const nextBroadcast = await supabase.query.broadcasts.findFirst({
+    where: and(eq(broadcasts.editable, true)),
+    with: {
+      broadcastToSegments: {
+        with: {
+          segment: true,
+        },
+      },
+    },
+  })
+
+  if (!nextBroadcast) {
+    log.error('SendNow: Unable to retrieve next broadcast')
+    throw new SystemError(SEND_NOW_STATUS.Error) //
+  }
+  if (nextBroadcast.broadcastToSegments.length === 0) {
+    log.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
+    throw new SystemError(SEND_NOW_STATUS.Error)
+  }
+  const diffInMinutes = DateUtils.diffInMinutes(nextBroadcast.runAt)
+  if (0 <= diffInMinutes && diffInMinutes <= 30) {
+    log.error('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+    throw new RouteError(400, SEND_NOW_STATUS.AboutToRun)
+  }
+
+  const isRunning = await isBroadcastRunning()
+  if (isRunning) {
+    log.error(`Unable to send now: another broadcast is running`)
+    throw new RouteError(400, SEND_NOW_STATUS.Running)
+  }
+
+  await supabase.transaction(async (tx) => {
+    const newId: { id: number }[] = await tx.insert(broadcasts).values(convertToFutureBroadcast(nextBroadcast))
+      .returning({ id: broadcasts.id })
+    const newBroadcastSegments: BroadcastSegment[] = []
+    for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
+      await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
+      newBroadcastSegments.push({
+        broadcastId: newId[0].id!,
+        segmentId: broadcastSegment.segment.id!,
+        ratio: broadcastSegment.ratio,
+      })
+    }
+
+    await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
+    await tx.insert(broadcastsSegments).values(newBroadcastSegments)
+    await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
+  })
 }
 
 const sendBroadcastSecondMessage = async (broadcastID: number) => {
@@ -107,7 +161,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       // No messages found, unschedule CRON jobs
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
-      await supabase.execute(sql.raw(unscheduleTwilioStatus(3)))
+      await supabase.execute(sql.raw(unscheduleTwilioStatus(5)))
       break
     }
     const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
@@ -244,17 +298,30 @@ const patch = async (
   id: number,
   broadcast: BroadcastUpdate,
 ): Promise<UpcomingBroadcastResponse | undefined> => {
-  const result: Broadcast[] = await supabase.update(broadcasts)
-    .set({
-      firstMessage: broadcast.firstMessage,
-      secondMessage: broadcast.secondMessage,
-      runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
-      delay: broadcast.delay,
-    })
-    .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
-    .returning()
-  if (result.length === 0) return
-  return convertToUpcomingBroadcast(result[0])
+  await supabase.transaction(async (tx) => {
+    const result: Broadcast[] = await tx.update(broadcasts)
+      .set({
+        firstMessage: broadcast.firstMessage,
+        secondMessage: broadcast.secondMessage,
+        runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
+        delay: broadcast.delay,
+      })
+      .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
+      .returning()
+    if (result.length === 0) {
+      await tx.rollback()
+      return
+    }
+    if (broadcast.runAt) {
+      const cronRunAt = dateToCron(new Date(broadcast.runAt * 1000))
+      await tx
+        .update(cronJob)
+        .set({ schedule: cronRunAt })
+        .where(eq(cronJob.jobname, 'invoke-broadcast'))
+        .execute()
+    }
+    return convertToUpcomingBroadcast(result[0])
+  })
 }
 
 const updateTwilioHistory = async (broadcastID: number) => {
@@ -300,9 +367,9 @@ const updateTwilioHistory = async (broadcastID: number) => {
 /* ======================================== UTILS ======================================== */
 
 const makeTomorrowBroadcastSchedule = async (
-  previousBroadcast: Broadcast & {
-    broadcastToSegments: { segment: AudienceSegment; ratio: number }[]
-  },
+  // deno-lint-ignore no-explicit-any
+  tx: PostgresJsTransaction<any, any>,
+  previousBroadcast: Broadcast & { broadcastToSegments: { segment: AudienceSegment; ratio: number }[] },
 ): Promise<void> => {
   let noAdvancedDate = 1
   switch (previousBroadcast.runAt.getDay() + 1) {
@@ -316,12 +383,12 @@ const makeTomorrowBroadcastSchedule = async (
 
   previousBroadcast.runAt.setUTCDate(previousBroadcast.runAt.getDate() + noAdvancedDate)
   const newBroadcast = convertToFutureBroadcast(previousBroadcast)
-  const firstMessageCron = invokeBroadcastCron(newBroadcast.runAt)
-  await supabase.execute(sql.raw(firstMessageCron))
+  const invokeNextBroadcast = invokeBroadcastCron(newBroadcast.runAt)
+  await tx.execute(sql.raw(invokeNextBroadcast))
   const insertedIds: {
     id: number
-  }[] = await supabase.insert(broadcasts).values(newBroadcast).returning({ id: broadcasts.id })
-  await supabase.insert(broadcastsSegments).values(previousBroadcast.broadcastToSegments.map((broadcastSegment) => ({
+  }[] = await tx.insert(broadcasts).values(newBroadcast).returning({ id: broadcasts.id })
+  await tx.insert(broadcastsSegments).values(previousBroadcast.broadcastToSegments.map((broadcastSegment) => ({
     broadcastId: insertedIds[0].id!,
     segmentId: broadcastSegment.segment.id!,
     ratio: broadcastSegment.ratio,
@@ -329,6 +396,8 @@ const makeTomorrowBroadcastSchedule = async (
 }
 
 const insertBroadcastSegmentRecipients = async (
+  // deno-lint-ignore no-explicit-any
+  tx: PostgresJsTransaction<any, any>,
   broadcastSegment: BroadcastSegment,
   nextBroadcast: Broadcast,
 ) => {
@@ -336,7 +405,7 @@ const insertBroadcastSegmentRecipients = async (
 
   const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
   const statement = insertOutgoingMessagesQuery(broadcastSegment, nextBroadcast, limit)
-  await supabase.execute(sql.raw(statement))
+  await tx.execute(sql.raw(statement))
 }
 
 const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsProcessed: number[]) => {
@@ -361,6 +430,11 @@ const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsP
   }
 }
 
+const isBroadcastRunning = async (): Promise<boolean> => {
+  const jobs = await supabase.execute(sql.raw(SELECT_JOB_NAMES))
+  return jobs.some((job: { jobname: string }) => job.jobname != 'invoke-broadcast' && JOB_NAMES.includes(job.jobname))
+}
+
 export default {
   makeBroadcast,
   getAll,
@@ -368,4 +442,5 @@ export default {
   sendBroadcastFirstMessage,
   sendBroadcastSecondMessage,
   updateTwilioHistory,
+  sendNow,
 } as const

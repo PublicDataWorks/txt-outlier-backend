@@ -4,4 +4,9 @@ const advance = (milis: number): Date => {
   return date
 }
 
-export default { advance }
+const diffInMinutes = (runAt: Date): number => {
+  const now = new Date()
+  return (runAt.getTime() - now.getTime()) / (1000 * 60)
+}
+
+export default { advance, diffInMinutes }

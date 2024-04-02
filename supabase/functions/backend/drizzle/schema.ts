@@ -1,14 +1,15 @@
 import {
   bigint,
   boolean,
-  doublePrecision,
   index,
   integer,
   interval,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   serial,
+  smallint,
   text,
   timestamp,
   unique,
@@ -25,6 +26,7 @@ export const keyStatus = pgEnum('key_status', ['default', 'valid', 'invalid', 'e
 export const equalityOp = pgEnum('equality_op', ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in'])
 export const action = pgEnum('action', ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR'])
 export const requestStatus = pgEnum('request_status', ['PENDING', 'SUCCESS', 'ERROR'])
+export const cronSchema = pgSchema('cron')
 
 export const broadcastsSegments = pgTable('broadcasts_segments', {
   id: serial('id').primaryKey().notNull(),
@@ -37,7 +39,7 @@ export const broadcastsSegments = pgTable('broadcasts_segments', {
   segmentId: bigint('segment_id', { mode: 'number' }).notNull().references(() => audienceSegments.id, {
     onUpdate: 'cascade',
   }),
-  ratio: doublePrecision('ratio').notNull(),
+  ratio: smallint('ratio').notNull(),
   firstMessage: text('first_message'),
   secondMessage: text('second_message'),
 }, (table) => {
@@ -360,6 +362,12 @@ export const outgoingMessages = pgTable('outgoing_messages', {
   }),
   isSecond: boolean('is_second').default(false).notNull(),
   processed: boolean('processed').default(false).notNull(),
+})
+
+export const cronJob = cronSchema.table('job', {
+  id: serial('id').primaryKey(),
+  jobname: text('jobname').notNull(),
+  schedule: text('schedule').notNull(),
 })
 
 export type Rule = typeof rules.$inferInsert
