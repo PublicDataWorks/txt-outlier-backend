@@ -52,6 +52,8 @@ jobs:
       - run:
           command: ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "sh deploy.sh"
           name: Run the script to deploy the project
+
+      # This command will delete all the IP addresses associated with the AWS security group specifically created for CircleCI deployments
       - run:
           command: |
             current_security_group=$(aws ec2 describe-security-groups --region $AWS_REGION --group-id $AWS_SECURITY_GROUP)
@@ -79,4 +81,4 @@ workflows:
           filters:
             branches:
               only:
-                - main
+                - chores/setup-automatic-deploy-ec2

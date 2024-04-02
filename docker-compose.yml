@@ -5,3 +5,4 @@ services:
     image: outlier-backend-deno-image
     ports:
       - "443:443"
+    restart: always
