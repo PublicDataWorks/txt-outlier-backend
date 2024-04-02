@@ -349,7 +349,6 @@ const updateTwilioHistory = async (broadcastID: number) => {
 
   if (updatedArray.length > 0) {
     const updateRaw = updateTwilioStatusRaw(updatedArray)
-    console.log(updateRaw)
     await supabase.execute(sql.raw(updateRaw))
     // Send realtime update to the sidebar
     const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)
