@@ -312,8 +312,8 @@ const patch = async (
       return
     }
     if (broadcast.runAt) {
-      await supabase.execute(sql.raw(UNSCHEDULE_INVOKE))
-      const invokeNextBroadcast = invokeBroadcastCron(broadcast.runAt)
+      await tx.execute(sql.raw(UNSCHEDULE_INVOKE))
+      const invokeNextBroadcast = invokeBroadcastCron(broadcast.runAt * 1000)
       await tx.execute(sql.raw(invokeNextBroadcast))
     }
     return convertToUpcomingBroadcast(result[0])
