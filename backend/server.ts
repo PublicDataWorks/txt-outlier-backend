@@ -2,6 +2,8 @@ import morgan from 'morgan'
 import helmet from 'helmet'
 import cors from 'cors'
 import * as log from 'log'
+import http from 'node:http'
+import https from 'node:https'
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -10,6 +12,9 @@ import 'express-async-errors'
 import BaseRouter from './routes/Api.ts'
 import Paths from './constants/Paths.ts'
 import RouteError from './exception/RouteError.ts'
+
+const certPath = Deno.env.get('SSL_CERT_PATH')
+const keyPath = Deno.env.get('SSL_PRIVATE_KEY_PATH')
 
 const app = express()
 
@@ -45,4 +50,19 @@ app.use((
 
   return res.status(status).json({ message })
 })
-export default app
+
+let server:
+  | https.Server<typeof http.IncomingMessage, typeof http.ServerResponse>
+  | http.Server<typeof http.IncomingMessage, typeof http.ServerResponse>
+
+if (certPath && keyPath) {
+  // HTTPS server
+  const cert = Deno.readTextFileSync(certPath)
+  const key = Deno.readTextFileSync(keyPath)
+  const credentials = { key: key, cert: cert }
+
+  server = https.createServer(credentials, app)
+} else {
+  server = http.createServer(app)
+}
+export default server

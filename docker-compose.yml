@@ -1,0 +1,7 @@
+services:
+  txt-outlier-backend:
+    build: .
+    container_name: outlier-backend-deno-container
+    image: outlier-backend-deno-image
+    ports:
+      - "443:443"

@@ -9,24 +9,27 @@ jobs:
       - run: curl -fsSL https://deno.land/install.sh | sh
       - run:
           name: Run lint
-          command: |
-            cd supabase/functions
-            /home/circleci/.deno/bin/deno task lint
+          command: /home/circleci/.deno/bin/deno task lint
       - run:
           name: Run fmt
-          command: |
-            cd supabase/functions
-            /home/circleci/.deno/bin/deno task fmt --check
+          command: /home/circleci/.deno/bin/deno task fmt --check
 
       - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
-      - run: npx supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
+      - run:
+          name: Setup for test
+          command: |
+            cd backend/tests
+            npx supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
       - run:
           name: Run the tests
-          command: |
-            cd supabase/functions
-            /home/circleci/.deno/bin/deno task test:coverage
+          command: /home/circleci/.deno/bin/deno task test:coverage
       - run:
           name: Coverage
+          command: /home/circleci/.deno/bin/deno coverage cov_profile --exclude=tests
+      - run:
+          name: Clean up after test
           command: |
-            cd supabase/functions
-            /home/circleci/.deno/bin/deno coverage cov_profile --exclude=tests
+            cd backend/tests
+            npx supabase stop
+
+
