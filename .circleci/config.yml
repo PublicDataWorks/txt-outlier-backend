@@ -1,7 +1,10 @@
 version: 2.1
 
+orbs:
+  aws-cli: circleci/aws-cli@4.1.3
+
 jobs:
-  build:
+  build-and-test:
     machine:
       image: default
     steps:
@@ -32,4 +35,55 @@ jobs:
             cd backend/tests
             npx supabase stop
 
+  deploy-production:
+    executor: aws-cli/default
+    steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:nellmY2hJL/tZt3X0j9w3qftzo2kQeb18M4+hhzTAXw"
+      - aws-cli/install
 
+      #This command will add the current CircleCI EC2 instance IP to the AWS security group specifically created for CircleCI.
+      - run:
+          command: |
+            public_ip_address=$(wget -qO- http://checkip.amazonaws.com)
+            aws ec2 authorize-security-group-ingress --region $AWS_REGION --group-id $AWS_SECURITY_GROUP --ip-permissions "[{\"IpProtocol\": \"tcp\", \"FromPort\": $OPEN_PORT, \"ToPort\": $OPEN_PORT, \"IpRanges\": [{\"CidrIp\": \"${public_ip_address}/32\"}]}]"
+
+      - run:
+          command: sleep 5
+          name: Waiting of SSH Server to start at New EC2 Instance
+
+      # This command will run the deploy script
+      - run:
+          command: ssh -o StrictHostKeyChecking=no -t $SSH_USER@$SSH_HOST "export TERM=xterm; sh deploy.sh"
+          name: Run the script to deploy the project
+
+      # This command will delete all the IP addresses associated with the AWS security group specifically created for CircleCI.
+      - run:
+          command: |
+            current_security_group=$(aws ec2 describe-security-groups --region $AWS_REGION --group-id $AWS_SECURITY_GROUP)
+            ip_count=$(echo ${current_security_group} | jq -r '.SecurityGroups[0].IpPermissions | length')
+            if [ ${ip_count} > 0 ]; then
+                for (( n=0; n < $ip_count; n++ ))
+                do
+              this_port=$(echo ${current_security_group} | jq -r ".SecurityGroups[0].IpPermissions[${n}].FromPort")
+              cidr_count=$(echo ${current_security_group} | jq -r ".SecurityGroups[0].IpPermissions[${n}].IpRanges | length")
+              for (( c=0; c < $cidr_count; c++ ))
+              do
+                  this_cidr=$(echo ${current_security_group} | jq -r ".SecurityGroups[0].IpPermissions[${n}].IpRanges[${c}].CidrIp")
+                  aws ec2 revoke-security-group-ingress --region $AWS_REGION --group-id $AWS_SECURITY_GROUP --protocol tcp --port ${this_port} --cidr ${this_cidr}
+              done
+                done
+            fi
+
+workflows:
+  test_and_deploy:
+    jobs:
+      - build-and-test
+      - deploy-production:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only:
+                - main
