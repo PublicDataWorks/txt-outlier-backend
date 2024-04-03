@@ -10,18 +10,17 @@ import {
   BroadcastSegment,
   broadcastSentMessageStatus,
   broadcastsSegments,
-  cronJob,
   OutgoingMessage,
   outgoingMessages,
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import {
-  dateToCron,
   invokeBroadcastCron,
   JOB_NAMES,
   SELECT_JOB_NAMES,
   sendFirstMessagesCron,
   sendSecondMessagesCron,
+  UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
@@ -313,12 +312,9 @@ const patch = async (
       return
     }
     if (broadcast.runAt) {
-      const cronRunAt = dateToCron(new Date(broadcast.runAt * 1000))
-      await tx
-        .update(cronJob)
-        .set({ schedule: cronRunAt })
-        .where(eq(cronJob.jobname, 'invoke-broadcast'))
-        .execute()
+      await supabase.execute(sql.raw(UNSCHEDULE_INVOKE))
+      const invokeNextBroadcast = invokeBroadcastCron(broadcast.runAt)
+      await tx.execute(sql.raw(invokeNextBroadcast))
     }
     return convertToUpcomingBroadcast(result[0])
   })

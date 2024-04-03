@@ -93,7 +93,7 @@ const updateTwilioStatusCron = (broadcastId: number): string => {
     );
   `
 }
-
+const UNSCHEDULE_INVOKE = "SELECT cron.unschedule('invoke-broadcast');"
 const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
@@ -124,6 +124,7 @@ export {
   SELECT_JOB_NAMES,
   sendFirstMessagesCron,
   sendSecondMessagesCron,
+  UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
