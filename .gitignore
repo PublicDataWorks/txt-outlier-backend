@@ -19,3 +19,4 @@ scheduledcron.iml
 **/.branch
 supabase/.branches/_current_branch
 /.env.sample
+**/*.log
