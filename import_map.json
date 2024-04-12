@@ -14,6 +14,7 @@
     "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
     "log": "https://deno.land/std@0.218.2/log/mod.ts",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
-    "supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+    "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "jsonwebtoken": "npm:jsonwebtoken"
   }
 }

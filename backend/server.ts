@@ -21,7 +21,8 @@ const keyPath = Deno.env.get('SSL_PRIVATE_KEY_PATH')
 morgan.token('body', (req, _) => JSON.stringify(req.body))
 morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
 const accessLogStream = fs.createWriteStream(
-  path.join(import.meta.dirname, 'logs', 'access.log'),
+  // @ts-ignore
+  new URL('logs/access.log', import.meta.url).pathname,
   { flags: 'a' },
 )
 
