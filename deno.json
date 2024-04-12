@@ -45,7 +45,7 @@
     ]
   },
   "tasks": {
-    "run": "deno run --watch --allow-all --env=.env backend/index.ts",
+    "run": "deno run --watch --allow-all --env=.env --unsafely-ignore-certificate-errors backend/index.ts",
     "fmt": "deno fmt **/*.ts",
     "lint": "deno lint **/*.ts",
     "test:dbSetup": "cd backend/tests && supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer",

@@ -2261,5 +2261,23 @@
     "https://esm.sh/v135/@supabase/supabase-js@2.39.0/denonext/supabase-js.mjs": "4bdaa7d4eaa9a4a31e82cfa12656306ee56575778d88c873035223e508d4f9a2",
     "https://esm.sh/v135/es5-ext@0.10.62/denonext/global.js": "2f51d9acef1f761faaa542da919b3c747744ea29fe709d0a904fd531716a93d6",
     "https://esm.sh/v135/websocket@1.0.34/denonext/websocket.mjs": "dfe5d62007e9f7430d561e2376fe47caa9d04cb016d83d3386fcc2206a90296b"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@types/express@^4.17.21",
+        "npm:@types/morgan@^1.9.9",
+        "npm:cors@^2.8.5",
+        "npm:drizzle-orm@^0.29.3",
+        "npm:express-async-errors@^3.1.1",
+        "npm:express-validator@^7.0.1",
+        "npm:express@^4.18.2",
+        "npm:helmet@^7.1.0",
+        "npm:jsonwebtoken@^9.0.2",
+        "npm:morgan@^1.10.0",
+        "npm:node-mocks-http@^1.14.1",
+        "npm:postgres@^3.4.3"
+      ]
+    }
   }
 }

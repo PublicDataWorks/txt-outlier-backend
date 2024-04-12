@@ -15,7 +15,7 @@ const serviceTokenVerify = (req: Request, res: Response, next: NextFunction) => 
 
   if (!secretKey) {
     console.error('JWT secret key is not defined in the environment variables.');
-    return AppResponse.internalServerError(res);
+    throw Error('JWT secret key is not defined in the environment variables')
   }
 
   jwt.verify(token, secretKey, (err, decoded) => {
