@@ -5,7 +5,6 @@ import * as log from 'log'
 import http from 'node:http'
 import https from 'node:https'
 import fs from 'node:fs'
-import path from 'node:path'
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -21,7 +20,6 @@ const keyPath = Deno.env.get('SSL_PRIVATE_KEY_PATH')
 morgan.token('body', (req, _) => JSON.stringify(req.body))
 morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
 const accessLogStream = fs.createWriteStream(
-  // @ts-ignore
   new URL('logs/access.log', import.meta.url).pathname,
   { flags: 'a' },
 )
