@@ -1,12 +1,9 @@
-import morgan from 'morgan'
 import helmet from 'helmet'
 import cors from 'cors'
 import * as log from 'log'
 import http from 'node:http'
 import https from 'node:https'
-import fs from 'node:fs'
-import * as Sentry from "sentry/deno";
-
+import * as Sentry from 'sentry/deno'
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -38,7 +35,7 @@ if (sentryDNSClientKey) {
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-app.use(morgan('myformat'))
+// app.use(morgan('myformat'))
 // app.use(morgan('myformat', { stream: accessLogStream }))
 app.use(cors())
 
@@ -69,10 +66,6 @@ app.use((
 
   return res.status(status).json({ message })
 })
-
-app.get("/debug-sentry", function mainHandler(req, res) {
-  throw new Error("My first Sentry error!");
-});
 
 let server:
   | https.Server<typeof http.IncomingMessage, typeof http.ServerResponse>
