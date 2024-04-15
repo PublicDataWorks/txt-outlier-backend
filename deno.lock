@@ -728,6 +728,7 @@
   "redirects": {
     "https://crux.land/router@0.0.5": "https://crux.land/api/get/2KNRVU.ts",
     "https://deno.land/x/postgresjs/mod.js": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
+    "https://deno.land/x/sentry/index.mjs": "https://deno.land/x/sentry@7.110.0/index.mjs",
     "https://denopkg.com/chiefbiiko/base64/mod.ts": "https://denopkg.com/chiefbiiko/base64@master/mod.ts",
     "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.39.0"
   },
@@ -2322,6 +2323,7 @@
     "https://deno.land/x/postgresjs@v3.4.3/src/result.js": "001ff5e0c8d634674f483d07fbcd620a797e3101f842d6c20ca3ace936260465",
     "https://deno.land/x/postgresjs@v3.4.3/src/subscribe.js": "6ac0679e186ab4e681c55252ff50ac4e567df47a7d1382e6e37928f3e9f1fff8",
     "https://deno.land/x/postgresjs@v3.4.3/src/types.js": "471f4a6c35412aa202a7c177c0a7e5a7c3bd225f01bbde67c947894c1b8bf6ed",
+    "https://deno.land/x/sentry@7.110.0/index.mjs": "ffa7b94354ca1413294f4fc01f4dd2dcd2a4896e5b2d31f4fa314cf3eb135da4",
     "https://denopkg.com/chiefbiiko/base64@master/base.ts": "47dc8d68f07dc91524bdd6db36eccbe59cf4d935b5fc09f27357a3944bb3ff7b",
     "https://denopkg.com/chiefbiiko/base64@master/mod.ts": "1cbdc4ba7229d3c6d1763fecdb9d46844777c7e153abb6dabea8b0dd01448db4",
     "https://esm.sh/@supabase/supabase-js@2.39.0": "bf57446ec99323e9ff0cc4e31a08c1baaea060ad3abe7061bae4c0d1953d61cf",
@@ -2335,5 +2337,25 @@
     "https://esm.sh/v135/@supabase/supabase-js@2.39.0/denonext/supabase-js.mjs": "4bdaa7d4eaa9a4a31e82cfa12656306ee56575778d88c873035223e508d4f9a2",
     "https://esm.sh/v135/es5-ext@0.10.62/denonext/global.js": "2f51d9acef1f761faaa542da919b3c747744ea29fe709d0a904fd531716a93d6",
     "https://esm.sh/v135/websocket@1.0.34/denonext/websocket.mjs": "dfe5d62007e9f7430d561e2376fe47caa9d04cb016d83d3386fcc2206a90296b"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@sentry/node@^7.110.0",
+        "npm:@sentry/profiling-node@^7.110.0",
+        "npm:@types/express@^4.17.21",
+        "npm:@types/morgan@^1.9.9",
+        "npm:cors@^2.8.5",
+        "npm:drizzle-orm@^0.29.3",
+        "npm:express-async-errors@^3.1.1",
+        "npm:express-validator@^7.0.1",
+        "npm:express@^4.18.2",
+        "npm:helmet@^7.1.0",
+        "npm:jsonwebtoken@^9.0.2",
+        "npm:morgan@^1.10.0",
+        "npm:node-mocks-http@^1.14.1",
+        "npm:postgres@^3.4.3"
+      ]
+    }
   }
 }

@@ -5,8 +5,8 @@ import * as log from 'log'
 import http from 'node:http'
 import https from 'node:https'
 import fs from 'node:fs'
-import Sentry from 'sentry/node'
-import { nodeProfilingIntegration } from 'sentry/profiling-node'
+import * as Sentry from "sentry/deno";
+
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -33,41 +33,19 @@ const app = express()
 if (sentryDNSClientKey) {
   Sentry.init({
     dsn: sentryDNSClientKey,
-    integrations: [
-      // enable HTTP calls tracing
-      new Sentry.Integrations.Http({ tracing: true }),
-      // enable Express.js middleware tracing
-      new Sentry.Integrations.Express({ app }),
-      nodeProfilingIntegration(),
-    ],
-    // Performance Monitoring
-    tracesSampleRate: 1.0, //  Capture 100% of the transactions
-    // Set sampling rate for profiling - this is relative to tracesSampleRate
-    profilesSampleRate: 1.0,
   })
-
-  // The request handler must be the first middleware on the app
-  app.use(Sentry.Handlers.requestHandler())
-
-  // TracingHandler creates a trace for every incoming request
-  app.use(Sentry.Handlers.tracingHandler())
 }
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(morgan('myformat'))
-app.use(morgan('myformat', { stream: accessLogStream }))
+// app.use(morgan('myformat', { stream: accessLogStream }))
 app.use(cors())
 
 // Security
 app.use(helmet())
 
 app.use(Paths.Base, BaseRouter)
-
-if (sentryDNSClientKey) {
-  // The error handler must be registered before any other error middleware and after all controllers
-  app.use(Sentry.Handlers.errorHandler())
-}
 
 app.use((
   err: Error,
@@ -91,6 +69,10 @@ app.use((
 
   return res.status(status).json({ message })
 })
+
+app.get("/debug-sentry", function mainHandler(req, res) {
+  throw new Error("My first Sentry error!");
+});
 
 let server:
   | https.Server<typeof http.IncomingMessage, typeof http.ServerResponse>
