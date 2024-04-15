@@ -5,6 +5,8 @@ import * as log from 'log'
 import http from 'node:http'
 import https from 'node:https'
 import fs from 'node:fs'
+import Sentry from 'sentry/node'
+import { nodeProfilingIntegration } from 'sentry/profiling-node'
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -16,15 +18,40 @@ import RouteError from './exception/RouteError.ts'
 
 const certPath = Deno.env.get('SSL_CERT_PATH')
 const keyPath = Deno.env.get('SSL_PRIVATE_KEY_PATH')
+const sentryDNSClientKey = Deno.env.get('SENTRY_DNS_CLIENT_KEY')
 
-morgan.token('body', (req, _) => JSON.stringify(req.body))
-morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
-const accessLogStream = fs.createWriteStream(
-  new URL('logs/access.log', import.meta.url).pathname,
-  { flags: 'a' },
-)
+// Log to file
+// morgan.token('body', (req, _) => JSON.stringify(req.body))
+// morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
+// const accessLogStream = fs.createWriteStream(
+//   new URL('logs/access.log', import.meta.url).pathname,
+//   { flags: 'a' },
+// )
 
 const app = express()
+
+if (sentryDNSClientKey) {
+  Sentry.init({
+    dsn: sentryDNSClientKey,
+    integrations: [
+      // enable HTTP calls tracing
+      new Sentry.Integrations.Http({ tracing: true }),
+      // enable Express.js middleware tracing
+      new Sentry.Integrations.Express({ app }),
+      nodeProfilingIntegration(),
+    ],
+    // Performance Monitoring
+    tracesSampleRate: 1.0, //  Capture 100% of the transactions
+    // Set sampling rate for profiling - this is relative to tracesSampleRate
+    profilesSampleRate: 1.0,
+  })
+
+  // The request handler must be the first middleware on the app
+  app.use(Sentry.Handlers.requestHandler())
+
+  // TracingHandler creates a trace for every incoming request
+  app.use(Sentry.Handlers.tracingHandler())
+}
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
@@ -36,6 +63,11 @@ app.use(cors())
 app.use(helmet())
 
 app.use(Paths.Base, BaseRouter)
+
+if (sentryDNSClientKey) {
+  // The error handler must be registered before any other error middleware and after all controllers
+  app.use(Sentry.Handlers.errorHandler())
+}
 
 app.use((
   err: Error,
