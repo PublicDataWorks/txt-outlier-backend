@@ -4,8 +4,7 @@ import cors from 'cors'
 import * as log from 'log'
 import http from 'node:http'
 import https from 'node:https'
-import fs from 'node:fs'
-import path from 'node:path'
+import * as Sentry from 'sentry/deno'
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -17,20 +16,23 @@ import RouteError from './exception/RouteError.ts'
 
 const certPath = Deno.env.get('SSL_CERT_PATH')
 const keyPath = Deno.env.get('SSL_PRIVATE_KEY_PATH')
+const sentryDNSClientKey = Deno.env.get('SENTRY_DNS_CLIENT_KEY')
 
+// Log to file
 morgan.token('body', (req, _) => JSON.stringify(req.body))
 morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
-const accessLogStream = fs.createWriteStream(
-  path.join(import.meta.dirname, 'logs', 'access.log'),
-  { flags: 'a' },
-)
 
 const app = express()
+
+if (sentryDNSClientKey) {
+  Sentry.init({
+    dsn: sentryDNSClientKey,
+  })
+}
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(morgan('myformat'))
-app.use(morgan('myformat', { stream: accessLogStream }))
 app.use(cors())
 
 // Security
