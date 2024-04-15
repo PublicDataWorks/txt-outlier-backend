@@ -8,6 +8,7 @@
       "npm:@sentry/profiling-node@^7.110.0": "npm:@sentry/profiling-node@7.110.0",
       "npm:@types/express@^4.17.21": "npm:@types/express@4.17.21",
       "npm:@types/morgan@^1.9.9": "npm:@types/morgan@1.9.9",
+      "npm:@types/node": "npm:@types/node@18.16.19",
       "npm:cors": "npm:cors@2.8.5",
       "npm:cors@^2.8.5": "npm:cors@2.8.5",
       "npm:drizzle-orm": "npm:drizzle-orm@0.29.3",

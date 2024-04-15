@@ -1,3 +1,4 @@
+import morgan from 'morgan'
 import helmet from 'helmet'
 import cors from 'cors'
 import * as log from 'log'
@@ -18,12 +19,8 @@ const keyPath = Deno.env.get('SSL_PRIVATE_KEY_PATH')
 const sentryDNSClientKey = Deno.env.get('SENTRY_DNS_CLIENT_KEY')
 
 // Log to file
-// morgan.token('body', (req, _) => JSON.stringify(req.body))
-// morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
-// const accessLogStream = fs.createWriteStream(
-//   new URL('logs/access.log', import.meta.url).pathname,
-//   { flags: 'a' },
-// )
+morgan.token('body', (req, _) => JSON.stringify(req.body))
+morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-length] - :response-time ms :body')
 
 const app = express()
 
@@ -35,8 +32,7 @@ if (sentryDNSClientKey) {
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-// app.use(morgan('myformat'))
-// app.use(morgan('myformat', { stream: accessLogStream }))
+app.use(morgan('myformat'))
 app.use(cors())
 
 // Security
