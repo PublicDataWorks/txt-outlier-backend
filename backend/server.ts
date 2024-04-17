@@ -4,7 +4,8 @@ import cors from 'cors'
 import * as log from 'log'
 import http from 'node:http'
 import https from 'node:https'
-import * as Sentry from 'sentry/deno'
+import * as DenoSentry from 'sentry/deno'
+import Sentry from 'sentry/node'
 
 import express, { NextFunction, Request, Response } from 'express'
 
@@ -25,8 +26,16 @@ morgan.format('myformat', '[:date[clf]] ":method :url" :status :res[content-leng
 const app = express()
 
 if (sentryDNSClientKey) {
-  Sentry.init({
+  DenoSentry.init({
     dsn: sentryDNSClientKey,
+    integrations: [
+      // enable HTTP calls tracing
+      new Sentry.Integrations.Http({ tracing: true }),
+      // enable Express.js middleware tracing
+      new Sentry.Integrations.Express({ app }),
+    ],
+    tracesSampleRate: 1.0,
+    profilesSampleRate: 1.0,
   })
 }
 
@@ -39,6 +48,11 @@ app.use(cors())
 app.use(helmet())
 
 app.use(Paths.Base, BaseRouter)
+
+if (sentryDNSClientKey) {
+  // The error handler must be registered before any other error middleware and after all controllers
+  app.use(Sentry.Handlers.errorHandler())
+}
 
 app.use((
   err: Error,

@@ -16,6 +16,7 @@
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
     "jsonwebtoken": "npm:jsonwebtoken",
-    "sentry/deno": "https://deno.land/x/sentry/index.mjs"
+    "sentry/deno": "https://deno.land/x/sentry/index.mjs",
+    "sentry/node": "npm:@sentry/node"
   }
 }
