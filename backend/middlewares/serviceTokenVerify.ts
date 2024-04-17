@@ -8,8 +8,8 @@ const secretKey = Deno.env.get('JWT_SECRET')
 const serviceTokenVerify = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    DenoSentry.captureException("Invalid authorization");
-    await DenoSentry.flush();
+    DenoSentry.captureException('Invalid authorization')
+    await DenoSentry.flush()
     return AppResponse.unauthorized(res)
   }
 
@@ -22,8 +22,8 @@ const serviceTokenVerify = async (req: Request, res: Response, next: NextFunctio
 
   jwt.verify(token, secretKey, async (err, _) => {
     if (err) {
-      DenoSentry.captureException(err);
-      await DenoSentry.flush();
+      DenoSentry.captureException(err)
+      await DenoSentry.flush()
 
       return AppResponse.unauthorized(res)
     }

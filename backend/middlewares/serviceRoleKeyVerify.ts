@@ -9,15 +9,15 @@ const serviceRoleKeyVerify = async (
 ) => {
   const authHeader = req.headers.authorization
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    DenoSentry.captureException("Invalid authorization");
-    await DenoSentry.flush();
+    DenoSentry.captureException('Invalid authorization')
+    await DenoSentry.flush()
     return AppResponse.unauthorized(res)
   }
 
   const token = authHeader.split(' ')[1]
   if (token !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
-    DenoSentry.captureException("Invalid authorization");
-    await DenoSentry.flush();
+    DenoSentry.captureException('Invalid authorization')
+    await DenoSentry.flush()
     return AppResponse.unauthorized(res)
   }
 
