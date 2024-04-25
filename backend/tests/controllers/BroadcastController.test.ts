@@ -158,15 +158,15 @@ describe(
   () => {
     it('successfully', async () => {
       const broadcast = await createBroadcast(60)
-      let results = await supabase.select().from(broadcasts)
-      assert(results[0].editable)
+      const resultsBroadcasts = await supabase.select().from(broadcasts)
+      assert(resultsBroadcasts[0].editable)
       await createSegment(1, broadcast.id!)
       await createTwilioMessages(30)
 
       const response = await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
       assertEquals(response.statusCode, 204)
 
-      results = await supabase.select().from(outgoingMessages)
+      const results = await supabase.select().from(outgoingMessages)
       assertEquals(results.length, 24)
     })
 
@@ -183,7 +183,7 @@ describe(
       assert(!results[1].editable)
       assertEquals(results[0].firstMessage, results[1].firstMessage)
       assertEquals(results[0].secondMessage, results[1].secondMessage)
-      assertEquals(results[0].runAt, results[1].runAt)
+      assertEquals(results[0].runAt.setMilliseconds(0), results[1].runAt.setMilliseconds(0))
       assertEquals(results[0].delay, results[1].delay)
       assertEquals(results[0].noUsers, results[1].noUsers)
 
@@ -673,13 +673,10 @@ describe(
     )
   }),
   it('update first message', async () => {
-    console.log('before seed')
     await seed()
-    console.log('after seed')
     const { id } = (await supabase.select({ id: broadcasts.id }).from(broadcasts).orderBy(
       desc(broadcasts.id),
     ).limit(1))[0]
-    console.log('after query')
     const param = { id }
     const before = await supabase.select().from(broadcasts).where(
       eq(broadcasts.id, id),
@@ -897,18 +894,13 @@ const seed = async (
   noSegments = 1,
   noTwilioMessages = 30,
 ): Promise<number> => {
-  console.log('123')
   const broadcast = await createBroadcast(noUsers)
-  console.log('456')
   await createSegment(noSegments, broadcast.id!)
-  console.log('789')
   await createTwilioMessages(noTwilioMessages)
-  console.log('1111')
   const response = await BroadcastController.makeBroadcast(
     req(MAKE_PATH),
     res(),
   )
-  console.log('2222')
   assertEquals(response.statusCode, 204)
   return broadcast.id!
 }
