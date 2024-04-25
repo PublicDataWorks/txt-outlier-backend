@@ -22,10 +22,10 @@ jobs:
           name: Setup for test
           command: |
             cd backend/tests
-            npx supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
+            npx supabase@1.159.1 start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
       - run:
           name: Run the tests
-          command: /home/circleci/.deno/bin/deno task test:coverage
+          command: /home/circleci/.deno/bin/deno task test:debug
       - run:
           name: Coverage
           command: /home/circleci/.deno/bin/deno coverage cov_profile --exclude=tests
