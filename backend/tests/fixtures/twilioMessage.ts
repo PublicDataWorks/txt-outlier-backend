@@ -10,8 +10,8 @@ const createTwilioMessages = async (times = 1) => {
     const message = {
       preview: faker.lorem.sentence(),
       type: 'sms',
-      deliveredAt: faker.date.past(),
-      createdAt: new Date(),
+      // deliveredAt: faker.date.past().toString(),
+      deliveredAt: '2024-03-19 04:37:00+00',
       references: [],
       fromField: newAuthors[i].phoneNumber,
       toField: (i - 1 >= 0) ? newAuthors[i - 1].phoneNumber : newAuthors[i + 1].phoneNumber,

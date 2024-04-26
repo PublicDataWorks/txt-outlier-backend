@@ -15,7 +15,6 @@ const serviceTokenVerify = (req: Request, res: Response, next: NextFunction) => 
   const token = authHeader.split(' ')[1]
 
   if (!secretKey) {
-    console.error('JWT secret key is not defined in the environment variables.')
     throw Error('JWT secret key is not defined in the environment variables')
   }
 
