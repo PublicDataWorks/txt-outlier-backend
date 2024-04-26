@@ -4,7 +4,7 @@ services:
     container_name: outlier-backend-deno-container
     image: outlier-backend-deno-image
     ports:
-      - "443:443"
+      - "8000:8000"
     volumes:
       - ./backend/logs:/app/backend/logs
     restart: always
