@@ -400,7 +400,7 @@ const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsP
     const sentMessageStatuses: BroadcastMessageStatus[] = []
     for (const item of processed) {
       outgoingIDsToDelete.push(item.outgoing.id!)
-      sentMessageStatuses.push(convertToBroadcastMessagesStatus(item.outgoing, item.id, item.conversation))
+      sentMessageStatuses.push(convertToBroadcastMessagesStatus(item.outgoing, item.id, item.conversation,item.outgoing.segmentId))
     }
     await supabase.insert(broadcastSentMessageStatus).values(sentMessageStatuses)
     await supabase
