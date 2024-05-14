@@ -7,6 +7,8 @@
     "drizzle-orm": "npm:drizzle-orm",
     "morgan": "npm:morgan",
     "cors": "npm:cors",
+    "date-fns": "https://esm.sh/date-fns@3.6.0",
+    "date-fns-tz": "https://esm.sh/date-fns-tz@3.1.3",
     "drizzle-orm/postgres-js": "npm:drizzle-orm/postgres-js",
     "drizzle-orm/pg-core": "npm:drizzle-orm/pg-core",
     "twilio": "npm:twilio@^4.21.0",
@@ -15,8 +17,8 @@
     "log": "https://deno.land/std@0.218.2/log/mod.ts",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
-    "jsonwebtoken": "npm:jsonwebtoken",
-    "sentry/deno": "https://deno.land/x/sentry@7.112.2/index.mjs",
-    "sentry/node": "npm:@sentry/node@^7.112.0"
+    "jsonwebtoken": "https://esm.sh/jsonwebtoken",
+    "sentry/deno": "https://deno.land/x/sentry@7.114.0/index.mjs",
+    "sentry/node": "https://esm.sh/@sentry/node@7.114.0"
   }
 }
