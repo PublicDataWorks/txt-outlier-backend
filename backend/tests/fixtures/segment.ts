@@ -24,8 +24,11 @@ const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
       ratio: 20,
     })
   }
-  await supabase.insert(broadcastsSegments).values(newBroadcastSegments)
-    .onConflictDoNothing()
+  const results = await supabase.insert(broadcastsSegments).values(newBroadcastSegments)
+    .onConflictDoNothing().returning()
+
+  return results[0]
+  
 }
 
 export { createSegment }

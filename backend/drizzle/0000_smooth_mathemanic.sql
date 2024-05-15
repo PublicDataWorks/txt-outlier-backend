@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
 	"twilio_sent_status" "twilio_status" DEFAULT 'delivered' NOT NULL,
 	"twilio_id" text,
 	"message" text NOT NULL,
+	"audience_segment_id" bigint NOT NULL,
 	CONSTRAINT "broadcast_sent_message_status_missive_id_key" UNIQUE("missive_id")
 );
 --> statement-breakpoint

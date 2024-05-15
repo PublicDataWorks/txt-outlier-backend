@@ -54,6 +54,7 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
   DROP TABLE IF EXISTS cron.job CASCADE;
+  DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
 `
 
 const req = (path: string, params?: object, query?: object, body?: object) => {
