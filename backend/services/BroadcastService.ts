@@ -81,7 +81,7 @@ const makeBroadcast = async (): Promise<void> => {
     for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
       await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
     }
-    await makeTomorrowBroadcastSchedule(tx, nextBroadcast)
+    await makeNextBroadcastSchedule(tx, nextBroadcast)
     await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
     await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
   })
@@ -362,22 +362,12 @@ const updateTwilioHistory = async (broadcastID: number) => {
 
 /* ======================================== UTILS ======================================== */
 
-const makeTomorrowBroadcastSchedule = async (
+const makeNextBroadcastSchedule = async (
   // deno-lint-ignore no-explicit-any
   tx: PostgresJsTransaction<any, any>,
   previousBroadcast: Broadcast & { broadcastToSegments: { segment: AudienceSegment; ratio: number }[] },
 ): Promise<void> => {
-  let noAdvancedDate = 1
-  switch (previousBroadcast.runAt.getDay() + 1) {
-    case 6: // Tomorrow is Saturday
-      noAdvancedDate = 3
-      break
-    case 0: // Tomorrow is Sunday
-      noAdvancedDate = 2
-      break
-  }
-
-  previousBroadcast.runAt.setUTCDate(previousBroadcast.runAt.getDate() + noAdvancedDate)
+  previousBroadcast.runAt = DateUtils.getNextTimestamp()
   const newBroadcast = convertToFutureBroadcast(previousBroadcast)
   const invokeNextBroadcast = invokeBroadcastCron(newBroadcast.runAt)
   await tx.execute(sql.raw(invokeNextBroadcast))

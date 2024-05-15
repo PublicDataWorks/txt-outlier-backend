@@ -10,6 +10,7 @@ jobs:
     steps:
       - checkout
       - run: curl -fsSL https://deno.land/install.sh | sh
+      - run: /home/circleci/.deno/bin/deno upgrade --version 1.39.0
       - run:
           name: Run lint
           command: /home/circleci/.deno/bin/deno task lint
