@@ -17,8 +17,8 @@
     "log": "https://deno.land/std@0.218.2/log/mod.ts",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
-    "jsonwebtoken": "https://esm.sh/jsonwebtoken",
+    "jsonwebtoken": "npm:jsonwebtoken",
     "sentry/deno": "https://deno.land/x/sentry@7.114.0/index.mjs",
-    "sentry/node": "https://esm.sh/@sentry/node@7.114.0"
+    "sentry/node": "npm:@sentry/node@^7.114.0"
   }
 }
