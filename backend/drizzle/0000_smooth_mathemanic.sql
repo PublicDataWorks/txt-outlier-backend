@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
 	"twilio_sent_status" "twilio_status" DEFAULT 'delivered' NOT NULL,
 	"twilio_id" text,
 	"message" text NOT NULL,
-	"audience_segment_id" bigint NOT NULL,
+	"audience_segment_id" bigint,
 	CONSTRAINT "broadcast_sent_message_status_missive_id_key" UNIQUE("missive_id")
 );
 --> statement-breakpoint
@@ -309,9 +309,9 @@ CREATE TABLE IF NOT EXISTS "twilio_messages" (
 CREATE TABLE IF NOT EXISTS "unsubscribed_messages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"broadcast_id" bigint NOT NULL,
+	"broadcast_id" bigint,
 	"twilio_message_id" uuid NOT NULL,
-	"reply_to" bigint NOT NULL
+	"reply_to" bigint
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "user_history" (

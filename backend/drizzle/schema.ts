@@ -83,12 +83,12 @@ export const unsubscribedMessages = pgTable('unsubscribed_messages', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  broadcastId: bigint('broadcast_id', { mode: 'number' }).notNull().references(() => broadcasts.id, {
+  broadcastId: bigint('broadcast_id', { mode: 'number' }).references(() => broadcasts.id, {
     onDelete: 'cascade',
   }),
   twilioMessageId: uuid('twilio_message_id').notNull().references(() => twilioMessages.id, { onDelete: 'cascade' }),
   // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  replyTo: bigint('reply_to', { mode: 'number' }).notNull().references(() => broadcastSentMessageStatus.id, {
+  replyTo: bigint('reply_to', { mode: 'number' }).references(() => broadcastSentMessageStatus.id, {
     onDelete: 'cascade',
   }),
 })

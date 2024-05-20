@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
-import AnalyticsService from '../services/AnalyticsService'
+import AnalyticsService from '../services/AnalyticsService.ts'
+
 
 async function getUnsubcribeReport(
   _req: Request,

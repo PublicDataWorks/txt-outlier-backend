@@ -86,7 +86,7 @@ const selectWeeklyUnsubcribeBroadcastMessageStatus = () => {
   COUNT(*) AS count  -- Example aggregation: count of unsubscribed messages
   FROM 
     public.unsubscribed_messages um 
-  JOIN 
+  LEFT JOIN 
     public.broadcast_sent_message_status bsm 
   ON 
     um.reply_to = bsm.id

@@ -36,6 +36,8 @@ describe('generateWeeklyAnalyticsReport', () => {
     )
     await createUnsubscribedMessage(30, broadcastStatusIds1, broadcast.id)
     await createUnsubscribedMessage(30, broadcastStatusIds2, broadcast.id)
+    await createUnsubscribedMessage(30, [], broadcast.id )
+    
     await createUnsubscribedMessage(
       30,
       broadcastStatusIds2,
@@ -51,6 +53,11 @@ describe('generateWeeklyAnalyticsReport', () => {
     }, {
       audience_segment_id: '2',
       count: '30',
-    }])
+    },
+    {
+      audience_segment_id: null,
+      count: '30',
+    },
+  ])
   })
 })
