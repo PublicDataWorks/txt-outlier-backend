@@ -53,7 +53,8 @@
     "test": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --quiet .",
     "test:debug": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json .",
     "test:coverage": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --coverage=cov_profile --quiet .",
-    "coverage": "deno coverage cov_profile --exclude=tests"
+    "coverage": "deno coverage cov_profile --exclude=tests",
+    "test:file": "deno eval \"const fileName = Deno.args[0]; Deno.run({ cmd: ['deno', 'test', fileName, '--no-check', '--allow-all', '--env=backend/tests/.env.test', '--import-map=backend/tests/import_map.json'] }).status()\""
   },
   "importMap": "./import_map.json"
 }

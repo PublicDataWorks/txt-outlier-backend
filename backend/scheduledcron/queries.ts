@@ -79,8 +79,7 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
   `
 }
 
-const selectWeeklyUnsubcribeBroadcastMessageStatus = () => {
-  return `
+const selectWeeklyUnsubcribeBroadcastMessageStatus = `
   SELECT 
   bsm.audience_segment_id,
   COUNT(*) AS count  -- Example aggregation: count of unsubscribed messages
@@ -90,14 +89,35 @@ const selectWeeklyUnsubcribeBroadcastMessageStatus = () => {
     public.broadcast_sent_message_status bsm 
   ON 
     um.reply_to = bsm.id
-  WHERE 
-    um.created_at >= DATE_TRUNC('week', CURRENT_DATE)  -- Start of the current week (Monday)
+  WHERE
+    um.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
     AND 
-    um.created_at < DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '7 days'  -- End of the current week (Sunday)
+    um.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
   GROUP BY 
     bsm.audience_segment_id;
   `
-}
+
+const selectWeeklyBroadcastSent = `
+  SELECT COUNT(*) AS count
+  FROM public.broadcast_sent_message_status
+  WHERE 
+  is_second = False
+  AND
+  created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+`
+
+const selectWeeklyFailedMessage = `
+  SELECT COUNT(*) AS count
+  FROM public.broadcast_sent_message_status
+  WHERE 
+  twilio_sent_status = 'failed' 
+  AND
+  created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+`
 
 interface BroadcastDashBoardQueryReturn {
   id: number
@@ -116,6 +136,8 @@ export {
   type BroadcastDashBoardQueryReturn,
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
+  selectWeeklyBroadcastSent,
+  selectWeeklyFailedMessage,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
   updateTwilioStatusRaw,
 }
