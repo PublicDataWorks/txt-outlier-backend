@@ -119,6 +119,17 @@ const selectWeeklyFailedMessage = `
   created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
 `
 
+const selectWeeklyTextIns = `
+  SELECT COUNT(*) AS count
+  FROM public.twilio_messages
+  WHERE 
+  is_broadcast_reply = false
+  AND
+  created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+`
+
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -138,6 +149,7 @@ export {
   selectBroadcastDashboard,
   selectWeeklyBroadcastSent,
   selectWeeklyFailedMessage,
+  selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
   updateTwilioStatusRaw,
 }

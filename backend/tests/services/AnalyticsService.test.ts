@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm'
 import MissiveUtils from '../../lib/Missive.ts'
 import { audienceSegments, broadcastSentMessageStatus, broadcastsSegments } from '../../drizzle/schema.ts'
 import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
+import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
 
 beforeEach(async () => {
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
@@ -160,5 +161,19 @@ describe('sendWeeklyReport', () => {
     )
 
     sendMessageStub.restore()
+  })
+})
+
+describe('getWeeklyTextIns', () => {
+  it('should return number of text-ins last week', async () => {
+    await createTwilioMessages(30, { createdAt: getRandomDayFromLastWeek() })
+    const result = await AnalysticsService.getWeeklyTextIns()
+    assertEquals(result[0].count, '30')
+  })
+
+  it('should not return number of text-ins outside last week', async () => {
+    await createTwilioMessages(30, { createdAt: new Date().toISOString() })
+    const result = await AnalysticsService.getWeeklyTextIns()
+    assertEquals(result[0].count, '0')
   })
 })

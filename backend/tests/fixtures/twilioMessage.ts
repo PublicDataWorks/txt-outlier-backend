@@ -1,9 +1,9 @@
 import { faker } from 'faker'
-import { twilioMessages } from '../../drizzle/schema.ts'
+import { TwilioMessage, twilioMessages } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { createAuthors } from './authors.ts'
 
-const createTwilioMessages = async (times = 1) => {
+const createTwilioMessages = async (times = 1, twilioMessage?: Partial<TwilioMessage>) => {
   const newMessages = []
   const newAuthors = await createAuthors(times)
   for (let i = 0; i < times; i++) {
@@ -16,6 +16,7 @@ const createTwilioMessages = async (times = 1) => {
       fromField: newAuthors[i].phoneNumber,
       toField: (i - 1 >= 0) ? newAuthors[i - 1].phoneNumber : newAuthors[i + 1].phoneNumber,
     }
+    Object.assign(message, twilioMessage)
     newMessages.push(message)
   }
   return supabase.insert(twilioMessages).values(newMessages)
