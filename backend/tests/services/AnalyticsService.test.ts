@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertExists, assertNotEquals, assertObjectMatch } from 'testing/asserts.ts'
+import { assertEquals, assertObjectMatch } from 'testing/asserts.ts'
 import { afterAll, afterEach, beforeEach, describe, it } from 'testing/bdd.ts'
 import { stub } from 'testing/mock.ts'
 import AnalysticsService from '../../services/AnalyticsService.ts'
@@ -7,7 +7,6 @@ import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
 import { createUnsubscribedMessage } from '../fixtures/unsubcribedMessage.ts'
 import supabase, { postgresClient } from '../../lib/supabase.ts'
 import { sql } from 'drizzle-orm'
-import httpMocks from 'node-mocks-http'
 import MissiveUtils from '../../lib/Missive.ts'
 import { audienceSegments, broadcastSentMessageStatus, broadcastsSegments } from '../../drizzle/schema.ts'
 import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
@@ -109,7 +108,7 @@ describe('getWeeklyUnsubcribeByAudienceSegment', () => {
   })
 })
 
-describe('getWeeklyBroadcastSent', async () => {
+describe('getWeeklyBroadcastSent', () => {
   it('should return number of broadcast sent last week', async () => {
     const broadcast = await createBroadcast(1)
     ;(await createBroadcastStatus(15, { ...broadcast, createdAt: getRandomDayFromLastWeek() }))
@@ -121,7 +120,7 @@ describe('getWeeklyBroadcastSent', async () => {
   })
 })
 
-describe('getWeeklyFailedMessage', async () => {
+describe('getWeeklyFailedMessage', () => {
   it('should return number of broadcast failed last week', async () => {
     const broadcast = await createBroadcast(1)
     ;(await createBroadcastStatus(15, { ...broadcast }))

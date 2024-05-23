@@ -1,5 +1,5 @@
-import { and, eq, inArray, lt, sql } from 'drizzle-orm'
-import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
+import { sql } from 'drizzle-orm'
+import supabase from '../lib/supabase.ts'
 import {
   selectWeeklyBroadcastSent,
   selectWeeklyFailedMessage,

@@ -89,7 +89,7 @@ const convertToBroadcastMessagesStatus = (
   outgoing: OutgoingMessage,
   missiveID: string,
   convoID: string,
-  audienceSegmentId: number
+  audienceSegmentId: number,
 ): BroadcastMessageStatus => {
   return {
     recipientPhoneNumber: outgoing.recipientPhoneNumber,
@@ -98,7 +98,7 @@ const convertToBroadcastMessagesStatus = (
     broadcastId: outgoing.broadcastId,
     missiveId: missiveID,
     missiveConversationId: convoID,
-    audienceSegmentId
+    audienceSegmentId,
   }
 }
 

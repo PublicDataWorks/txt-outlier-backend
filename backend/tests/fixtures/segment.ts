@@ -28,7 +28,6 @@ const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
     .onConflictDoNothing().returning()
 
   return results[0]
-  
 }
 
 export { createSegment }

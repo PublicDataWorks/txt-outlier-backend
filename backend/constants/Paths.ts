@@ -15,6 +15,6 @@ export default {
     UpdateTwilioStatus: '/twilio/:broadcastID',
   },
   Analytics: {
-    Base: '/analytics'
-  }
+    Base: '/analytics',
+  },
 } as const

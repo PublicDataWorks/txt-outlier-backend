@@ -49,7 +49,7 @@ broadcastRouter.get(
 
 analysticsRouter.get(
   '',
-  analysticsController.getUnsubcribeReport
+  analysticsController.getUnsubcribeReport,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)
