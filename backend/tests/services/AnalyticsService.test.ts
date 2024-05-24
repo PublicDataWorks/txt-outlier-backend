@@ -142,7 +142,7 @@ describe('getWeeklyFailedMessage', () => {
 
 describe('sendWeeklyReport', () => {
   it('should send the report through Missive API', async () => {
-    const sendMessageStub = stub(MissiveUtils, 'sendMessage')
+    const sendPostStub = stub(MissiveUtils, 'sendPost')
     const broadcast = await createBroadcast(1)
     const broadcastStatusIds1 = (await createBroadcastStatus(30, broadcast)).map((broadcastStatus) =>
       broadcastStatus.id
@@ -150,21 +150,49 @@ describe('sendWeeklyReport', () => {
     const broadcastStatusIds2 = (await createBroadcastStatus(30, broadcast)).map((broadcastStatus) =>
       broadcastStatus.id
     )
+    await createTwilioMessages(30, { createdAt: getRandomDayFromLastWeek() })
     await createUnsubscribedMessage(30, broadcastStatusIds1, broadcast.id, getRandomDayFromLastWeek())
     await createUnsubscribedMessage(30, broadcastStatusIds2, broadcast.id, getRandomDayFromLastWeek())
     await createUnsubscribedMessage(30, [], broadcast.id, getRandomDayFromLastWeek())
+    const conversationIds = (await createConversations()).map((conversation) => conversation.id)
+    const labelIds = (await createLabels(1, { name: 'Test Label 1', id: IMPACT_LABELS[0] })).map((label) => label.id)
+    ;(await createBroadcastStatus(15, { ...broadcast }))
+      .map((broadcastStatus) => broadcastStatus.id)
+    await createConversationLabels(1, conversationIds, labelIds, { createdAt: getRandomDayFromLastWeek() })
+
+    const labelIds1 = (await createLabels(1, { name: 'Test Label 2', id: IMPACT_LABELS[1] })).map((label) => label.id)
+    await createConversationLabels(1, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
+
+    const expectedReport = `
+# Weekly Summary Report (May 22, 2024)
+
+## Major Themes/Topics
+- **User Satisfaction**: Many users expressed gratitude for the timely information.
+- **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
+- **Resource Connections**: Users frequently requested resources related to housing and healthcare.
+
+## Statistics Summary
+
+| Metric                         | Count |
+|------------------------------- |-------|
+| Impact Conversations           | 2    |
+| - Test Label 2                 | 1    |
+| - Test Label 1                 | 1    |
+| Conversation Starters Sent     | 1 |
+| Failed Deliveries              | 1 |
+| Unsubscribes                   | 90 |
+| Text-ins                       | 1 |
+`
 
     await AnalysticsService.sendWeeklyReport()
-    assertEquals(sendMessageStub.calls.length, 1)
+
+    assertEquals(sendPostStub.calls.length, 1)
     assertEquals(
-      sendMessageStub.calls[0].args[0],
-      JSON.stringify([{ 'audience_segment_id': '1', 'count': '30' }, { 'audience_segment_id': '2', 'count': '30' }, {
-        'audience_segment_id': null,
-        'count': '30',
-      }]),
+      sendPostStub.calls[0].args[0],
+      expectedReport,
     )
 
-    sendMessageStub.restore()
+    sendPostStub.restore()
   })
 })
 
@@ -182,7 +210,7 @@ describe('getWeeklyTextIns', () => {
   })
 })
 
-describe('getWeeklyImpactConversations', { only: true }, () => {
+describe('getWeeklyImpactConversations', () => {
   it('should return number of impact conversations', async () => {
     const conversationIds = (await createConversations()).map((conversation) => conversation.id)
     const labelIds = (await createLabels(1, { name: 'Test Label 1', id: IMPACT_LABELS[0] })).map((label) => label.id)
@@ -193,11 +221,11 @@ describe('getWeeklyImpactConversations', { only: true }, () => {
 
     const results = await AnalysticsService.getWeeklyImpactConversations()
     assertEquals(results[0], {
-      name: 'Test Label 2',
+      'label_name': 'Test Label 2',
       count: '1',
     })
     assertEquals(results[1], {
-      name: 'Test Label 1',
+      'label_name': 'Test Label 1',
       count: '1',
     })
   })

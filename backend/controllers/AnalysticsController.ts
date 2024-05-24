@@ -1,14 +1,14 @@
 import { Request, Response } from 'express'
 import AnalyticsService from '../services/AnalyticsService.ts'
 
-async function getUnsubcribeReport(
+async function sendWeeklyReport(
   _req: Request,
   res: Response,
 ) {
-  const result = await AnalyticsService.generateWeeklyAnalyticsReport()
+  const result = await AnalyticsService.sendWeeklyReport()
   return res.status(200).json(result)
 }
 
 export default {
-  getUnsubcribeReport,
+  sendWeeklyReport,
 } as const

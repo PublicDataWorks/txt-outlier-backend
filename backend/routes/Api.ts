@@ -48,8 +48,8 @@ broadcastRouter.get(
 )
 
 analysticsRouter.get(
-  '',
-  analysticsController.getUnsubcribeReport,
+  '/weekly',
+  analysticsController.sendWeeklyReport,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)

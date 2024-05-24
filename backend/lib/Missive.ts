@@ -1,3 +1,4 @@
+const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const headers = {
   'Content-Type': 'application/json',
@@ -25,7 +26,26 @@ const sendMessage = (message: string, toPhone: string) => {
   })
 }
 
+const sendPost = (markdown: string, conversationId: string) => {
+  const body = {
+    'posts': {
+      'conversation': conversationId,
+      'notification': { 'title': 'Weekly Report', 'body': 'Summary' },
+      'username': 'Weekly report',
+      'username_icon': 'https://s3.amazonaws.com/missive-assets/missive-avatar.png',
+      'markdown': markdown,
+    },
+  }
+
+  return fetch(CREATE_POST_URL, {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(body),
+  })
+}
+
 export default {
   sendMessage,
+  sendPost,
   CREATE_MESSAGE_URL,
 } as const

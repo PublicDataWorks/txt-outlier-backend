@@ -134,7 +134,7 @@ const selectWeeklyTextIns = `
 const labelList = IMPACT_LABELS.map((label) => `'${label}'`).join(', ')
 
 const selectWeeklyImpactConversations = `
-  SELECT l.name, COUNT(*) as count
+  SELECT l.name as label_name, COUNT(*) as count
   FROM public.conversations_labels cl 
   JOIN public.conversations c on cl.conversation_id = c.id
   JOIN public.labels l ON cl.label_id = l.id
