@@ -3,6 +3,7 @@ import supabase from '../lib/supabase.ts'
 import {
   selectWeeklyBroadcastSent,
   selectWeeklyFailedMessage,
+  selectWeeklyImpactConversations,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
 } from '../scheduledcron/queries.ts'
@@ -28,6 +29,11 @@ async function getWeeklyTextIns() {
   return textIns
 }
 
+async function getWeeklyImpactConversations() {
+  const impactConversations = await supabase.execute(sql.raw(selectWeeklyImpactConversations))
+  return impactConversations
+}
+
 async function sendWeeklyReport() {
   const report = await getWeeklyUnsubcribeByAudienceSegment()
   // Convert the report to a string or format it as needed
@@ -43,4 +49,5 @@ export default {
   getWeeklyBroadcastSent,
   getWeeklyFailedMessage,
   getWeeklyTextIns,
+  getWeeklyImpactConversations,
 }

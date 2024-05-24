@@ -11,6 +11,10 @@ import MissiveUtils from '../../lib/Missive.ts'
 import { audienceSegments, broadcastSentMessageStatus, broadcastsSegments } from '../../drizzle/schema.ts'
 import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
 import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
+import { createConversations } from '../fixtures/conversations.ts'
+import { createLabels } from '../fixtures/labels.ts'
+import { createConversationLabels } from '../fixtures/conversationlabels.ts'
+import { IMPACT_LABELS } from '../../constants/impactLabels.ts'
 
 beforeEach(async () => {
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
@@ -175,5 +179,26 @@ describe('getWeeklyTextIns', () => {
     await createTwilioMessages(30, { createdAt: new Date().toISOString() })
     const result = await AnalysticsService.getWeeklyTextIns()
     assertEquals(result[0].count, '0')
+  })
+})
+
+describe('getWeeklyImpactConversations', { only: true }, () => {
+  it('should return number of impact conversations', async () => {
+    const conversationIds = (await createConversations()).map((conversation) => conversation.id)
+    const labelIds = (await createLabels(1, { name: 'Test Label 1', id: IMPACT_LABELS[0] })).map((label) => label.id)
+    await createConversationLabels(1, conversationIds, labelIds, { createdAt: getRandomDayFromLastWeek() })
+
+    const labelIds1 = (await createLabels(1, { name: 'Test Label 2', id: IMPACT_LABELS[1] })).map((label) => label.id)
+    await createConversationLabels(1, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
+
+    const results = await AnalysticsService.getWeeklyImpactConversations()
+    assertEquals(results[0], {
+      name: 'Test Label 2',
+      count: '1',
+    })
+    assertEquals(results[1], {
+      name: 'Test Label 1',
+      count: '1',
+    })
   })
 })
