@@ -8,6 +8,7 @@ import {
   selectWeeklyUnsubcribeBroadcastMessageStatus,
 } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
+import DateUtils from '../misc/DateUtils.ts'
 
 async function getWeeklyUnsubcribeByAudienceSegment() {
   const unsubscribedMessages = await supabase.execute(sql.raw(selectWeeklyUnsubcribeBroadcastMessageStatus))
@@ -68,7 +69,7 @@ async function sendWeeklyReport() {
   const impactConversationsSection = impactConversationsReport ? `${impactConversationsReport.trim()}\n` : ''
 
   const markdownReport = `
-# Weekly Summary Report (May 22, 2024)
+# Weekly Summary Report ${DateUtils.getCurrentDateFormattedForWeeklyReport()}
 
 ## Major Themes/Topics
 - **User Satisfaction**: Many users expressed gratitude for the timely information.

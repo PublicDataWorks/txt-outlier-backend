@@ -164,7 +164,7 @@ describe('sendWeeklyReport', () => {
     await createConversationLabels(1, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
 
     const expectedReport = `
-# Weekly Summary Report (May 22, 2024)
+# Weekly Summary Report (May 27, 2024)
 
 ## Major Themes/Topics
 - **User Satisfaction**: Many users expressed gratitude for the timely information.

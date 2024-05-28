@@ -35,4 +35,9 @@ const getNextTimestamp = (date: Date = new Date()): Date => {
   return nextDay
 }
 
-export default { advance, diffInMinutes, getNextTimestamp }
+function getCurrentDateFormattedForWeeklyReport(date = new Date()) {
+  const options = { month: 'long', day: 'numeric', year: 'numeric' }
+  return `${date.toLocaleDateString('en-US', options)}`
+}
+
+export default { advance, diffInMinutes, getNextTimestamp, getCurrentDateFormattedForWeeklyReport }
