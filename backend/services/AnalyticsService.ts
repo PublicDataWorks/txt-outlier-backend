@@ -52,12 +52,12 @@ async function sendWeeklyReport() {
   ])
   const weeklyReportConversationId = Deno.env.get('MISSIVE_WEEKLY_REPORT_CONVERSATION_ID')
   const totalImpactsConversations = impactConversations.reduce(
-    (total: number, conversation: any) => total += Number(conversation.count),
+    (total: number, conversation: { count: string }) => total += Number(conversation.count),
     0,
   )
 
   const totalUnsubcribedMessage = unsubscribedMessages.reduce(
-    (total: number, conversation: any) => total += Number(conversation.count),
+    (total: number, conversation: { count: string }) => total += Number(conversation.count),
     0,
   )
 
@@ -69,7 +69,7 @@ async function sendWeeklyReport() {
   const impactConversationsSection = impactConversationsReport ? `${impactConversationsReport.trim()}\n` : ''
 
   const markdownReport = `
-# Weekly Summary Report ${DateUtils.getCurrentDateFormattedForWeeklyReport()}
+# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})
 
 ## Major Themes/Topics
 - **User Satisfaction**: Many users expressed gratitude for the timely information.

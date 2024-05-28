@@ -21,5 +21,5 @@ export const createConversations = async (times = 1, conversationOverrides: Part
     newConversations.push(conversation)
   }
 
-  return supabase.insert(conversations).values(newConversations).returning()
+  return await supabase.insert(conversations).values(newConversations).returning()
 }

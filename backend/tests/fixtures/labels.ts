@@ -1,4 +1,4 @@
-import { conversations, conversationsLabels, Label, labels } from '../../drizzle/schema.ts'
+import { Label, labels } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { faker } from 'faker'
 
@@ -16,5 +16,5 @@ export const createLabels = async (times = 1, labelOverrides: Partial<Label> = {
     newLabels.push(label)
   }
 
-  return supabase.insert(labels).values(newLabels).returning()
+  return await supabase.insert(labels).values(newLabels).returning()
 }

@@ -13,8 +13,9 @@ import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts
 import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
 import { createConversations } from '../fixtures/conversations.ts'
 import { createLabels } from '../fixtures/labels.ts'
-import { createConversationLabels } from '../fixtures/conversationlabels.ts'
+import { createConversationLabels } from '../fixtures/conversationLabels.ts'
 import { IMPACT_LABELS } from '../../constants/impactLabels.ts'
+import DateUtils from '../../misc/DateUtils.ts'
 
 beforeEach(async () => {
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
@@ -164,7 +165,7 @@ describe('sendWeeklyReport', () => {
     await createConversationLabels(1, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
 
     const expectedReport = `
-# Weekly Summary Report (May 27, 2024)
+# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})
 
 ## Major Themes/Topics
 - **User Satisfaction**: Many users expressed gratitude for the timely information.
@@ -176,8 +177,8 @@ describe('sendWeeklyReport', () => {
 | Metric                         | Count |
 |------------------------------- |-------|
 | Impact Conversations           | 2    |
-| - Test Label 2                 | 1    |
 | - Test Label 1                 | 1    |
+| - Test Label 2                 | 1    |
 | Conversation Starters Sent     | 1 |
 | Failed Deliveries              | 1 |
 | Unsubscribes                   | 90 |
@@ -221,11 +222,11 @@ describe('getWeeklyImpactConversations', () => {
 
     const results = await AnalysticsService.getWeeklyImpactConversations()
     assertEquals(results[0], {
-      'label_name': 'Test Label 2',
+      'label_name': 'Test Label 1',
       count: '1',
     })
     assertEquals(results[1], {
-      'label_name': 'Test Label 1',
+      'label_name': 'Test Label 2',
       count: '1',
     })
   })
