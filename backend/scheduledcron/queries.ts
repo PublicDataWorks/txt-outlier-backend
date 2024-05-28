@@ -139,6 +139,10 @@ const selectWeeklyImpactConversations = `
   JOIN public.conversations c on cl.conversation_id = c.id
   JOIN public.labels l ON cl.label_id = l.id
   WHERE label_id IN (${labelList})
+  AND
+  created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
   GROUP BY l.name;
 `
 
