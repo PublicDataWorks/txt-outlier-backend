@@ -31,7 +31,7 @@ const createBroadcastStatus = async (times = 1, broadcast: Broadcast) => {
     secondHistory.twilioSentStatus = 'failed'
     newHistories.push(firstHistory, secondHistory)
   }
-  return supabase.insert(broadcastSentMessageStatus).values(newHistories)
+  return await supabase.insert(broadcastSentMessageStatus).values(newHistories)
     .returning()
 }
 

@@ -23,7 +23,7 @@ const createUnsubscribedMessage = async (
     newUnsubscribedMessages.push(message)
   }
 
-  return supabase.insert(unsubscribedMessages).values(newUnsubscribedMessages)
+  return await supabase.insert(unsubscribedMessages).values(newUnsubscribedMessages)
     .onConflictDoNothing().returning()
 }
 
