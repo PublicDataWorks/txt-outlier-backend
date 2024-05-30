@@ -294,6 +294,7 @@ export const twilioMessages = pgTable('twilio_messages', {
   fromField: text('from_field').notNull().references(() => authors.phoneNumber),
   toField: text('to_field').notNull().references(() => authors.phoneNumber),
   isBroadcastReply: boolean('is_broadcast_reply').default(false).notNull(),
+  replyToBroadcast: bigint('reply_to_broadcast', { mode: 'number' }).references(() => broadcasts.id),
 }, (table) => {
   return {
     deliveredAtIdx: index('twilio_messages_delivered_at_idx').on(table.deliveredAt),

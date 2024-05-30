@@ -1,13 +1,13 @@
 import { faker } from 'faker'
-import { Broadcast, broadcastSentMessageStatus } from '../../drizzle/schema.ts'
+import { Author, Broadcast, broadcastSentMessageStatus } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { createAuthors } from './authors.ts'
 import { createSegment } from './segment.ts'
 import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
 
-const createBroadcastStatus = async (times = 1, broadcast: Broadcast) => {
+const createBroadcastStatus = async (times = 1, broadcast: Partial<Broadcast>, authors?: Author[]) => {
   const newHistories = []
-  const newAuthors = await createAuthors(times)
+  const newAuthors = authors ? authors : await createAuthors(times)
   const segment = await createSegment(1, broadcast.id!)
   for (let i = 0; i < times; i++) {
     const firstHistory = {

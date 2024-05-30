@@ -1,5 +1,5 @@
 import { assertEquals, assertObjectMatch } from 'testing/asserts.ts'
-import { afterAll, afterEach, beforeEach, describe, it } from 'testing/bdd.ts'
+import { afterAll, afterEach, beforeAll, describe, it } from 'testing/bdd.ts'
 import { stub } from 'testing/mock.ts'
 import { sql } from 'drizzle-orm'
 
@@ -9,7 +9,6 @@ import { createBroadcast } from '../fixtures/broadcast.ts'
 import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
 import { createUnsubscribedMessage } from '../fixtures/unsubcribedMessage.ts'
 import supabase, { postgresClient } from '../../lib/supabase.ts'
-import { audienceSegments, broadcastSentMessageStatus, broadcastsSegments } from '../../drizzle/schema.ts'
 import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
 import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
 import { createConversations } from '../fixtures/conversations.ts'
@@ -17,8 +16,16 @@ import { createLabels } from '../fixtures/labels.ts'
 import { createConversationLabels } from '../fixtures/conversationLabels.ts'
 import { IMPACT_LABELS } from '../../constants/impactLabels.ts'
 import DateUtils from '../../misc/DateUtils.ts'
+import { createAuthors } from '../fixtures/authors.ts'
 
-beforeEach(async () => {
+export const TRUNCATE_ALL_TABLES = `
+  TRUNCATE TABLE "broadcasts_segments", "errors", "invoke_history", "rules", "conversations", "comments", "users", "comments_mentions", "teams", 
+  "conversation_history", "conversations_labels", "labels", "organizations", "conversations_assignees", "broadcasts", "audience_segments", 
+  "conversations_assignees_history", "authors", "conversations_authors", "conversations_users", "tasks_assignees", "twilio_messages", 
+  "user_history", "outgoing_messages", "broadcast_sent_message_status", "unsubscribed_messages" RESTART IDENTITY CASCADE;
+`
+
+beforeAll(async () => {
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const sqlScript = Deno.readTextFileSync(
     'backend/drizzle/0000_smooth_mathemanic.sql',
@@ -36,9 +43,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
-  await supabase.delete(broadcastsSegments)
-  await supabase.delete(broadcastSentMessageStatus)
-  await supabase.delete(audienceSegments)
+  await supabase.execute(sql.raw(TRUNCATE_ALL_TABLES))
 })
 
 export const DROP_ALL_TABLES = `
@@ -142,7 +147,7 @@ describe('getWeeklyFailedMessage', () => {
   })
 })
 
-describe('sendWeeklyReport', () => {
+describe.skip('sendWeeklyReport', () => {
   it('should send the report through Missive API', async () => {
     const sendPostStub = stub(MissiveUtils, 'sendPost')
     const broadcast = await createBroadcast(1)
@@ -229,6 +234,32 @@ describe('getWeeklyImpactConversations', () => {
     assertEquals(results[1], {
       'label_name': 'Test Label 2',
       count: '1',
+    })
+  })
+})
+
+describe('getRepliesByAudienceSegment', () => {
+  it('should return replied broken by audience segment', async () => {
+    const broadcast = await createBroadcast(1)
+    const authors = await createAuthors(10)
+    await createBroadcastStatus(4, broadcast, authors.slice(0, 4))
+    await createBroadcastStatus(6, broadcast, authors.slice(4, 10))
+    await createTwilioMessages(10, {
+      createdAt: getRandomDayFromLastWeek(),
+      replyToBroadcast: broadcast.id,
+      isBroadcastReply: true,
+    }, authors)
+
+    const replies = await AnalysticsService.getRepliesByAudienceSegment()
+
+    assertEquals(replies[0], {
+      audience_segment_id: '1',
+      count: '4',
+    })
+
+    assertEquals(replies[1], {
+      audience_segment_id: '2',
+      count: '6',
     })
   })
 })

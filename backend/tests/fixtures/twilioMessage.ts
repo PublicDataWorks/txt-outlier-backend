@@ -1,11 +1,11 @@
 import { faker } from 'faker'
-import { TwilioMessage, twilioMessages } from '../../drizzle/schema.ts'
+import { Author, TwilioMessage, twilioMessages } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { createAuthors } from './authors.ts'
 
-const createTwilioMessages = async (times = 1, twilioMessage?: Partial<TwilioMessage>) => {
+const createTwilioMessages = async (times = 1, updatedData?: Partial<TwilioMessage>, authors?: Author[]) => {
   const newMessages = []
-  const newAuthors = await createAuthors(times)
+  const newAuthors = authors ? authors : await createAuthors(times)
   for (let i = 0; i < times; i++) {
     const message = {
       preview: faker.lorem.sentence(),
@@ -16,10 +16,10 @@ const createTwilioMessages = async (times = 1, twilioMessage?: Partial<TwilioMes
       fromField: newAuthors[i].phoneNumber,
       toField: (i - 1 >= 0) ? newAuthors[i - 1].phoneNumber : newAuthors[i + 1].phoneNumber,
     }
-    Object.assign(message, twilioMessage)
+    Object.assign(message, updatedData)
     newMessages.push(message)
   }
-  return supabase.insert(twilioMessages).values(newMessages)
+  return await supabase.insert(twilioMessages).values(newMessages)
     .onConflictDoNothing().returning()
 }
 

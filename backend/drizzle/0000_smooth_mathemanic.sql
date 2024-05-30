@@ -303,7 +303,8 @@ CREATE TABLE IF NOT EXISTS "twilio_messages" (
 	"attachments" text,
 	"from_field" text NOT NULL,
 	"to_field" text NOT NULL,
-	"is_broadcast_reply" boolean DEFAULT false NOT NULL
+	"is_broadcast_reply" boolean DEFAULT false NOT NULL,
+	"reply_to_broadcast" bigint
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "unsubscribed_messages" (

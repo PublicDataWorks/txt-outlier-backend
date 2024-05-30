@@ -4,6 +4,7 @@ import {
   selectWeeklyBroadcastSent,
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
+  selectWeeklyRepliedBrokenByAudienceSegment,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
 } from '../scheduledcron/queries.ts'
@@ -33,6 +34,11 @@ async function getWeeklyTextIns() {
 async function getWeeklyImpactConversations() {
   const impactConversations = await supabase.execute(sql.raw(selectWeeklyImpactConversations))
   return impactConversations
+}
+
+async function getRepliesByAudienceSegment() {
+  const replies = await supabase.execute(sql.raw(selectWeeklyRepliedBrokenByAudienceSegment))
+  return replies
 }
 
 async function sendWeeklyReport() {
@@ -98,4 +104,5 @@ export default {
   getWeeklyFailedMessage,
   getWeeklyTextIns,
   getWeeklyImpactConversations,
+  getRepliesByAudienceSegment,
 }

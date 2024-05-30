@@ -146,6 +146,17 @@ const selectWeeklyImpactConversations = `
   GROUP BY l.name;
 `
 
+const selectWeeklyRepliedBrokenByAudienceSegment = `
+  SELECT audience_segment_id, COUNT(distinct tm.id) as count
+  FROM public.twilio_messages tm LEFT JOIN public.broadcast_sent_message_status bsms ON tm.reply_to_broadcast = bsms.broadcast_id
+  WHERE tm.is_broadcast_reply = true and tm.from_field = bsms.recipient_phone_number
+  AND
+  tm.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  tm.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  GROUP BY bsms.audience_segment_id
+`
+
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -166,6 +177,7 @@ export {
   selectWeeklyBroadcastSent,
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
+  selectWeeklyRepliedBrokenByAudienceSegment,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
   updateTwilioStatusRaw,
