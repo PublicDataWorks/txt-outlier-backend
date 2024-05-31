@@ -41,6 +41,11 @@ async function getRepliesByAudienceSegment() {
   return replies
 }
 
+async function getWeeklyReportConversations() {
+  const reportConversations = await supabase.execute(sql.raw(selectWeeklyReporterConversation))
+  return reportConversations
+}
+
 async function sendWeeklyReport() {
   // Fetch the data from the existing functions
   const [

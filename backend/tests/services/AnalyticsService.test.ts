@@ -263,3 +263,30 @@ describe('getRepliesByAudienceSegment', () => {
     })
   })
 })
+
+describe('getWeeklyReportConversations', { only: true }, () => {
+  it('should return reporter conversations broken down by labels from last week', async () => {
+    const conversationIds = (await createConversations(4)).map((conversation) => conversation.id)
+    const labelIds1 = (await createLabels(1, { name: 'Reporter label 1', id: REPORTER_LABEL_IDS[0] })).map((label) =>
+      label.id
+    )
+    await createConversationLabels(4, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
+
+    const labelIds2 = (await createLabels(1, { name: 'Reporter label 2', id: REPORTER_LABEL_IDS[1] })).map((label) =>
+      label.id
+    )
+    await createConversationLabels(2, conversationIds, labelIds2, { createdAt: getRandomDayFromLastWeek() })
+    await createConversationLabels(2, conversationIds, labelIds2, { createdAt: new Date().toISOString() })
+
+    const results = await AnalyticsService.getWeeklyReportConversations()
+
+    assertEquals(results[0], {
+      'label_name': 'Reporter label 1',
+      count: '4',
+    })
+    assertEquals(results[1], {
+      'label_name': 'Reporter label 2',
+      count: '2',
+    })
+  })
+})

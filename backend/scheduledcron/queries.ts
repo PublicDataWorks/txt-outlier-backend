@@ -1,6 +1,6 @@
 import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
 import { escapeLiteral } from './helpers.ts'
-import { IMPACT_LABELS } from '../constants/impactLabels.ts'
+import { IMPACT_LABEL_IDS, REPORTER_LABEL_IDS } from '../constants/labels.ts'
 
 const updateTwilioStatusRaw = (updatedArray: string[]): string => {
   // updatedArray is already escaped
@@ -157,6 +157,19 @@ const selectWeeklyRepliedBrokenByAudienceSegment = `
   GROUP BY bsms.audience_segment_id
 `
 
+const reporterLabelIds = REPORTER_LABEL_IDS.map((id) => `'${id}'`).join(', ')
+const selectWeeklyReporterConversation = `
+  SELECT l.name as label_name, COUNT(*) as count
+  FROM public.conversations_labels cl 
+  JOIN public.labels l ON cl.label_id = l.id
+  WHERE label_id IN (${reporterLabelIds})
+  AND
+  cl.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  cl.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  GROUP BY l.name;
+`
+
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -178,6 +191,7 @@ export {
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
   selectWeeklyRepliedBrokenByAudienceSegment,
+  selectWeeklyReporterConversation,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
   updateTwilioStatusRaw,
