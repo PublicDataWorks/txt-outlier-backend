@@ -5,6 +5,7 @@ import {
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
   selectWeeklyRepliedBrokenByAudienceSegment,
+  selectWeeklyReporterConversation,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
 } from '../scheduledcron/queries.ts'
@@ -36,7 +37,7 @@ async function getWeeklyImpactConversations() {
   return impactConversations
 }
 
-async function getRepliesByAudienceSegment() {
+async function getWeeklyRepliesByAudienceSegment() {
   const replies = await supabase.execute(sql.raw(selectWeeklyRepliedBrokenByAudienceSegment))
   return replies
 }
@@ -55,11 +56,11 @@ async function sendWeeklyReport() {
     textIns,
     impactConversations,
   ] = await Promise.all([
-    getWeeklyUnsubcribeByAudienceSegment(),
-    getWeeklyBroadcastSent(),
-    getWeeklyFailedMessage(),
-    getWeeklyTextIns(),
-    getWeeklyImpactConversations(),
+    AnalyticsService.getWeeklyUnsubcribeByAudienceSegment(),
+    AnalyticsService.getWeeklyBroadcastSent(),
+    AnalyticsService.getWeeklyFailedMessage(),
+    AnalyticsService.getWeeklyTextIns(),
+    AnalyticsService.getWeeklyImpactConversations(),
   ])
   const weeklyReportConversationId = Deno.env.get('MISSIVE_WEEKLY_REPORT_CONVERSATION_ID')
   const totalImpactsConversations = impactConversations.reduce(
@@ -109,5 +110,17 @@ export default {
   getWeeklyFailedMessage,
   getWeeklyTextIns,
   getWeeklyImpactConversations,
-  getRepliesByAudienceSegment,
+  getWeeklyRepliesByAudienceSegment,
+  getWeeklyReportConversations,
+}
+
+export const AnalyticsService = {
+  getWeeklyUnsubcribeByAudienceSegment,
+  getWeeklyBroadcastSent,
+  getWeeklyFailedMessage,
+  getWeeklyTextIns,
+  getWeeklyImpactConversations,
+  getWeeklyRepliesByAudienceSegment,
+  getWeeklyReportConversations,
+  sendWeeklyReport,
 }

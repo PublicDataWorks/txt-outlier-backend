@@ -1,22 +1,25 @@
+import supabase, { postgresClient } from '../../lib/supabase.ts'
 import { assertEquals, assertObjectMatch } from 'testing/asserts.ts'
 import { afterAll, afterEach, beforeAll, describe, it } from 'testing/bdd.ts'
-import { stub } from 'testing/mock.ts'
+import { returnsNext, stub } from 'testing/mock.ts'
 import { sql } from 'drizzle-orm'
 
 import MissiveUtils from '../../lib/Missive.ts'
-import AnalysticsService from '../../services/AnalyticsService.ts'
-import { createBroadcast } from '../fixtures/broadcast.ts'
-import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
-import { createUnsubscribedMessage } from '../fixtures/unsubcribedMessage.ts'
-import supabase, { postgresClient } from '../../lib/supabase.ts'
-import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
-import { createTwilioMessages } from '../fixtures/twilioMessage.ts'
-import { createConversations } from '../fixtures/conversations.ts'
-import { createLabels } from '../fixtures/labels.ts'
-import { createConversationLabels } from '../fixtures/conversationLabels.ts'
-import { IMPACT_LABELS } from '../../constants/impactLabels.ts'
 import DateUtils from '../../misc/DateUtils.ts'
-import { createAuthors } from '../fixtures/authors.ts'
+
+import { AnalyticsService } from '../../services/AnalyticsService.ts'
+import { getRandomDayFromLastWeek } from '../helpers/getRandomDayFromLastWeek.ts'
+import { IMPACT_LABEL_IDS, REPORTER_LABEL_IDS } from '../../constants/labels.ts'
+import {
+  createAuthors,
+  createBroadcast,
+  createBroadcastStatus,
+  createConversationLabels,
+  createConversations,
+  createLabels,
+  createTwilioMessages,
+  createUnsubscribedMessage,
+} from '../fixtures/index.ts'
 
 export const TRUNCATE_ALL_TABLES = `
   TRUNCATE TABLE "broadcasts_segments", "errors", "invoke_history", "rules", "conversations", "comments", "users", "comments_mentions", "teams", 
@@ -88,7 +91,7 @@ describe('getWeeklyUnsubcribeByAudienceSegment', () => {
       new Date('2023-04-16T07:42:34.467Z').toISOString(),
     )
 
-    const report = await AnalysticsService.getWeeklyUnsubcribeByAudienceSegment()
+    const report = await AnalyticsService.getWeeklyUnsubcribeByAudienceSegment()
 
     assertEquals(report.length, 0)
   })
@@ -105,7 +108,7 @@ describe('getWeeklyUnsubcribeByAudienceSegment', () => {
     await createUnsubscribedMessage(30, broadcastStatusIds2, broadcast.id, getRandomDayFromLastWeek())
     await createUnsubscribedMessage(30, [], broadcast.id, getRandomDayFromLastWeek())
 
-    const report = await AnalysticsService.getWeeklyUnsubcribeByAudienceSegment()
+    const report = await AnalyticsService.getWeeklyUnsubcribeByAudienceSegment()
 
     assertObjectMatch(report, [{
       audience_segment_id: '1',
@@ -126,7 +129,7 @@ describe('getWeeklyBroadcastSent', () => {
     ;(await createBroadcastStatus(15, { ...broadcast, createdAt: getRandomDayFromLastWeek() }))
       .map((broadcastStatus) => broadcastStatus.id)
 
-    const result = await AnalysticsService.getWeeklyBroadcastSent()
+    const result = await AnalyticsService.getWeeklyBroadcastSent()
 
     assertEquals(result[0].count, '15')
   })
@@ -141,34 +144,40 @@ describe('getWeeklyFailedMessage', () => {
       broadcastStatus,
     ) => broadcastStatus.id)
 
-    const result = await AnalysticsService.getWeeklyFailedMessage()
+    const result = await AnalyticsService.getWeeklyFailedMessage()
 
     assertEquals(result[0].count, '60')
   })
 })
 
-describe.skip('sendWeeklyReport', () => {
+describe('sendWeeklyReport', { only: true }, () => {
   it('should send the report through Missive API', async () => {
     const sendPostStub = stub(MissiveUtils, 'sendPost')
-    const broadcast = await createBroadcast(1)
-    const broadcastStatusIds1 = (await createBroadcastStatus(30, broadcast)).map((broadcastStatus) =>
-      broadcastStatus.id
-    )
-    const broadcastStatusIds2 = (await createBroadcastStatus(30, broadcast)).map((broadcastStatus) =>
-      broadcastStatus.id
-    )
-    await createTwilioMessages(30, { createdAt: getRandomDayFromLastWeek() })
-    await createUnsubscribedMessage(30, broadcastStatusIds1, broadcast.id, getRandomDayFromLastWeek())
-    await createUnsubscribedMessage(30, broadcastStatusIds2, broadcast.id, getRandomDayFromLastWeek())
-    await createUnsubscribedMessage(30, [], broadcast.id, getRandomDayFromLastWeek())
-    const conversationIds = (await createConversations()).map((conversation) => conversation.id)
-    const labelIds = (await createLabels(1, { name: 'Test Label 1', id: IMPACT_LABELS[0] })).map((label) => label.id)
-    ;(await createBroadcastStatus(15, { ...broadcast }))
-      .map((broadcastStatus) => broadcastStatus.id)
-    await createConversationLabels(1, conversationIds, labelIds, { createdAt: getRandomDayFromLastWeek() })
 
-    const labelIds1 = (await createLabels(1, { name: 'Test Label 2', id: IMPACT_LABELS[1] })).map((label) => label.id)
-    await createConversationLabels(1, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
+    stub(
+      AnalyticsService,
+      'getWeeklyUnsubcribeByAudienceSegment',
+      returnsNext([[
+        {
+          audience_segment_id: 1,
+          count: 90,
+        },
+      ]]),
+    )
+    stub(AnalyticsService, 'getWeeklyBroadcastSent', returnsNext([{ count: '1' }]))
+    stub(AnalyticsService, 'getWeeklyFailedMessage', returnsNext([{ count: '1' }]))
+    stub(AnalyticsService, 'getWeeklyTextIns', returnsNext([{ count: '1' }]))
+    stub(
+      AnalyticsService,
+      'getWeeklyImpactConversations',
+      returnsNext([[{
+        label_name: 'Test Label 1',
+        count: 1,
+      }, {
+        label_name: 'Test Label 2',
+        count: 1,
+      }]]),
+    )
 
     const expectedReport = `
 # Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})
@@ -191,7 +200,7 @@ describe.skip('sendWeeklyReport', () => {
 | Text-ins                       | 1 |
 `
 
-    await AnalysticsService.sendWeeklyReport()
+    await AnalyticsService.sendWeeklyReport()
 
     assertEquals(sendPostStub.calls.length, 1)
     assertEquals(
@@ -206,13 +215,13 @@ describe.skip('sendWeeklyReport', () => {
 describe('getWeeklyTextIns', () => {
   it('should return number of text-ins last week', async () => {
     await createTwilioMessages(30, { createdAt: getRandomDayFromLastWeek() })
-    const result = await AnalysticsService.getWeeklyTextIns()
+    const result = await AnalyticsService.getWeeklyTextIns()
     assertEquals(result[0].count, '30')
   })
 
   it('should not return number of text-ins outside last week', async () => {
     await createTwilioMessages(30, { createdAt: new Date().toISOString() })
-    const result = await AnalysticsService.getWeeklyTextIns()
+    const result = await AnalyticsService.getWeeklyTextIns()
     assertEquals(result[0].count, '0')
   })
 })
@@ -220,13 +229,15 @@ describe('getWeeklyTextIns', () => {
 describe('getWeeklyImpactConversations', () => {
   it('should return number of impact conversations', async () => {
     const conversationIds = (await createConversations()).map((conversation) => conversation.id)
-    const labelIds = (await createLabels(1, { name: 'Test Label 1', id: IMPACT_LABELS[0] })).map((label) => label.id)
+    const labelIds = (await createLabels(1, { name: 'Test Label 1', id: IMPACT_LABEL_IDS[0] })).map((label) => label.id)
     await createConversationLabels(1, conversationIds, labelIds, { createdAt: getRandomDayFromLastWeek() })
 
-    const labelIds1 = (await createLabels(1, { name: 'Test Label 2', id: IMPACT_LABELS[1] })).map((label) => label.id)
+    const labelIds1 = (await createLabels(1, { name: 'Test Label 2', id: IMPACT_LABEL_IDS[1] })).map((label) =>
+      label.id
+    )
     await createConversationLabels(1, conversationIds, labelIds1, { createdAt: getRandomDayFromLastWeek() })
 
-    const results = await AnalysticsService.getWeeklyImpactConversations()
+    const results = await AnalyticsService.getWeeklyImpactConversations()
     assertEquals(results[0], {
       'label_name': 'Test Label 1',
       count: '1',
@@ -239,7 +250,7 @@ describe('getWeeklyImpactConversations', () => {
 })
 
 describe('getRepliesByAudienceSegment', () => {
-  it('should return replied broken by audience segment', async () => {
+  it('should return replies broken by audience segment', async () => {
     const broadcast = await createBroadcast(1)
     const authors = await createAuthors(10)
     await createBroadcastStatus(4, broadcast, authors.slice(0, 4))
@@ -250,7 +261,7 @@ describe('getRepliesByAudienceSegment', () => {
       isBroadcastReply: true,
     }, authors)
 
-    const replies = await AnalysticsService.getRepliesByAudienceSegment()
+    const replies = await AnalyticsService.getRepliesByAudienceSegment()
 
     assertEquals(replies[0], {
       audience_segment_id: '1',

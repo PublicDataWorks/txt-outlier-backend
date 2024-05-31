@@ -4,7 +4,7 @@ import { createTwilioMessages } from './twilioMessage.ts'
 
 const createUnsubscribedMessage = async (
   times = 1,
-  broadcastSentMessageStatusId: number[],
+  broadcastSentMessageStatusIds: number[],
   broadcastId: number,
   createdAt?: string,
 ) => {
@@ -17,7 +17,7 @@ const createUnsubscribedMessage = async (
     const message = {
       broadcastId: broadcastId,
       twilioMessageId: newTwilioMessages[i].id,
-      replyTo: broadcastSentMessageStatusId[i],
+      replyTo: broadcastSentMessageStatusIds[i],
       createdAt,
     }
     newUnsubscribedMessages.push(message)

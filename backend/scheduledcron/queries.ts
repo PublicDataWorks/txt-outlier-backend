@@ -131,14 +131,13 @@ const selectWeeklyTextIns = `
   created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
 `
 
-const labelList = IMPACT_LABELS.map((label) => `'${label}'`).join(', ')
+const impactLabelIds = IMPACT_LABEL_IDS.map((id) => `'${id}'`).join(', ')
 
 const selectWeeklyImpactConversations = `
   SELECT l.name as label_name, COUNT(*) as count
   FROM public.conversations_labels cl 
-  JOIN public.conversations c on cl.conversation_id = c.id
   JOIN public.labels l ON cl.label_id = l.id
-  WHERE label_id IN (${labelList})
+  WHERE label_id IN (${impactLabelIds})
   AND
   cl.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 

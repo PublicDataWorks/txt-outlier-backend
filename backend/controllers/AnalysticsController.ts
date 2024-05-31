@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import AnalyticsService from '../services/AnalyticsService.ts'
+import { AnalyticsService } from '../services/AnalyticsService.ts'
 
 async function sendWeeklyReport(
   _req: Request,
