@@ -171,45 +171,62 @@ describe('sendWeeklyReport', { only: true }, () => {
       AnalyticsService,
       'getWeeklyImpactConversations',
       returnsNext([[{
-        label_name: 'Test Label 1',
+        label_name: 'Impact Label 1',
         count: 1,
       }, {
-        label_name: 'Test Label 2',
+        label_name: 'Impact Label 2',
         count: 1,
       }]]),
     )
+    stub(AnalyticsService, 'getWeeklyRepliesByAudienceSegment', returnsNext([[ { audience_segment_id: 1, count: '12' } ]]))
+    stub(
+      AnalyticsService,
+      'getWeeklyReportConversations',
+      returnsNext([ [{ label_name: 'Report Label 1', count: 5 }, { label_name: 'Report Label 2', count: 6 }] ]),
+    )
 
-    const expectedReport = `
-# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})
+    const expectedIntroPart = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
 
-## Major Themes/Topics
-- **User Satisfaction**: Many users expressed gratitude for the timely information.
-- **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
-- **Resource Connections**: Users frequently requested resources related to housing and healthcare.
+    const expectedThemePart = `## Major Themes/Topics
+  - **User Satisfaction**: Many users expressed gratitude for the timely information.
+  - **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
+  - **Resource Connections**: Users frequently requested resources related to housing and healthcare.`
 
-## Statistics Summary
+    const expectedStatsPart = `
+  ## Statistics Summary
 
 | Metric                         | Count |
 |------------------------------- |-------|
 | Impact Conversations           | 2    |
-| - Test Label 1                 | 1    |
-| - Test Label 2                 | 1    |
+| - Impact Label 1               | 1    |
+| - Impact Label 2               | 1    |
 | Conversation Starters Sent     | 1 |
 | Failed Deliveries              | 1 |
+| Replies Received               | 12  |
 | Unsubscribes                   | 90 |
 | Text-ins                       | 1 |
+| Reporter Conversations         | 11 |
+| - Report Label 1               | 5    |
+| - Report Label 2               | 6    |
+
 `
 
     await AnalyticsService.sendWeeklyReport()
 
     assertEquals(sendPostStub.calls.length, 1)
     assertEquals(
-      sendPostStub.calls[0].args[0],
-      expectedReport,
+      sendPostStub.calls[0].args[0][0],
+      expectedIntroPart,
     )
+    assertEquals(
+      sendPostStub.calls[0].args[0][1],
+      expectedThemePart,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][2],
+      expectedStatsPart,
+    ), sendPostStub.restore()
 
-    sendPostStub.restore()
-  })
 })
 
 describe('getWeeklyTextIns', () => {
@@ -261,7 +278,7 @@ describe('getRepliesByAudienceSegment', () => {
       isBroadcastReply: true,
     }, authors)
 
-    const replies = await AnalyticsService.getRepliesByAudienceSegment()
+    const replies = await AnalyticsService.getWeeklyRepliesByAudienceSegment()
 
     assertEquals(replies[0], {
       audience_segment_id: '1',
@@ -275,7 +292,7 @@ describe('getRepliesByAudienceSegment', () => {
   })
 })
 
-describe('getWeeklyReportConversations', { only: true }, () => {
+describe('getWeeklyReportConversations', () => {
   it('should return reporter conversations broken down by labels from last week', async () => {
     const conversationIds = (await createConversations(4)).map((conversation) => conversation.id)
     const labelIds1 = (await createLabels(1, { name: 'Reporter label 1', id: REPORTER_LABEL_IDS[0] })).map((label) =>
@@ -300,4 +317,4 @@ describe('getWeeklyReportConversations', { only: true }, () => {
       count: '2',
     })
   })
-})
+})})

@@ -1,3 +1,5 @@
+import { ConsoleLogWriter } from "drizzle-orm"
+
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const headers = {
@@ -26,18 +28,23 @@ const sendMessage = (message: string, toPhone: string) => {
   })
 }
 
-const sendPost = (markdown: string, conversationId: string) => {
+const sendPost = async (markdowns: string[], conversationId: string) => {
+  const attachments = markdowns.map((markdown) => ({
+    markdown: markdown,
+    color: 'good',
+  }))
+
   const body = {
     'posts': {
       'conversation': conversationId,
       'notification': { 'title': 'Weekly Report', 'body': 'Summary' },
       'username': 'Weekly report',
       'username_icon': 'https://s3.amazonaws.com/missive-assets/missive-avatar.png',
-      'markdown': markdown,
+      attachments,
     },
   }
 
-  return fetch(CREATE_POST_URL, {
+  await fetch(CREATE_POST_URL, {
     method: 'POST',
     headers: headers,
     body: JSON.stringify(body),

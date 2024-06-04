@@ -11,6 +11,7 @@ import {
 } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import DateUtils from '../misc/DateUtils.ts'
+import { formatConversationForReport } from '../misc/formatConversationForReport.ts'
 
 async function getWeeklyUnsubcribeByAudienceSegment() {
   const unsubscribedMessages = await supabase.execute(sql.raw(selectWeeklyUnsubcribeBroadcastMessageStatus))
@@ -55,12 +56,16 @@ async function sendWeeklyReport() {
     failedMessages,
     textIns,
     impactConversations,
+    replies,
+    reportConversations,
   ] = await Promise.all([
     AnalyticsService.getWeeklyUnsubcribeByAudienceSegment(),
     AnalyticsService.getWeeklyBroadcastSent(),
     AnalyticsService.getWeeklyFailedMessage(),
     AnalyticsService.getWeeklyTextIns(),
     AnalyticsService.getWeeklyImpactConversations(),
+    AnalyticsService.getWeeklyRepliesByAudienceSegment(),
+    AnalyticsService.getWeeklyReportConversations(),
   ])
   const weeklyReportConversationId = Deno.env.get('MISSIVE_WEEKLY_REPORT_CONVERSATION_ID')
   const totalImpactsConversations = impactConversations.reduce(
@@ -73,45 +78,45 @@ async function sendWeeklyReport() {
     0,
   )
 
-  // Format the data into the provided template
-  let impactConversationsReport = ''
-  impactConversations.forEach((result) => {
-    impactConversationsReport += `| - ${result.label_name.padEnd(28)} | ${result.count.toString().padEnd(4)} |\n`
-  })
-  const impactConversationsSection = impactConversationsReport ? `${impactConversationsReport.trim()}\n` : ''
+  const totalReplies = replies.reduce(
+    (total: number, conversation: { count: string }) => total += Number(conversation.count),
+    0,
+  )
 
-  const markdownReport = `
-# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})
+  const totalReportConversations = reportConversations.reduce(
+    (total: number, conversation: { count: string }) => total += Number(conversation.count),
+    0,
+  )
 
-## Major Themes/Topics
-- **User Satisfaction**: Many users expressed gratitude for the timely information.
-- **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
-- **Resource Connections**: Users frequently requested resources related to housing and healthcare.
+  const impactConversationsSection = formatConversationForReport(impactConversations)
+  const reportConversationsSection = formatConversationForReport(reportConversations)
 
-## Statistics Summary
+  const introPart = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
+
+  const themePart = `## Major Themes/Topics
+  - **User Satisfaction**: Many users expressed gratitude for the timely information.
+  - **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
+  - **Resource Connections**: Users frequently requested resources related to housing and healthcare.`
+
+  const statsPart = `
+  ## Statistics Summary
 
 | Metric                         | Count |
 |------------------------------- |-------|
 | Impact Conversations           | ${totalImpactsConversations}    |
 ${impactConversationsSection}| Conversation Starters Sent     | ${broadcasts.count} |
 | Failed Deliveries              | ${failedMessages.count} |
+| Replies Received               | ${totalReplies}  |
 | Unsubscribes                   | ${totalUnsubcribedMessage} |
 | Text-ins                       | ${textIns.count} |
+| Reporter Conversations         | ${totalReportConversations} |
+${reportConversationsSection}
 `
+
+  const markdownReport = [introPart, themePart, statsPart]
 
   // Send the report message
   await MissiveUtils.sendPost(markdownReport, weeklyReportConversationId)
-}
-
-export default {
-  getWeeklyUnsubcribeByAudienceSegment,
-  sendWeeklyReport,
-  getWeeklyBroadcastSent,
-  getWeeklyFailedMessage,
-  getWeeklyTextIns,
-  getWeeklyImpactConversations,
-  getWeeklyRepliesByAudienceSegment,
-  getWeeklyReportConversations,
 }
 
 export const AnalyticsService = {
