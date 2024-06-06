@@ -20,12 +20,13 @@ import {
   createTwilioMessages,
   createUnsubscribedMessage,
 } from '../fixtures/index.ts'
+import { createDataLookup } from '../fixtures/data-lookup.ts'
 
 export const TRUNCATE_ALL_TABLES = `
   TRUNCATE TABLE "broadcasts_segments", "errors", "invoke_history", "rules", "conversations", "comments", "users", "comments_mentions", "teams", 
   "conversation_history", "conversations_labels", "labels", "organizations", "conversations_assignees", "broadcasts", "audience_segments", 
   "conversations_assignees_history", "authors", "conversations_authors", "conversations_users", "tasks_assignees", "twilio_messages", 
-  "user_history", "outgoing_messages", "broadcast_sent_message_status", "unsubscribed_messages" RESTART IDENTITY CASCADE;
+  "user_history", "outgoing_messages", "broadcast_sent_message_status", "unsubscribed_messages","data_lookups" RESTART IDENTITY CASCADE;
 `
 
 beforeAll(async () => {
@@ -150,7 +151,7 @@ describe('getWeeklyFailedMessage', () => {
   })
 })
 
-describe('sendWeeklyReport', { only: true }, () => {
+describe('sendWeeklyReport', () => {
   it('should send the report through Missive API', async () => {
     const sendPostStub = stub(MissiveUtils, 'sendPost')
 
@@ -318,3 +319,32 @@ describe('getWeeklyReportConversations', () => {
     })
   })
 })})
+
+describe('getWeeklyDataLookup', {only: true}, () => {
+  it('should return weekly data look', async () => {
+    await createDataLookup(5, { createdAt: getRandomDayFromLastWeek(), taxStatus: "OK"})
+    await createDataLookup(5, { createdAt: getRandomDayFromLastWeek(), taxStatus: "UNCONFIRMED", rentalStatus:"REGISTERED"})
+    await createDataLookup(5, { createdAt: new Date().toISOString
+      (), taxStatus: "UNCONFIRMED", rentalStatus:"REGISTERED"})
+
+    const results = await AnalyticsService.getWeeklyDataLookup()
+
+    assertEquals(results[0], {
+      status: "OK",
+      count: "5"
+    })
+    assertEquals(results[1], {
+      status: "REGISTERED",
+      count: "5"
+    })
+    assertEquals(results[2], {
+      status: "UNCONFIRMED",
+      count: "5"
+    })
+    assertEquals(results[3], {
+      status: "UNREGISTERED",
+      count: "5"
+    })
+
+  })
+})

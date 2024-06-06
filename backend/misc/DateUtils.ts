@@ -12,7 +12,7 @@ const diffInMinutes = (runAt: Date): number => {
   return (runAt.getTime() - now.getTime()) / (1000 * 60)
 }
 
-const getNextTimestamp = (date: Date = new Date()): Date => {
+const getNextTimestampInEDT = (date: Date = new Date()): Date => {
   const timeZone = 'America/New_York' // EDT timezone
   //Any date input should be in UTC
   // Determine the current day of the week
@@ -40,4 +40,4 @@ function getCurrentDateFormattedForWeeklyReport(date = new Date()) {
   return `${date.toLocaleDateString('en-US', options)}`
 }
 
-export default { advance, diffInMinutes, getNextTimestamp, getCurrentDateFormattedForWeeklyReport }
+export default { advance, diffInMinutes, getNextTimestampInEDT, getCurrentDateFormattedForWeeklyReport }

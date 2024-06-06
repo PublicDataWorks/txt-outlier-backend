@@ -169,6 +169,35 @@ const selectWeeklyReporterConversation = `
   GROUP BY l.name;
 `
 
+const selectWeeklyDataLookUp = `
+  SELECT 
+      status,
+      COUNT(*) AS count
+  FROM (
+      SELECT 
+          rental_status AS status
+      FROM 
+          data_lookups
+      WHERE
+      created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+      AND 
+      created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+      UNION ALL
+      SELECT 
+          tax_status AS status
+      FROM 
+          data_lookups
+      WHERE
+      created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+      AND 
+      created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  ) AS combined_statuses
+  GROUP BY 
+      status
+  ORDER BY 
+      status;
+`
+
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -193,5 +222,6 @@ export {
   selectWeeklyReporterConversation,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
+  selectWeeklyDataLookUp,
   updateTwilioStatusRaw,
 }

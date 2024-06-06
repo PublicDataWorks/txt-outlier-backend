@@ -374,6 +374,15 @@ export const cronJob = cronSchema.table('job', {
   schedule: text('schedule').notNull(),
 })
 
+export const dataLookup = pgTable('data_lookups', {
+  id: serial('id').primaryKey(),
+  address: text('address').notNull(),
+  zipCode: text('zip_code').notNull(),
+  taxStatus: text('tax_status').notNull(),
+  rentalStatus: text('rental_status').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+})
+
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -397,3 +406,4 @@ export type Broadcast = typeof broadcasts.$inferInsert
 export type OutgoingMessage = typeof outgoingMessages.$inferInsert
 export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
+export type DataLookup = typeof dataLookup.$inferInsert

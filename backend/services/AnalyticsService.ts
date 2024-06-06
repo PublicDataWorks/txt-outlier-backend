@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import supabase from '../lib/supabase.ts'
 import {
   selectWeeklyBroadcastSent,
+  selectWeeklyDataLookUp,
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
   selectWeeklyRepliedBrokenByAudienceSegment,
@@ -14,38 +15,35 @@ import DateUtils from '../misc/DateUtils.ts'
 import { formatConversationForReport } from '../misc/formatConversationForReport.ts'
 
 async function getWeeklyUnsubcribeByAudienceSegment() {
-  const unsubscribedMessages = await supabase.execute(sql.raw(selectWeeklyUnsubcribeBroadcastMessageStatus))
-  return unsubscribedMessages
+  return await supabase.execute(sql.raw(selectWeeklyUnsubcribeBroadcastMessageStatus))
 }
 
 async function getWeeklyBroadcastSent() {
-  const broadcasts = await supabase.execute(sql.raw(selectWeeklyBroadcastSent))
-  return broadcasts
+  return await supabase.execute(sql.raw(selectWeeklyBroadcastSent))
 }
 
 async function getWeeklyFailedMessage() {
-  const broadcasts = await supabase.execute(sql.raw(selectWeeklyFailedMessage))
-  return broadcasts
+  return await supabase.execute(sql.raw(selectWeeklyFailedMessage))
 }
 
 async function getWeeklyTextIns() {
-  const textIns = await supabase.execute(sql.raw(selectWeeklyTextIns))
-  return textIns
+  return await supabase.execute(sql.raw(selectWeeklyTextIns))
 }
 
 async function getWeeklyImpactConversations() {
-  const impactConversations = await supabase.execute(sql.raw(selectWeeklyImpactConversations))
-  return impactConversations
+  return await supabase.execute(sql.raw(selectWeeklyImpactConversations))
 }
 
 async function getWeeklyRepliesByAudienceSegment() {
-  const replies = await supabase.execute(sql.raw(selectWeeklyRepliedBrokenByAudienceSegment))
-  return replies
+  return supabase.execute(sql.raw(selectWeeklyRepliedBrokenByAudienceSegment))
 }
 
 async function getWeeklyReportConversations() {
-  const reportConversations = await supabase.execute(sql.raw(selectWeeklyReporterConversation))
-  return reportConversations
+  return await supabase.execute(sql.raw(selectWeeklyReporterConversation))
+}
+
+async function getWeeklyDataLookup() {
+  return await supabase.execute(sql.raw(selectWeeklyDataLookUp))
 }
 
 async function sendWeeklyReport() {
@@ -128,4 +126,5 @@ export const AnalyticsService = {
   getWeeklyRepliesByAudienceSegment,
   getWeeklyReportConversations,
   sendWeeklyReport,
+  getWeeklyDataLookup
 }
