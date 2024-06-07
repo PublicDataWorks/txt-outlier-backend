@@ -1,4 +1,4 @@
-import {  dataLookup, DataLookup } from '../../drizzle/schema.ts'
+import { DataLookup, dataLookup } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { faker } from 'faker'
 
@@ -11,11 +11,11 @@ export const createDataLookup = async (times = 1, updatedData: Partial<DataLooku
       id: idCounter++,
       createdAt: new Date().toISOString(),
       address: faker.address.streetAddress(false),
-      taxStatus: "OK",
-      rentalStatus: "UNREGISTERED",
-      zipCode: faker.address.zipCodeByState("MI")
+      taxStatus: 'OK',
+      rentalStatus: 'UNREGISTERED',
+      zipCode: faker.address.zipCodeByState('MI'),
     }
-    newDataLookups.push({...dataLookup, ...updatedData})
+    newDataLookups.push({ ...dataLookup, ...updatedData })
   }
 
   return await supabase.insert(dataLookup).values(newDataLookups).returning()

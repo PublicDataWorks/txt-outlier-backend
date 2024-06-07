@@ -145,7 +145,7 @@ const selectWeeklyImpactConversations = `
   GROUP BY l.name;
 `
 
-const selectWeeklyRepliedBrokenByAudienceSegment = `
+const selectWeeklyRepliesBrokenByAudienceSegment = `
   SELECT audience_segment_id, COUNT(distinct tm.id) as count
   FROM public.twilio_messages tm LEFT JOIN public.broadcast_sent_message_status bsms ON tm.reply_to_broadcast = bsms.broadcast_id
   WHERE tm.is_broadcast_reply = true and tm.from_field = bsms.recipient_phone_number
@@ -216,12 +216,12 @@ export {
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
   selectWeeklyBroadcastSent,
+  selectWeeklyDataLookUp,
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
-  selectWeeklyRepliedBrokenByAudienceSegment,
+  selectWeeklyRepliesBrokenByAudienceSegment,
   selectWeeklyReporterConversation,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
-  selectWeeklyDataLookUp,
   updateTwilioStatusRaw,
 }

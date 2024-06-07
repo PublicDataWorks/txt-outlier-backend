@@ -5,7 +5,7 @@ import {
   selectWeeklyDataLookUp,
   selectWeeklyFailedMessage,
   selectWeeklyImpactConversations,
-  selectWeeklyRepliedBrokenByAudienceSegment,
+  selectWeeklyRepliesBrokenByAudienceSegment,
   selectWeeklyReporterConversation,
   selectWeeklyTextIns,
   selectWeeklyUnsubcribeBroadcastMessageStatus,
@@ -35,7 +35,7 @@ async function getWeeklyImpactConversations() {
 }
 
 async function getWeeklyRepliesByAudienceSegment() {
-  return supabase.execute(sql.raw(selectWeeklyRepliedBrokenByAudienceSegment))
+  return await supabase.execute(sql.raw(selectWeeklyRepliesBrokenByAudienceSegment))
 }
 
 async function getWeeklyReportConversations() {
@@ -126,5 +126,5 @@ export const AnalyticsService = {
   getWeeklyRepliesByAudienceSegment,
   getWeeklyReportConversations,
   sendWeeklyReport,
-  getWeeklyDataLookup
+  getWeeklyDataLookup,
 }

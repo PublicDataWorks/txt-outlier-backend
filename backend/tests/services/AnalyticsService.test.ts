@@ -151,85 +151,6 @@ describe('getWeeklyFailedMessage', () => {
   })
 })
 
-describe('sendWeeklyReport', () => {
-  it('should send the report through Missive API', async () => {
-    const sendPostStub = stub(MissiveUtils, 'sendPost')
-
-    stub(
-      AnalyticsService,
-      'getWeeklyUnsubcribeByAudienceSegment',
-      returnsNext([[
-        {
-          audience_segment_id: 1,
-          count: 90,
-        },
-      ]]),
-    )
-    stub(AnalyticsService, 'getWeeklyBroadcastSent', returnsNext([{ count: '1' }]))
-    stub(AnalyticsService, 'getWeeklyFailedMessage', returnsNext([{ count: '1' }]))
-    stub(AnalyticsService, 'getWeeklyTextIns', returnsNext([{ count: '1' }]))
-    stub(
-      AnalyticsService,
-      'getWeeklyImpactConversations',
-      returnsNext([[{
-        label_name: 'Impact Label 1',
-        count: 1,
-      }, {
-        label_name: 'Impact Label 2',
-        count: 1,
-      }]]),
-    )
-    stub(AnalyticsService, 'getWeeklyRepliesByAudienceSegment', returnsNext([[ { audience_segment_id: 1, count: '12' } ]]))
-    stub(
-      AnalyticsService,
-      'getWeeklyReportConversations',
-      returnsNext([ [{ label_name: 'Report Label 1', count: 5 }, { label_name: 'Report Label 2', count: 6 }] ]),
-    )
-
-    const expectedIntroPart = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
-
-    const expectedThemePart = `## Major Themes/Topics
-  - **User Satisfaction**: Many users expressed gratitude for the timely information.
-  - **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
-  - **Resource Connections**: Users frequently requested resources related to housing and healthcare.`
-
-    const expectedStatsPart = `
-  ## Statistics Summary
-
-| Metric                         | Count |
-|------------------------------- |-------|
-| Impact Conversations           | 2    |
-| - Impact Label 1               | 1    |
-| - Impact Label 2               | 1    |
-| Conversation Starters Sent     | 1 |
-| Failed Deliveries              | 1 |
-| Replies Received               | 12  |
-| Unsubscribes                   | 90 |
-| Text-ins                       | 1 |
-| Reporter Conversations         | 11 |
-| - Report Label 1               | 5    |
-| - Report Label 2               | 6    |
-
-`
-
-    await AnalyticsService.sendWeeklyReport()
-
-    assertEquals(sendPostStub.calls.length, 1)
-    assertEquals(
-      sendPostStub.calls[0].args[0][0],
-      expectedIntroPart,
-    )
-    assertEquals(
-      sendPostStub.calls[0].args[0][1],
-      expectedThemePart,
-    )
-    assertEquals(
-      sendPostStub.calls[0].args[0][2],
-      expectedStatsPart,
-    ), sendPostStub.restore()
-
-})
-
 describe('getWeeklyTextIns', () => {
   it('should return number of text-ins last week', async () => {
     await createTwilioMessages(30, { createdAt: getRandomDayFromLastWeek() })
@@ -318,33 +239,122 @@ describe('getWeeklyReportConversations', () => {
       count: '2',
     })
   })
-})})
+})
 
-describe('getWeeklyDataLookup', {only: true}, () => {
+describe('getWeeklyDataLookup', () => {
   it('should return weekly data look', async () => {
-    await createDataLookup(5, { createdAt: getRandomDayFromLastWeek(), taxStatus: "OK"})
-    await createDataLookup(5, { createdAt: getRandomDayFromLastWeek(), taxStatus: "UNCONFIRMED", rentalStatus:"REGISTERED"})
-    await createDataLookup(5, { createdAt: new Date().toISOString
-      (), taxStatus: "UNCONFIRMED", rentalStatus:"REGISTERED"})
+    await createDataLookup(5, { createdAt: getRandomDayFromLastWeek(), taxStatus: 'OK' })
+    await createDataLookup(5, {
+      createdAt: getRandomDayFromLastWeek(),
+      taxStatus: 'UNCONFIRMED',
+      rentalStatus: 'REGISTERED',
+    })
+    await createDataLookup(5, {
+      createdAt: new Date().toISOString(),
+      taxStatus: 'UNCONFIRMED',
+      rentalStatus: 'REGISTERED',
+    })
 
     const results = await AnalyticsService.getWeeklyDataLookup()
 
     assertEquals(results[0], {
-      status: "OK",
-      count: "5"
+      status: 'OK',
+      count: '5',
     })
     assertEquals(results[1], {
-      status: "REGISTERED",
-      count: "5"
+      status: 'REGISTERED',
+      count: '5',
     })
     assertEquals(results[2], {
-      status: "UNCONFIRMED",
-      count: "5"
+      status: 'UNCONFIRMED',
+      count: '5',
     })
     assertEquals(results[3], {
-      status: "UNREGISTERED",
-      count: "5"
+      status: 'UNREGISTERED',
+      count: '5',
     })
+  })
+})
 
+describe('sendWeeklyReport', () => {
+  it('should send the report through Missive API', async () => {
+    const sendPostStub = stub(MissiveUtils, 'sendPost')
+
+    stub(
+      AnalyticsService,
+      'getWeeklyUnsubcribeByAudienceSegment',
+      returnsNext([[
+        {
+          audience_segment_id: 1,
+          count: 90,
+        },
+      ]]),
+    )
+    stub(AnalyticsService, 'getWeeklyBroadcastSent', returnsNext([{ count: '1' }]))
+    stub(AnalyticsService, 'getWeeklyFailedMessage', returnsNext([{ count: '1' }]))
+    stub(AnalyticsService, 'getWeeklyTextIns', returnsNext([{ count: '1' }]))
+    stub(
+      AnalyticsService,
+      'getWeeklyImpactConversations',
+      returnsNext([[{
+        label_name: 'Impact Label 1',
+        count: 1,
+      }, {
+        label_name: 'Impact Label 2',
+        count: 1,
+      }]]),
+    )
+    stub(
+      AnalyticsService,
+      'getWeeklyRepliesByAudienceSegment',
+      returnsNext([[{ audience_segment_id: 1, count: '12' }]]),
+    )
+    stub(
+      AnalyticsService,
+      'getWeeklyReportConversations',
+      returnsNext([[{ label_name: 'Report Label 1', count: 5 }, { label_name: 'Report Label 2', count: 6 }]]),
+    )
+
+    const expectedIntroPart = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
+
+    const expectedThemePart = `## Major Themes/Topics
+  - **User Satisfaction**: Many users expressed gratitude for the timely information.
+  - **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
+  - **Resource Connections**: Users frequently requested resources related to housing and healthcare.`
+
+    const expectedStatsPart = `
+  ## Statistics Summary
+
+| Metric                         | Count |
+|------------------------------- |-------|
+| Impact Conversations           | 2    |
+| - Impact Label 1               | 1    |
+| - Impact Label 2               | 1    |
+| Conversation Starters Sent     | 1 |
+| Failed Deliveries              | 1 |
+| Replies Received               | 12  |
+| Unsubscribes                   | 90 |
+| Text-ins                       | 1 |
+| Reporter Conversations         | 11 |
+| - Report Label 1               | 5    |
+| - Report Label 2               | 6    |
+
+`
+
+    await AnalyticsService.sendWeeklyReport()
+
+    assertEquals(sendPostStub.calls.length, 1)
+    assertEquals(
+      sendPostStub.calls[0].args[0][0],
+      expectedIntroPart,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][1],
+      expectedThemePart,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][2],
+      expectedStatsPart,
+    ), sendPostStub.restore()
   })
 })

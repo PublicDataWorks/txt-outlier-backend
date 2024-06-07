@@ -1,4 +1,4 @@
-import { ConsoleLogWriter } from "drizzle-orm"
+import { ConsoleLogWriter } from 'drizzle-orm'
 
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'

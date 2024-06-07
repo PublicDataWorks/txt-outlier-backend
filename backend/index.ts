@@ -11,7 +11,7 @@ const SERVER_START_MSG = 'Express server started on port: ' +
 server.listen(port, () => log.info(SERVER_START_MSG))
 
 Cron('0 5 * * 1', {
-  timezone: 'America/New_York' // EDT timezone
+  timezone: 'America/New_York', // EDT timezone
 }, () => {
   AnalyticsService.sendWeeklyReport()
-});
+})
