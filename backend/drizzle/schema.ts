@@ -375,7 +375,7 @@ export const cronJob = cronSchema.table('job', {
   schedule: text('schedule').notNull(),
 })
 
-export const dataLookup = pgTable('data_lookups', {
+export const lookupHistory = pgTable('lookup_history', {
   id: serial('id').primaryKey(),
   address: text('address').notNull(),
   zipCode: text('zip_code').notNull(),
@@ -407,4 +407,4 @@ export type Broadcast = typeof broadcasts.$inferInsert
 export type OutgoingMessage = typeof outgoingMessages.$inferInsert
 export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
-export type DataLookup = typeof dataLookup.$inferInsert
+export type DataLookup = typeof lookupHistory.$inferInsert

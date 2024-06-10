@@ -26,7 +26,7 @@ export const TRUNCATE_ALL_TABLES = `
   TRUNCATE TABLE "broadcasts_segments", "errors", "invoke_history", "rules", "conversations", "comments", "users", "comments_mentions", "teams", 
   "conversation_history", "conversations_labels", "labels", "organizations", "conversations_assignees", "broadcasts", "audience_segments", 
   "conversations_assignees_history", "authors", "conversations_authors", "conversations_users", "tasks_assignees", "twilio_messages", 
-  "user_history", "outgoing_messages", "broadcast_sent_message_status", "unsubscribed_messages","data_lookups" RESTART IDENTITY CASCADE;
+  "user_history", "outgoing_messages", "broadcast_sent_message_status", "unsubscribed_messages","lookup_history" RESTART IDENTITY CASCADE;
 `
 
 beforeAll(async () => {
@@ -325,6 +325,11 @@ describe('sendWeeklyReport', () => {
       'getWeeklyReportConversations',
       returnsNext([[{ label_name: 'Report Label 1', count: 5 }, { label_name: 'Report Label 2', count: 6 }]]),
     )
+    stub(
+      AnalyticsService,
+      'getWeeklyDataLookup',
+      returnsNext([[{ status: 'OK', count: 3 }, { status: 'SUBJECT TO FORECLOSURE', count: 5 }, { status: 'TAX_DEBT', count: 5 }]])
+    )
 
     const expectedIntro = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
 
@@ -346,6 +351,14 @@ describe('sendWeeklyReport', () => {
 | Reporter conversations         | 11 |
 | Failed Deliveries              | 1 |
 | Unsubscribes                   | 6 |
+`
+
+const expectedLookupHistory = `### Data Lookups by Property Status
+| Status                         | Count |
+|------------------------------- |-------| 
+| No Tax Debt                  | 3     |
+| Subject To Foreclosure       | 5     |
+| Tax Debt                     | 5     |
 `
 
     const expectedConversationOutcomes = `### Conversation Outcomes
@@ -384,14 +397,18 @@ describe('sendWeeklyReport', () => {
     )
     assertEquals(
       sendPostStub.calls[0].args[0][3],
-      expectedConversationOutcomes,
+      expectedLookupHistory,
     )
     assertEquals(
       sendPostStub.calls[0].args[0][4],
-      expectedBroadcastReplies,
+      expectedConversationOutcomes,
     )
     assertEquals(
       sendPostStub.calls[0].args[0][5],
+      expectedBroadcastReplies,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][6],
       expectedUnsubcribes,
     )
     sendPostStub.restore()

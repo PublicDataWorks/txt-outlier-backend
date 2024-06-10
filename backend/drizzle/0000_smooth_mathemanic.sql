@@ -333,6 +333,16 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"id" uuid PRIMARY KEY NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "lookup_history" (
+    id SERIAL PRIMARY KEY,
+		"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+    address VARCHAR(255) NOT NULL,
+    zip_code VARCHAR(20),
+    tax_status VARCHAR(50),
+    rental_status VARCHAR(50)
+);
+
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "broadcasts_segments_broadcast_id_segment_id_idx" ON "broadcasts_segments" ("broadcast_id","segment_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "conversation_label" ON "conversations_labels" ("conversation_id","label_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "invoke_history_request_body_idx" ON "invoke_history" ("request_body");--> statement-breakpoint

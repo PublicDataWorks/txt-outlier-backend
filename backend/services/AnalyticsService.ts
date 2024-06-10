@@ -14,6 +14,7 @@ import MissiveUtils from '../lib/Missive.ts'
 import DateUtils from '../misc/DateUtils.ts'
 import { formatConversationForReport } from '../misc/formatConversationForReport.ts'
 import { formatMetricByAudienceSegment } from '../misc/formatMetricByAudienceSegment.ts'
+import { formatLookupHistory } from '../misc/formatLookupHistory.ts'
 
 async function getWeeklyUnsubcribeByAudienceSegment() {
   return await supabase.execute(sql.raw(selectWeeklyUnsubcribeBroadcastMessageStatus))
@@ -57,6 +58,7 @@ async function sendWeeklyReport() {
     impactConversations,
     replies,
     reportConversations,
+    lookupHistory
   ] = await Promise.all([
     AnalyticsService.getWeeklyUnsubcribeByAudienceSegment(),
     AnalyticsService.getWeeklyBroadcastSent(),
@@ -65,6 +67,7 @@ async function sendWeeklyReport() {
     AnalyticsService.getWeeklyImpactConversations(),
     AnalyticsService.getWeeklyRepliesByAudienceSegment(),
     AnalyticsService.getWeeklyReportConversations(),
+    AnalyticsService.getWeeklyDataLookup()
   ])
   const weeklyReportConversationId = Deno.env.get('MISSIVE_WEEKLY_REPORT_CONVERSATION_ID')
   const totalUnsubscribedMessages = unsubscribedMessages.reduce(
@@ -102,6 +105,15 @@ async function sendWeeklyReport() {
 | Unsubscribes                   | ${totalUnsubscribedMessages} |
 `
 
+let lookupHistorySection = '';
+  const formattedLookupHistory = formatLookupHistory(lookupHistory);
+  if (formattedLookupHistory.trim()) {
+    lookupHistorySection = `### Data Lookups by Property Status
+| Status                         | Count |
+|------------------------------- |-------| 
+${formattedLookupHistory}`;
+  }
+
   const impactConversationsSection = formatConversationForReport(impactConversations)
   let conversationOutcomes = '';
   if (impactConversationsSection.trim()) {
@@ -131,6 +143,7 @@ ${unsubcribeByAudienceSegment}`;
 
   const markdownReport = [intro, majorThemes, conversationMetrics];
   
+  if (lookupHistorySection) markdownReport.push(lookupHistorySection);
   if (conversationOutcomes) markdownReport.push(conversationOutcomes);
   if (broadcastReplies) markdownReport.push(broadcastReplies);
   if (unsubscribeSection) markdownReport.push(unsubscribeSection);

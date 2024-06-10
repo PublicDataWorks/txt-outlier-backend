@@ -185,7 +185,7 @@ const selectWeeklyDataLookUp = `
       SELECT 
           rental_status AS status
       FROM 
-          data_lookups
+          lookup_history
       WHERE
       created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
       AND 
@@ -194,7 +194,7 @@ const selectWeeklyDataLookUp = `
       SELECT 
           tax_status AS status
       FROM 
-          data_lookups
+          lookup_history
       WHERE
       created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
       AND 
