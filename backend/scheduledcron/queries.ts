@@ -96,7 +96,7 @@ const selectWeeklyUnsubcribeBroadcastMessageStatus = `
   WHERE
   um.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  um.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  um.created_at < DATE_TRUNC('week', CURRENT_DATE) 
   GROUP BY bsms.audience_segment_id, asg.name
   `
 
@@ -108,7 +108,7 @@ const selectWeeklyBroadcastSent = `
   AND
   created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  created_at < DATE_TRUNC('week', CURRENT_DATE) 
 `
 
 const selectWeeklyFailedMessage = `
@@ -119,7 +119,7 @@ const selectWeeklyFailedMessage = `
   AND
   created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  created_at < DATE_TRUNC('week', CURRENT_DATE) 
 `
 
 const selectWeeklyTextIns = `
@@ -130,7 +130,7 @@ const selectWeeklyTextIns = `
   AND
   created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  created_at < DATE_TRUNC('week', CURRENT_DATE) 
   AND 
   from_field != '${Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')}'
 `
@@ -145,7 +145,7 @@ const selectWeeklyImpactConversations = `
   AND
   cl.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  cl.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  cl.created_at < DATE_TRUNC('week', CURRENT_DATE) 
   GROUP BY l.name;
 `
 
@@ -160,7 +160,7 @@ const selectWeeklyRepliesBrokenByAudienceSegment = `
   AND
   tm.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  tm.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  tm.created_at < DATE_TRUNC('week', CURRENT_DATE) 
   GROUP BY bsms.audience_segment_id, asg.name
 `
 
@@ -173,7 +173,7 @@ const selectWeeklyReporterConversation = `
   AND
   cl.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
-  cl.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  cl.created_at < DATE_TRUNC('week', CURRENT_DATE) 
   GROUP BY l.name;
 `
 
@@ -189,7 +189,7 @@ const selectWeeklyDataLookUp = `
       WHERE
       created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
       AND 
-      created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+      created_at < DATE_TRUNC('week', CURRENT_DATE) 
       UNION ALL
       SELECT 
           tax_status AS status
@@ -198,12 +198,16 @@ const selectWeeklyDataLookUp = `
       WHERE
       created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
       AND 
-      created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+      created_at < DATE_TRUNC('week', CURRENT_DATE) 
   ) AS combined_statuses
   GROUP BY 
       status
   ORDER BY 
       status;
+`
+
+const selectWeeklyTopZipCodeLookup= `
+  
 `
 
 interface BroadcastDashBoardQueryReturn {
