@@ -6,6 +6,7 @@ const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
   const newSegments = []
   for (let i = 0; i < times; i++) {
     const segment = {
+      name: `Test name`,
       query: `SELECT from_field as phone_number
               FROM twilio_messages
               ORDER BY id ${order}`,

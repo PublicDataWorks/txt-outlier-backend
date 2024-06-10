@@ -113,9 +113,11 @@ describe('getWeeklyUnsubcribeByAudienceSegment', () => {
 
     assertObjectMatch(report, [{
       audience_segment_id: '1',
+      name: 'Test name',
       count: '30',
     }, {
       audience_segment_id: '2',
+      name: 'Test name',
       count: '30',
     }, {
       audience_segment_id: null,
@@ -153,9 +155,12 @@ describe('getWeeklyFailedMessage', () => {
 
 describe('getWeeklyTextIns', () => {
   it('should return number of text-ins last week', async () => {
+    const author1 = await createAuthors(1, { phoneNumber: Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER') })
+    const author2 = await createAuthors(1, { phoneNumber: '1273892173' })
     await createTwilioMessages(30, { createdAt: getRandomDayFromLastWeek() })
+    await createTwilioMessages(2, { createdAt: getRandomDayFromLastWeek() }, [...author1, ...author2])
     const result = await AnalyticsService.getWeeklyTextIns()
-    assertEquals(result[0].count, '30')
+    assertEquals(result[0].count, '31')
   })
 
   it('should not return number of text-ins outside last week', async () => {
@@ -204,11 +209,13 @@ describe('getRepliesByAudienceSegment', () => {
 
     assertEquals(replies[0], {
       audience_segment_id: '1',
+      name: 'Test name',
       count: '4',
     })
 
     assertEquals(replies[1], {
       audience_segment_id: '2',
+      name: 'Test name',
       count: '6',
     })
   })
@@ -284,11 +291,11 @@ describe('sendWeeklyReport', () => {
       AnalyticsService,
       'getWeeklyUnsubcribeByAudienceSegment',
       returnsNext([[
-        {
-          audience_segment_id: 1,
-          count: 90,
-        },
-      ]]),
+        { audience_segment_id: 1, count: '4', name: 'Proactive' }, {
+          audience_segment_id: 2,
+          count: '2',
+          name: 'Receptive',
+        }      ]]),
     )
     stub(AnalyticsService, 'getWeeklyBroadcastSent', returnsNext([{ count: '1' }]))
     stub(AnalyticsService, 'getWeeklyFailedMessage', returnsNext([{ count: '1' }]))
@@ -307,7 +314,11 @@ describe('sendWeeklyReport', () => {
     stub(
       AnalyticsService,
       'getWeeklyRepliesByAudienceSegment',
-      returnsNext([[{ audience_segment_id: 1, count: '12' }]]),
+      returnsNext([[{ audience_segment_id: 1, count: '6', name: 'Proactive' }, {
+        audience_segment_id: 2,
+        count: '6',
+        name: 'Receptive',
+      }]]),
     )
     stub(
       AnalyticsService,
@@ -315,46 +326,74 @@ describe('sendWeeklyReport', () => {
       returnsNext([[{ label_name: 'Report Label 1', count: 5 }, { label_name: 'Report Label 2', count: 6 }]]),
     )
 
-    const expectedIntroPart = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
+    const expectedIntro = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
 
-    const expectedThemePart = `## Major Themes/Topics
-  - **User Satisfaction**: Many users expressed gratitude for the timely information.
-  - **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
-  - **Resource Connections**: Users frequently requested resources related to housing and healthcare.`
-
-    const expectedStatsPart = `
-  ## Statistics Summary
-
-| Metric                         | Count |
-|------------------------------- |-------|
-| Impact Conversations           | 2    |
-| - Impact Label 1               | 1    |
-| - Impact Label 2               | 1    |
-| Conversation Starters Sent     | 1 |
-| Failed Deliveries              | 1 |
-| Replies Received               | 12  |
-| Unsubscribes                   | 90 |
-| Text-ins                       | 1 |
-| Reporter Conversations         | 11 |
-| - Report Label 1               | 5    |
-| - Report Label 2               | 6    |
-
+    const expectedThemes = `
+## Summary of Major Themes/Topics
+- **User Satisfaction**: Significant number of users expressed satisfaction with the resources provided.
+- **Problem Addressed**: Numerous reports of problems addressed successfully.
+- **Crisis Averted**: Notable increase in crisis averted scenarios.
+- **Property Status Inquiries**: Frequent inquiries about property status, particularly regarding tax debt and compliance issues.
+- **Accountability Initiatives**: Positive feedback on accountability initiatives, with some users highlighting persistent issues.
 `
 
+    const expectedConversationMetrics = `### Conversation Metrics
+| Metric                         | Count |
+|------------------------------- |-------|
+| Conversation Starters Sent     | 1 |
+| Broadcast replies              | 12  |
+| Text-ins                       | 1 |
+| Reporter conversations         | 11 |
+| Failed Deliveries              | 1 |
+| Unsubscribes                   | 6 |
+`
+
+    const expectedConversationOutcomes = `### Conversation Outcomes
+| Outcome                         | Count |
+|-------------------------------  |-------| 
+| - Impact Label 1               | 1    |
+| - Impact Label 2               | 1    |
+`
+    const expectedBroadcastReplies = `### Broadcast Replies by Audience Segment
+| Segment                         | Count |
+|-------------------------------  |-------| 
+| - Proactive                    | 6    |
+| - Receptive                    | 6    |
+`
+
+    const expectedUnsubcribes = `### Unsubcribes by Audience Segment
+| Segment                         | Count |
+|-------------------------------  |-------|
+| - Proactive                    | 4    |
+| - Receptive                    | 2    |
+`
     await AnalyticsService.sendWeeklyReport()
 
     assertEquals(sendPostStub.calls.length, 1)
     assertEquals(
       sendPostStub.calls[0].args[0][0],
-      expectedIntroPart,
+      expectedIntro,
     )
     assertEquals(
       sendPostStub.calls[0].args[0][1],
-      expectedThemePart,
+      expectedThemes,
     )
     assertEquals(
       sendPostStub.calls[0].args[0][2],
-      expectedStatsPart,
-    ), sendPostStub.restore()
+      expectedConversationMetrics,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][3],
+      expectedConversationOutcomes,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][4],
+      expectedBroadcastReplies,
+    )
+    assertEquals(
+      sendPostStub.calls[0].args[0][5],
+      expectedUnsubcribes,
+    )
+    sendPostStub.restore()
   })
 })

@@ -82,20 +82,22 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
 
 const selectWeeklyUnsubcribeBroadcastMessageStatus = `
   SELECT 
-  bsm.audience_segment_id,
+  bsms.audience_segment_id,
+  asg.name,
   COUNT(*) AS count  -- Example aggregation: count of unsubscribed messages
   FROM 
     public.unsubscribed_messages um 
   LEFT JOIN 
-    public.broadcast_sent_message_status bsm 
+    public.broadcast_sent_message_status bsms 
   ON 
-    um.reply_to = bsm.id
+    um.reply_to = bsms.id
+  LEFT JOIN public.audience_segments asg 
+  ON bsms.audience_segment_id = asg.id
   WHERE
-    um.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
-    AND 
-    um.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
-  GROUP BY 
-    bsm.audience_segment_id;
+  um.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
+  AND 
+  um.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  GROUP BY bsms.audience_segment_id, asg.name
   `
 
 const selectWeeklyBroadcastSent = `
@@ -129,6 +131,8 @@ const selectWeeklyTextIns = `
   created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
   created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
+  AND 
+  from_field != '${Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')}'
 `
 
 const impactLabelIds = IMPACT_LABEL_IDS.map((id) => `'${id}'`).join(', ')
@@ -146,14 +150,18 @@ const selectWeeklyImpactConversations = `
 `
 
 const selectWeeklyRepliesBrokenByAudienceSegment = `
-  SELECT audience_segment_id, COUNT(distinct tm.id) as count
-  FROM public.twilio_messages tm LEFT JOIN public.broadcast_sent_message_status bsms ON tm.reply_to_broadcast = bsms.broadcast_id
+  SELECT bsms.audience_segment_id, asg.name, COUNT(distinct tm.id) as count
+  FROM public.twilio_messages tm 
+  LEFT JOIN public.broadcast_sent_message_status bsms 
+  ON tm.reply_to_broadcast = bsms.broadcast_id
+  LEFT JOIN public.audience_segments asg 
+  ON bsms.audience_segment_id = asg.id
   WHERE tm.is_broadcast_reply = true and tm.from_field = bsms.recipient_phone_number
   AND
   tm.created_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'  
   AND 
   tm.created_at < DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 day'
-  GROUP BY bsms.audience_segment_id
+  GROUP BY bsms.audience_segment_id, asg.name
 `
 
 const reporterLabelIds = REPORTER_LABEL_IDS.map((id) => `'${id}'`).join(', ')

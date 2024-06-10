@@ -1,10 +1,10 @@
-import { DataLookup, dataLookup } from '../../drizzle/schema.ts'
+import { LookupHistory, lookupHistory } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { faker } from 'faker'
 
 let idCounter = 1
 
-export const createDataLookup = async (times = 1, updatedData: Partial<DataLookup> = {}) => {
+export const createDataLookup = async (times = 1, updatedData: Partial<LookupHistory> = {}) => {
   const newDataLookups = []
   for (let i = 0; i < times; i++) {
     const dataLookup = {
@@ -18,5 +18,5 @@ export const createDataLookup = async (times = 1, updatedData: Partial<DataLooku
     newDataLookups.push({ ...dataLookup, ...updatedData })
   }
 
-  return await supabase.insert(dataLookup).values(newDataLookups).returning()
+  return await supabase.insert(lookupHistory).values(newDataLookups).returning()
 }

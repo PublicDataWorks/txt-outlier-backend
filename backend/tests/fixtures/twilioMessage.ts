@@ -3,7 +3,7 @@ import { Author, TwilioMessage, twilioMessages } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 import { createAuthors } from './authors.ts'
 
-const createTwilioMessages = async (times = 1, updatedData?: Partial<TwilioMessage>, authors?: Author[]) => {
+const createTwilioMessages = async (times = 1, updatedData?: Partial<TwilioMessage>, authors?: Partial<Author>[]) => {
   const newMessages = []
   const newAuthors = authors ? authors : await createAuthors(times)
   for (let i = 0; i < times; i++) {

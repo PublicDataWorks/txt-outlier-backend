@@ -55,6 +55,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS "audience_segments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"name" text,
 	"query" text NOT NULL,
 	"description" text NOT NULL
 );

@@ -13,6 +13,7 @@ import {
 import MissiveUtils from '../lib/Missive.ts'
 import DateUtils from '../misc/DateUtils.ts'
 import { formatConversationForReport } from '../misc/formatConversationForReport.ts'
+import { formatMetricByAudienceSegment } from '../misc/formatMetricByAudienceSegment.ts'
 
 async function getWeeklyUnsubcribeByAudienceSegment() {
   return await supabase.execute(sql.raw(selectWeeklyUnsubcribeBroadcastMessageStatus))
@@ -66,53 +67,73 @@ async function sendWeeklyReport() {
     AnalyticsService.getWeeklyReportConversations(),
   ])
   const weeklyReportConversationId = Deno.env.get('MISSIVE_WEEKLY_REPORT_CONVERSATION_ID')
-  const totalImpactsConversations = impactConversations.reduce(
+  const totalUnsubscribedMessages = unsubscribedMessages.reduce(
     (total: number, conversation: { count: string }) => total += Number(conversation.count),
     0,
   )
-
-  const totalUnsubcribedMessage = unsubscribedMessages.reduce(
-    (total: number, conversation: { count: string }) => total += Number(conversation.count),
-    0,
-  )
-
   const totalReplies = replies.reduce(
     (total: number, conversation: { count: string }) => total += Number(conversation.count),
     0,
   )
-
   const totalReportConversations = reportConversations.reduce(
     (total: number, conversation: { count: string }) => total += Number(conversation.count),
     0,
   )
 
-  const impactConversationsSection = formatConversationForReport(impactConversations)
-  const reportConversationsSection = formatConversationForReport(reportConversations)
+  const intro = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
 
-  const introPart = `# Weekly Summary Report (${DateUtils.getCurrentDateFormattedForWeeklyReport()})`
-
-  const themePart = `## Major Themes/Topics
-  - **User Satisfaction**: Many users expressed gratitude for the timely information.
-  - **Issues Addressed**: Several conversations highlighted issues with local services that were addressed promptly.
-  - **Resource Connections**: Users frequently requested resources related to housing and healthcare.`
-
-  const statsPart = `
-  ## Statistics Summary
-
-| Metric                         | Count |
-|------------------------------- |-------|
-| Impact Conversations           | ${totalImpactsConversations}    |
-${impactConversationsSection}| Conversation Starters Sent     | ${broadcasts.count} |
-| Failed Deliveries              | ${failedMessages.count} |
-| Replies Received               | ${totalReplies}  |
-| Unsubscribes                   | ${totalUnsubcribedMessage} |
-| Text-ins                       | ${textIns.count} |
-| Reporter Conversations         | ${totalReportConversations} |
-${reportConversationsSection}
+  const majorThemes = `
+## Summary of Major Themes/Topics
+- **User Satisfaction**: Significant number of users expressed satisfaction with the resources provided.
+- **Problem Addressed**: Numerous reports of problems addressed successfully.
+- **Crisis Averted**: Notable increase in crisis averted scenarios.
+- **Property Status Inquiries**: Frequent inquiries about property status, particularly regarding tax debt and compliance issues.
+- **Accountability Initiatives**: Positive feedback on accountability initiatives, with some users highlighting persistent issues.
 `
 
-  const markdownReport = [introPart, themePart, statsPart]
+  const conversationMetrics = `### Conversation Metrics
+| Metric                         | Count |
+|------------------------------- |-------|
+| Conversation Starters Sent     | ${broadcasts.count} |
+| Broadcast replies              | ${totalReplies}  |
+| Text-ins                       | ${textIns.count} |
+| Reporter conversations         | ${totalReportConversations} |
+| Failed Deliveries              | ${failedMessages.count} |
+| Unsubscribes                   | ${totalUnsubscribedMessages} |
+`
 
+  const impactConversationsSection = formatConversationForReport(impactConversations)
+  let conversationOutcomes = '';
+  if (impactConversationsSection.trim()) {
+    conversationOutcomes = `### Conversation Outcomes
+| Outcome                         | Count |
+|-------------------------------  |-------| 
+${impactConversationsSection}`;
+  }
+
+  const repliesByAudienceSegment = formatMetricByAudienceSegment(replies)
+  let broadcastReplies = '';
+  if (repliesByAudienceSegment.trim()) {
+    broadcastReplies = `### Broadcast Replies by Audience Segment
+| Segment                         | Count |
+|-------------------------------  |-------| 
+${repliesByAudienceSegment}`;
+  }
+
+  const unsubcribeByAudienceSegment = formatMetricByAudienceSegment(unsubscribedMessages)
+  let unsubscribeSection = '';
+  if (unsubcribeByAudienceSegment.trim()) {
+    unsubscribeSection = `### Unsubcribes by Audience Segment
+| Segment                         | Count |
+|-------------------------------  |-------|
+${unsubcribeByAudienceSegment}`;
+  }
+
+  const markdownReport = [intro, majorThemes, conversationMetrics];
+  
+  if (conversationOutcomes) markdownReport.push(conversationOutcomes);
+  if (broadcastReplies) markdownReport.push(broadcastReplies);
+  if (unsubscribeSection) markdownReport.push(unsubscribeSection);
   // Send the report message
   await MissiveUtils.sendPost(markdownReport, weeklyReportConversationId)
 }

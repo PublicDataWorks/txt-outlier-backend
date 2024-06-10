@@ -324,6 +324,7 @@ export const users = pgTable('users', {
 
 export const audienceSegments = pgTable('audience_segments', {
   id: serial('id').primaryKey().notNull(),
+  name: text('name'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   query: text('query').notNull(),
   description: text('description').notNull(),
