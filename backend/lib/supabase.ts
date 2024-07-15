@@ -18,7 +18,7 @@ const supabase: PostgresJsDatabase = drizzle(postgresClient, {
 })
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY)
 const mostRecentBroadcastChannel = supabaseClient.channel('most-recent-broadcast')
 // It causes Leaking async ops errors if running websocket in tests
