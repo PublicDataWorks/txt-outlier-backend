@@ -21,12 +21,24 @@ const getNextTimestamp = (date: Date = new Date()): Date => {
 
   // Calculate the number of days to add to reach the next Monday, Wednesday, or Friday
   let daysToAdd = 0
-  if (day === 0 || day === 2 || day === 4) { // Sunday, Tuesday, Thursday
-    daysToAdd = 1 // Next day is Monday, Wednesday, Friday respectively
-  } else if (day === 1 || day === 3 || day === 6) { // Monday, Wednesday, Sat
-    daysToAdd = 2 // Next is Wednesday, Friday, Monday
-  } else if (day === 5) { // Friday
-    daysToAdd = 3 // Next is Monday
+  switch (day) {
+    case 0: // Sunday
+      daysToAdd = 2
+      break
+    case 1: // Monday
+    case 2: // Tuesday
+    case 3: // Wednesday
+      daysToAdd = 1 // Next Thursday
+      break
+    case 4: // Thursday
+      daysToAdd = 5
+      break
+    case 5: // Friday
+      daysToAdd = 4
+      break
+    case 6: // Saturday
+      daysToAdd = 3
+      break
   }
 
   let nextDay = addDays(edtTime, daysToAdd)

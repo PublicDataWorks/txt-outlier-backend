@@ -30,9 +30,9 @@ describe('getNextTimestamp', () => {
       const date = new Date('2022-12-09T15:00:00Z') // This is Friday 11 a.m. EDT
       const result = dateUtils.getNextTimestamp(date)
 
-      assertEquals(result.getUTCDay(), 1)
+      assertEquals(result.getUTCDay(), 2)
       assertEquals(result.getUTCHours(), 10)
-      assertEquals(result.toISOString(), '2022-12-12T10:00:00.000Z')
+      assertEquals(result.toISOString(), '2022-12-13T10:00:00.000Z')
     })
   })
 
@@ -41,9 +41,9 @@ describe('getNextTimestamp', () => {
       const date = new Date('2022-12-10T15:00:00Z') // This is Saturday 10 a.m. EDT
       const result = dateUtils.getNextTimestamp(date)
 
-      assertEquals(result.getUTCDay(), 1)
+      assertEquals(result.getUTCDay(), 2)
       assertEquals(result.getUTCHours(), 10)
-      assertEquals(result.toISOString(), '2022-12-12T10:00:00.000Z')
+      assertEquals(result.toISOString(), '2022-12-13T10:00:00.000Z')
     })
   })
 })
