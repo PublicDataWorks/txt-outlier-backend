@@ -76,7 +76,7 @@ describe(
       assertEquals(results.length, 2)
       assert(!results[0].editable)
       assert(results[1].editable)
-      assertEquals(results[1].runAt, new Date('2024-02-02T10:00:57.000Z'))
+      assertEquals(results[1].runAt, new Date('2024-02-01T10:00:57.000Z'))
       assertEquals(results[0].firstMessage, results[1].firstMessage)
       assertEquals(results[0].secondMessage, results[1].secondMessage)
       assertEquals(results[0].delay, results[1].delay)
@@ -96,7 +96,7 @@ describe(
       const results = await supabase.select().from(broadcasts).orderBy(
         broadcasts.id,
       )
-      assertEquals(results[1].runAt, new Date('2024-02-05T10:00:57.000Z'))
+      assertEquals(results[1].runAt, new Date('2024-02-06T10:00:57.000Z'))
     })
 
     it('with multiple segments', async () => {
