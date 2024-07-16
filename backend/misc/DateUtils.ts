@@ -18,7 +18,7 @@ const getNextTimestamp = (date: Date = new Date()): Date => {
   const edtTime = toZonedTime(date, timeZone)
   const day = getDay(edtTime)
 
-  // Calculate the number of days to add to reach the next Wednesday, Thursday, or Friday at 10 AM
+  // Calculate the number of days to add to reach the next Tuesday, Wednesday, or Thursday at 10 AM
   let daysToAdd = 0
   switch (day) {
     case 0: // Sunday
