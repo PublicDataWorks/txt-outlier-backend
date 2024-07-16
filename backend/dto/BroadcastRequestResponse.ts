@@ -2,6 +2,7 @@ import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/s
 
 import { intervalToString } from '../misc/utils.ts'
 import { BroadcastDashBoardQueryReturn } from '../scheduledcron/queries.ts'
+import DateUtils from '../misc/DateUtils.ts'
 
 interface BroadcastSentDetail {
   totalFirstSent?: number
@@ -78,7 +79,7 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
   return {
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
-    runAt: broadcast.runAt,
+    runAt: DateUtils.getNextTimestamp(broadcast.runAt),
     delay: broadcast.delay,
     editable: broadcast.editable,
     noUsers: broadcast.noUsers,

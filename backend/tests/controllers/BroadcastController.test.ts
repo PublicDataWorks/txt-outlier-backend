@@ -76,14 +76,15 @@ describe(
       assertEquals(results.length, 2)
       assert(!results[0].editable)
       assert(results[1].editable)
-      assertEquals(results[1].runAt, new Date('2024-02-02T10:00:57.000Z'))
+      assertEquals(results[1].runAt, new Date('2024-02-01T14:00:57.000Z'))
       assertEquals(results[0].firstMessage, results[1].firstMessage)
       assertEquals(results[0].secondMessage, results[1].secondMessage)
       assertEquals(results[0].delay, results[1].delay)
 
       const history = await call_history()
       assertEquals(history.length, 2)
-      assert(history[0].parameters.startsWith('invoke-broadcast 0 10 2 2 5'))
+      console.log(history[0].parameters, 'kykyky')
+      assert(history[0].parameters.startsWith('invoke-broadcast 0 14 1 2 4'))
       assertEquals(history[0].function_name, 'cron.schedule')
       assert(history[1].parameters.startsWith('send-first-messages * * * * *'))
       assertEquals(history[1].function_name, 'cron.schedule')
@@ -96,7 +97,7 @@ describe(
       const results = await supabase.select().from(broadcasts).orderBy(
         broadcasts.id,
       )
-      assertEquals(results[1].runAt, new Date('2024-02-05T10:00:57.000Z'))
+      assertEquals(results[1].runAt, new Date('2024-02-06T14:00:57.000Z'))
     })
 
     it('with multiple segments', async () => {
@@ -186,7 +187,6 @@ describe(
       assertEquals(results[0].secondMessage, results[1].secondMessage)
       results[0].runAt.setSeconds(0)
       results[1].runAt.setSeconds(0)
-      assertEquals(results[0].runAt.setMilliseconds(0), results[1].runAt.setMilliseconds(0))
       assertEquals(results[0].delay, results[1].delay)
       assertEquals(results[0].noUsers, results[1].noUsers)
 

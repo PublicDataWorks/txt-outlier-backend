@@ -14,23 +14,34 @@ const diffInMinutes = (runAt: Date): number => {
 
 const getNextTimestamp = (date: Date = new Date()): Date => {
   const timeZone = 'America/New_York' // EDT timezone
-  //Any date input should be in UTC
-  // Determine the current day of the week
+  // Any date input should be in UTC
   const edtTime = toZonedTime(date, timeZone)
   const day = getDay(edtTime)
 
-  // Calculate the number of days to add to reach the next Monday, Wednesday, or Friday
+  // Calculate the number of days to add to reach the next Tuesday, Wednesday, or Thursday at 10 AM
   let daysToAdd = 0
-  if (day === 0 || day === 2 || day === 4) { // Sunday, Tuesday, Thursday
-    daysToAdd = 1 // Next day is Monday, Wednesday, Friday respectively
-  } else if (day === 1 || day === 3 || day === 6) { // Monday, Wednesday, Sat
-    daysToAdd = 2 // Next is Wednesday, Friday, Monday
-  } else if (day === 5) { // Friday
-    daysToAdd = 3 // Next is Monday
+  switch (day) {
+    case 0: // Sunday
+      daysToAdd = 2
+      break
+    case 1: // Monday
+    case 2: // Tuesday
+    case 3: // Wednesday
+      daysToAdd = 1
+      break
+    case 4: // Thursday
+      daysToAdd = 5
+      break
+    case 5: // Friday
+      daysToAdd = 4
+      break
+    case 6: // Saturday
+      daysToAdd = 3
+      break
   }
 
   let nextDay = addDays(edtTime, daysToAdd)
-  nextDay = setHours(nextDay, 10)
+  nextDay = setHours(nextDay, 14)
   nextDay = setMinutes(nextDay, 0)
   return nextDay
 }

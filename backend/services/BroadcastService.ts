@@ -367,7 +367,6 @@ const makeNextBroadcastSchedule = async (
   tx: PostgresJsTransaction<any, any>,
   previousBroadcast: Broadcast & { broadcastToSegments: { segment: AudienceSegment; ratio: number }[] },
 ): Promise<void> => {
-  previousBroadcast.runAt = DateUtils.getNextTimestamp()
   const newBroadcast = convertToFutureBroadcast(previousBroadcast)
   const invokeNextBroadcast = invokeBroadcastCron(newBroadcast.runAt)
   await tx.execute(sql.raw(invokeNextBroadcast))
