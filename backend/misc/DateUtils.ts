@@ -14,12 +14,11 @@ const diffInMinutes = (runAt: Date): number => {
 
 const getNextTimestamp = (date: Date = new Date()): Date => {
   const timeZone = 'America/New_York' // EDT timezone
-  //Any date input should be in UTC
-  // Determine the current day of the week
+  // Any date input should be in UTC
   const edtTime = toZonedTime(date, timeZone)
   const day = getDay(edtTime)
 
-  // Calculate the number of days to add to reach the next Monday, Wednesday, or Friday
+  // Calculate the number of days to add to reach the next Wednesday, Thursday, or Friday at 10 AM
   let daysToAdd = 0
   switch (day) {
     case 0: // Sunday
@@ -28,7 +27,7 @@ const getNextTimestamp = (date: Date = new Date()): Date => {
     case 1: // Monday
     case 2: // Tuesday
     case 3: // Wednesday
-      daysToAdd = 1 // Next Thursday
+      daysToAdd = 1
       break
     case 4: // Thursday
       daysToAdd = 5
@@ -42,7 +41,7 @@ const getNextTimestamp = (date: Date = new Date()): Date => {
   }
 
   let nextDay = addDays(edtTime, daysToAdd)
-  nextDay = setHours(nextDay, 10)
+  nextDay = setHours(nextDay, 14)
   nextDay = setMinutes(nextDay, 0)
   return nextDay
 }
