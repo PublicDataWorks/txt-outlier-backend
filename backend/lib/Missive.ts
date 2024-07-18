@@ -3,6 +3,10 @@ const headers = {
   'Content-Type': 'application/json',
   'Authorization': `Bearer ${Deno.env.get('MISSIVE_SECRET')}`,
 }
+const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')
+if (!BROADCAST_PHONE_NUMBER) {
+  throw new Error('BROADCAST_SOURCE_PHONE_NUMBER environment variable is not set')
+}
 
 const sendMessage = (message: string, toPhone: string) => {
   const body = {
@@ -12,7 +16,7 @@ const sendMessage = (message: string, toPhone: string) => {
         { 'phone_number': toPhone },
       ],
       'from_field': {
-        'phone_number': '+18336856203', // TODO: Get it from ENV
+        'phone_number': BROADCAST_PHONE_NUMBER,
         'type': 'twilio',
       },
       'send': true, // Send right away

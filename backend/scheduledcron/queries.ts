@@ -55,7 +55,7 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
   let WHERE_CLAUSE = (cursor && typeof cursor === 'number') ? `WHERE b.run_at < to_timestamp(${cursor})` : 'WHERE TRUE'
   if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND b.id = ${broadcastId}`)
   return `
-    SELECT b.id ,
+    SELECT b.id,
            b.run_at                                                                                                                   AS "runAt",
            b.delay,
            b.first_message                                                                                                            AS "firstMessage",
@@ -68,8 +68,8 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
            count(distinct um.id)                                                                                                      AS "totalUnsubscribed"
     FROM broadcasts b
            LEFT JOIN broadcast_sent_message_status bsms ON b.id = bsms.broadcast_id
-           LEFT JOIN unsubscribed_messages um ON b.id = um.broadcast_id
-    ${WHERE_CLAUSE}
+           LEFT JOIN unsubscribed_messages um ON b.id = um.broadcast_id AND um.reply_to = bsms.id
+      ${WHERE_CLAUSE}
     GROUP BY b.id
     ORDER BY
         CASE WHEN editable = TRUE THEN 1 ELSE 2 END,
