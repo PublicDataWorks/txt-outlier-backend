@@ -6,6 +6,7 @@ import AppResponse from '../misc/AppResponse.ts'
 import BroadcastService from '../services/BroadcastService.ts'
 import { removeExtraSpaces } from '../misc/utils.ts'
 import Paths from '../constants/Paths.ts'
+import * as log from 'log'
 
 async function makeBroadcast(_req: Request, res: Response) {
   await BroadcastService.makeBroadcast()
@@ -77,7 +78,7 @@ async function updateTwilioStatus(req: Request, res: Response) {
   return AppResponse.ok(res, {}, 204)
 }
 
-async function commentChangeSubscription(req: Request, res: Response) {
+async function commentChangeSubscriptionStatus(req: Request, res: Response) {
   if (
     !req.body.conversation || !Array.isArray(req.body.conversation.external_authors) ||
     req.body.conversation.external_authors.length === 0
@@ -110,7 +111,7 @@ async function commentChangeSubscription(req: Request, res: Response) {
       message: `Author ${isUnsubscribe ? 'unsubscribed' : 'resubscribed'} successfully`,
     }, 200)
   } catch (error) {
-    console.error('Error in commentChangeSubscription:', error)
+    log.error('Error in commentChangeSubscription:', error)
     return AppResponse.internalServerError(res, 'An unexpected error occurred')
   }
 }
@@ -122,5 +123,5 @@ export default {
   patch,
   updateTwilioStatus,
   sendNow,
-  commentChangeSubscription,
+  commentChangeSubscription: commentChangeSubscriptionStatus,
 } as const

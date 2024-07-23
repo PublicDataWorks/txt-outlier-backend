@@ -4,8 +4,8 @@ const USER_UNAUTHORIZED_ERR = 'Unauthorized'
 const BAD_REQUEST_ERR = 'Bad Request'
 const INTERNAL_SERVER_ERR = 'Internal Server Error'
 
-const unauthorized = (res: Response) => {
-  return res.status(401).json({ message: USER_UNAUTHORIZED_ERR })
+const unauthorized = (res: Response, errorMessage: string = USER_UNAUTHORIZED_ERR) => {
+  return res.status(401).json({ message: errorMessage })
 }
 const invalid = (res: Response, errorMessage: string) => {
   return res.status(400).json({ message: errorMessage })

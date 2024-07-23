@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from 'express'
-import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
 import { decodeHex } from 'encoding/hex.ts'
 import AppResponse from '../misc/AppResponse.ts'
@@ -9,7 +8,7 @@ const missiveWebhookCallbackVerify = async (req: Request, res: Response, next: N
 
   if (!requestHeaderSig || typeof requestHeaderSig !== 'string') {
     DenoSentry.captureException('Bad Request: X-Hook-Signature header is missing or invalid')
-    return res.status(401).json({ error: 'Missing or invalid authentication header' })
+    return AppResponse.unauthorized(res, 'Missing or invalid authentication header')
   }
 
   try {
@@ -20,8 +19,8 @@ const missiveWebhookCallbackVerify = async (req: Request, res: Response, next: N
     }
     next()
   } catch (error) {
-    log.error('Error during signature verification:', error)
-    return res.status(500).json({ error: 'Internal server error' })
+    DenoSentry.captureException('Error during signature verification:', error)
+    return AppResponse.internalServerError(res)
   }
 }
 

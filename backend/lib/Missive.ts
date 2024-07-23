@@ -1,3 +1,5 @@
+import * as log from 'log'
+
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
 
@@ -48,6 +50,7 @@ const createPost = async (postBody: string) => {
   })
 
   if (!response.ok) {
+    log.error(`HTTP error! status: ${response.status}`)
     throw new Error(`HTTP error! status: ${response.status}`)
   }
 

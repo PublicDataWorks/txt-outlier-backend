@@ -15,6 +15,7 @@ import {
   outgoingMessages,
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
+import * as DenoSentry from 'sentry/deno'
 import {
   invokeBroadcastCron,
   JOB_NAMES,
@@ -436,7 +437,13 @@ const updateSubscriptionStatus = async (
   } else {
     postMessage = `This phone number ${phoneNumber} has now been resubscribed by ${authorName}.`
   }
-  return await MissiveUtils.createPost(postMessage)
+  try {
+    return await MissiveUtils.createPost(postMessage)
+  } catch (error) {
+    log.error('Failed to create post:', error)
+    DenoSentry.captureException('Error during signature verification:', error)
+    throw new SystemError('Failed to update subscription status and create post.')
+  }
 }
 
 export default {
