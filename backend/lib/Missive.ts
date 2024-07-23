@@ -1,4 +1,6 @@
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
+const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
+
 const headers = {
   'Content-Type': 'application/json',
   'Authorization': `Bearer ${Deno.env.get('MISSIVE_SECRET')}`,
@@ -29,7 +31,31 @@ const sendMessage = (message: string, toPhone: string) => {
   })
 }
 
+const createPost = async (postBody: string) => {
+  const postData = {
+    posts: {
+      notification: {
+        title: 'System',
+        body: postBody,
+      },
+    },
+  }
+
+  const response = await fetch(CREATE_POST_URL, {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(postData),
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`)
+  }
+
+  return response.json()
+}
+
 export default {
   sendMessage,
+  createPost,
   CREATE_MESSAGE_URL,
 } as const

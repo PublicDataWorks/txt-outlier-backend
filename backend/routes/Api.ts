@@ -4,10 +4,12 @@ import Paths from '../constants/Paths.ts'
 import broadcastController from '../controllers/BroadcastController.ts'
 import serviceRoleKeyVerify from '../middlewares/serviceRoleKeyVerify.ts'
 import serviceTokenVerify from '../middlewares/serviceTokenVerify.ts'
+import missiveWebhookCallbackVerify from '../middlewares/missiveWebhookCallbackVerify.ts'
 
 const apiRouter = Router()
 const userRouter = Router()
 const broadcastRouter = Router()
+const commentRouter = Router()
 
 broadcastRouter.get(
   Paths.Broadcast.Make,
@@ -39,13 +41,20 @@ broadcastRouter.patch(
   broadcastController.patch,
 )
 
-broadcastRouter.get(
-  Paths.Broadcast.UpdateTwilioStatus,
-  serviceRoleKeyVerify,
-  broadcastController.updateTwilioStatus,
+commentRouter.post(
+  Paths.Comment.Unsubscribe,
+  missiveWebhookCallbackVerify,
+  broadcastController.commentChangeSubscription,
+)
+
+commentRouter.post(
+  Paths.Comment.Resubscribe,
+  missiveWebhookCallbackVerify,
+  broadcastController.commentChangeSubscription,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)
 apiRouter.use(Paths.Broadcast.Base, broadcastRouter)
+apiRouter.use(Paths.Comment.Base, commentRouter)
 
 export default apiRouter

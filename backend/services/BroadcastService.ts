@@ -4,6 +4,7 @@ import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
 import {
   AudienceSegment,
+  authors,
   Broadcast,
   BroadcastMessageStatus,
   broadcasts,
@@ -387,7 +388,6 @@ const insertBroadcastSegmentRecipients = async (
   nextBroadcast: Broadcast,
 ) => {
   // every user receives 2 messages
-
   const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
   const statement = insertOutgoingMessagesQuery(broadcastSegment, nextBroadcast, limit)
   await tx.execute(sql.raw(statement))
@@ -420,6 +420,25 @@ const isBroadcastRunning = async (): Promise<boolean> => {
   return jobs.some((job: { jobname: string }) => job.jobname != 'invoke-broadcast' && JOB_NAMES.includes(job.jobname))
 }
 
+const updateSubscriptionStatus = async (
+  phoneNumber: string,
+  isUnsubscribe: boolean,
+  authorName: string,
+) => {
+  await supabase
+    .update(authors)
+    .set({ unsubscribed: isUnsubscribe })
+    .where(eq(authors.phoneNumber, phoneNumber))
+
+  let postMessage = ''
+  if (isUnsubscribe) {
+    postMessage = `This phone number ${phoneNumber} has now been unsubscribed by ${authorName}.`
+  } else {
+    postMessage = `This phone number ${phoneNumber} has now been resubscribed by ${authorName}.`
+  }
+  return await MissiveUtils.createPost(postMessage)
+}
+
 export default {
   makeBroadcast,
   getAll,
@@ -428,4 +447,5 @@ export default {
   sendBroadcastSecondMessage,
   updateTwilioHistory,
   sendNow,
+  updateSubscriptionStatus,
 } as const

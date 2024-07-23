@@ -30,7 +30,7 @@ Follow these steps to run the project locally:
 2. Run:
 
 ```bash
-deno task dev
+deno task run
 ```
 
 ## Testing
