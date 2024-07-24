@@ -53,7 +53,6 @@ import RouteError from '../exception/RouteError.ts'
 import { escapeLiteral } from '../scheduledcron/helpers.ts'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { SEND_NOW_STATUS } from '../misc/AppResponse.ts'
-import * as DenoSentry from 'sentry/deno'
 
 // Called by Postgres Trigger
 const makeBroadcast = async (): Promise<void> => {
@@ -427,12 +426,9 @@ const updateSubscriptionStatus = async (
     .set({ unsubscribed: isUnsubscribe })
     .where(eq(authors.phoneNumber, phoneNumber))
 
-  let postMessage = ''
-  if (isUnsubscribe) {
-    postMessage = `This phone number ${phoneNumber} has now been unsubscribed by ${authorName}.`
-  } else {
-    postMessage = `This phone number ${phoneNumber} has now been resubscribed by ${authorName}.`
-  }
+  const action = isUnsubscribe ? 'unsubscribed' : 'resubscribed'
+  const postMessage = `This phone number ${phoneNumber} has now been ${action} by ${authorName}.`
+
   try {
     await MissiveUtils.createPost(postMessage)
   } catch (error) {
