@@ -15,8 +15,8 @@ async function makeBroadcast(_req: Request, res: Response) {
   } catch (error) {
     log.error(`Error in makeBroadcast: error=${error}`)
     DenoSentry.captureException(error)
-    return AppResponse.ok(res, {}, 204)
   }
+  return AppResponse.ok(res, {}, 204)
 }
 
 async function sendNow(_req: Request, res: Response) {
@@ -25,8 +25,8 @@ async function sendNow(_req: Request, res: Response) {
   } catch (error) {
     log.error(`Error in sendNow: error=${error}`)
     DenoSentry.captureException(error)
-    return AppResponse.ok(res, {}, 204)
   }
+  return AppResponse.ok(res, {}, 204)
 }
 
 async function sendDraft(req: Request, res: Response) {

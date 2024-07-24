@@ -1,4 +1,10 @@
-CREATE SCHEMA IF NOT EXISTS cron AUTHORIZATION supabase_admin;
+CREATE SCHEMA IF NOT EXISTS "cron";
+
+CREATE TABLE IF NOT EXISTS "cron"."job" (
+                                          "id" serial PRIMARY KEY NOT NULL,
+                                          "jobname" text NOT NULL,
+                                          "schedule" text NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS cron.call_history
 (
@@ -8,21 +14,6 @@ CREATE TABLE IF NOT EXISTS cron.call_history
 );
 
 TRUNCATE cron.call_history;
-
-CREATE TABLE IF NOT EXISTS cron.job (
-	"id" serial PRIMARY KEY NOT NULL,
-	"jobname" text NOT NULL,
-  "schedule" text NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS "lookup_template" (
-  "id" serial PRIMARY KEY NOT NULL,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "name" text NOT NULL,
-  "content" text NOT NULL,
-  "type" text NOT NULL
-);
 
 CREATE OR REPLACE FUNCTION cron.schedule(a text, b text, c text)
   RETURNS VOID AS

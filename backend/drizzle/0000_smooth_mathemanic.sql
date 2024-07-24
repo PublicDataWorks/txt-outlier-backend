@@ -329,6 +329,14 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"avatar_url" text,
 	"id" uuid PRIMARY KEY NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lookup_template (
+                                             "id" serial PRIMARY KEY NOT NULL,
+                                             "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+                                             "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+                                             "name" text NOT NULL,
+                                             "content" text NOT NULL,
+                                             "type" text NOT NULL
+);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "broadcasts_segments_broadcast_id_segment_id_idx" ON "broadcasts_segments" ("broadcast_id","segment_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "conversation_label" ON "conversations_labels" ("conversation_id","label_id");--> statement-breakpoint

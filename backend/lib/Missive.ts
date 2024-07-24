@@ -3,18 +3,35 @@ import supabase from './supabase.ts'
 import { lookupTemplate } from '../drizzle/schema.ts'
 import { eq, or } from 'drizzle-orm'
 
+export const isTesting = Deno.env.get('ENV') === 'testing'
+
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
-const missive_keys = await supabase.select({ name: lookupTemplate.name, content: lookupTemplate.content }).from(
-  lookupTemplate,
-).where(or(eq(lookupTemplate.name, 'missive_secret'), eq(lookupTemplate.name, 'missive_broadcast_use_secret')))
 
-if (missive_keys.length !== 2) {
-  throw new Error(`Expected exactly two Missive keys, but found ${missive_keys.length}.`)
+interface MissiveKey {
+  name: string
+  content: string
 }
-const hasEmptyKey = missive_keys.some((key) => !key.content.trim())
-if (hasEmptyKey) {
-  throw new Error('One or more keys are empty.')
+
+let missive_keys: MissiveKey[] = isTesting
+  ? [
+    { name: 'missive_secret', content: 'dummy_secret_content' },
+    { name: 'missive_broadcast_use_secret', content: 'dummy_broadcast_content' },
+  ]
+  : []
+
+if (!isTesting) {
+  missive_keys = await supabase.select({ name: lookupTemplate.name, content: lookupTemplate.content }).from(
+    lookupTemplate,
+  ).where(or(eq(lookupTemplate.name, 'missive_secret'), eq(lookupTemplate.name, 'missive_broadcast_use_secret')))
+
+  if (missive_keys.length !== 2) {
+    throw new Error(`Expected exactly two Missive keys, but found ${missive_keys.length}.`)
+  }
+  const hasEmptyKey = missive_keys.some((key) => !key.content.trim())
+  if (hasEmptyKey) {
+    throw new Error('One or more keys are empty.')
+  }
 }
 
 const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')

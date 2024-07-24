@@ -11,9 +11,9 @@ beforeEach(async () => {
   const sqlScript1 = Deno.readTextFileSync(
     'backend/drizzle/0000_smooth_mathemanic.sql',
   )
+  await supabase.execute(sql.raw(sqlScript1))
   const sqlScript2 = Deno.readTextFileSync('backend/drizzle/0001_careless_alex_power.sql')
-  const combinedSqlScripts = sqlScript1 + sqlScript2
-  await supabase.execute(sql.raw(combinedSqlScripts))
+  await supabase.execute(sql.raw(sqlScript2))
 
   const initTestDB = Deno.readTextFileSync(
     'backend/drizzle/initTestDB.sql',
@@ -55,6 +55,7 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "user_history" CASCADE;
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
+  DROP TABLE IF EXISTS "lookup_template" CASCADE;
   DROP TABLE IF EXISTS cron.job CASCADE;
 `
 
