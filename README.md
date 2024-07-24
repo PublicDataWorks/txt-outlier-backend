@@ -37,12 +37,12 @@ deno task run
 
 - Run `supabase start`.
 
-- `cd supabase/functions/backend`.
+- Run `deno task test:dbSetup`.
 
 - Run
-  `supabase functions serve --no-verify-jwt --env-file=supabase/functions/user-actions/tests/.env.test`.
+  `deno task test`.
 
-- Run `deno test --no-check --allow-all --env=tests/.env.test -q`.
+- Run `deno task test:dbTeardown`.
 
 
 ## API Overview

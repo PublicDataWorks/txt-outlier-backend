@@ -8,10 +8,12 @@ import supabase, { postgresClient } from '../lib/supabase.ts'
 beforeEach(async () => {
   mf.install()
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
-  const sqlScript = Deno.readTextFileSync(
+  const sqlScript1 = Deno.readTextFileSync(
     'backend/drizzle/0000_smooth_mathemanic.sql',
   )
-  await supabase.execute(sql.raw(sqlScript))
+  const sqlScript2 = Deno.readTextFileSync('backend/drizzle/0001_careless_alex_power.sql')
+  const combinedSqlScripts = sqlScript1 + sqlScript2
+  await supabase.execute(sql.raw(combinedSqlScripts))
 
   const initTestDB = Deno.readTextFileSync(
     'backend/drizzle/initTestDB.sql',
