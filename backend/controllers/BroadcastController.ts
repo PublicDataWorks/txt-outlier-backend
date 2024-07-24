@@ -7,15 +7,26 @@ import BroadcastService from '../services/BroadcastService.ts'
 import { removeExtraSpaces } from '../misc/utils.ts'
 import Paths from '../constants/Paths.ts'
 import * as log from 'log'
+import * as DenoSentry from 'sentry/deno'
 
 async function makeBroadcast(_req: Request, res: Response) {
-  await BroadcastService.makeBroadcast()
-  return AppResponse.ok(res, {}, 204)
+  try {
+    await BroadcastService.makeBroadcast()
+  } catch (error) {
+    log.error(`Error in makeBroadcast: error=${error}`)
+    DenoSentry.captureException(error)
+    return AppResponse.ok(res, {}, 204)
+  }
 }
 
 async function sendNow(_req: Request, res: Response) {
-  await BroadcastService.sendNow()
-  return AppResponse.ok(res, {}, 204)
+  try {
+    await BroadcastService.sendNow()
+  } catch (error) {
+    log.error(`Error in sendNow: error=${error}`)
+    DenoSentry.captureException(error)
+    return AppResponse.ok(res, {}, 204)
+  }
 }
 
 async function sendDraft(req: Request, res: Response) {
@@ -28,9 +39,19 @@ async function sendDraft(req: Request, res: Response) {
   const id = Number(req.params.broadcastID)
   const { isSecond } = req.query
   if (isSecond) {
-    await BroadcastService.sendBroadcastSecondMessage(id)
+    try {
+      await BroadcastService.sendBroadcastSecondMessage(id)
+    } catch (error) {
+      log.error(`Error in sendDraft: error=${error}`)
+      DenoSentry.captureException(error)
+    }
   } else {
-    await BroadcastService.sendBroadcastFirstMessage(id)
+    try {
+      await BroadcastService.sendBroadcastFirstMessage(id)
+    } catch (error) {
+      log.error(`Error in sendDraft: error=${error}`)
+      DenoSentry.captureException(error)
+    }
   }
   return AppResponse.ok(res)
 }
@@ -80,8 +101,7 @@ async function updateTwilioStatus(req: Request, res: Response) {
 
 async function commentChangeSubscriptionStatus(req: Request, res: Response) {
   if (
-    !req.body.conversation || !Array.isArray(req.body.conversation.external_authors) ||
-    req.body.conversation.external_authors.length === 0
+    !req.body.conversation || !Array.isArray(req.body.conversation.external_authors)
   ) {
     return AppResponse.badRequest(res, 'Invalid or missing conversation data in request body')
   }
@@ -111,7 +131,10 @@ async function commentChangeSubscriptionStatus(req: Request, res: Response) {
       message: `Author ${isUnsubscribe ? 'unsubscribed' : 'resubscribed'} successfully`,
     }, 200)
   } catch (error) {
-    log.error('Error in commentChangeSubscription:', error)
+    log.error(
+      `Error in commentChangeSubscriptionStatus: error=${error} phoneNumber=${phoneNumber}, isUnsubscribe=${isUnsubscribe}, authorName=${authorName}`,
+    )
+    DenoSentry.captureException(error)
     return AppResponse.internalServerError(res, 'An unexpected error occurred')
   }
 }

@@ -50,7 +50,7 @@ const createPost = async (postBody: string) => {
   })
 
   if (!response.ok) {
-    log.error(`HTTP error! status: ${response.status}`)
+    log.error(`HTTP error! detail: ${response.body}`)
     throw new Error(`HTTP error! status: ${response.status}`)
   }
 
