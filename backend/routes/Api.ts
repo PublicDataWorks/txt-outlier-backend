@@ -41,6 +41,18 @@ broadcastRouter.patch(
   broadcastController.patch,
 )
 
+broadcastRouter.get(
+  Paths.Broadcast.UpdateTwilioStatus,
+  serviceRoleKeyVerify,
+  broadcastController.updateTwilioStatus,
+)
+
+broadcastRouter.get(
+  Paths.Broadcast.UpdateTwilioStatus,
+  serviceRoleKeyVerify,
+  broadcastController.updateTwilioStatus,
+)
+
 commentRouter.post(
   Paths.Comment.Unsubscribe,
   missiveWebhookCallbackVerify,
