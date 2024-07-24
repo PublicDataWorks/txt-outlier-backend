@@ -417,6 +417,7 @@ const isBroadcastRunning = async (): Promise<boolean> => {
 }
 
 const updateSubscriptionStatus = async (
+  conversationId: string,
   phoneNumber: string,
   isUnsubscribe: boolean,
   authorName: string,
@@ -430,7 +431,7 @@ const updateSubscriptionStatus = async (
   const postMessage = `This phone number ${phoneNumber} has now been ${action} by ${authorName}.`
 
   try {
-    await MissiveUtils.createPost(postMessage)
+    await MissiveUtils.createPost(conversationId, postMessage)
   } catch (error) {
     log.error(`Failed to create post: ${error}`)
     throw new SystemError('Failed to update subscription status and create post.')
