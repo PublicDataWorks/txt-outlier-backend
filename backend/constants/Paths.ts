@@ -14,4 +14,9 @@ export default {
     ID: '/:id',
     UpdateTwilioStatus: '/twilio/:broadcastID',
   },
+  Comment: {
+    Base: '',
+    Unsubscribe: '/unsubscribe',
+    Resubscribe: '/resubscribe',
+  },
 } as const

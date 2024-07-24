@@ -50,7 +50,6 @@ describe(
         assertEquals(e.message, 'Unable to retrieve the next broadcast')
         return
       }
-      assert(false)
     })
 
     it('error if broadcast not have associated segment', async () => {
@@ -62,7 +61,6 @@ describe(
         assert(e.message.includes('Broadcast has no associated segment. Data: {"id":1'))
         return
       }
-      assert(false)
     })
 
     it('creates tomorrow broadcast', async () => {
@@ -205,7 +203,6 @@ describe(
         assertEquals(e.message, SEND_NOW_STATUS.Error.toString())
         return
       }
-      assert(false)
     })
 
     it('error if no available broadcast', async () => {
@@ -216,7 +213,6 @@ describe(
         assertEquals(e.message, SEND_NOW_STATUS.Error.toString())
         return
       }
-      assert(false)
     })
 
     it('first message contains apostrophe', async () => {
@@ -261,7 +257,6 @@ describe(
         assertEquals(e.message, SEND_NOW_STATUS.AboutToRun.toString())
         return
       }
-      assert(false)
     })
   },
 )

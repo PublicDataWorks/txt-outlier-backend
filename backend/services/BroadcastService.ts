@@ -4,6 +4,7 @@ import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
 import {
   AudienceSegment,
+  authors,
   Broadcast,
   BroadcastMessageStatus,
   broadcasts,
@@ -187,12 +188,10 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
               conversation,
             })
           } else {
-            log.error('Failed to send broadcast second messages. Broadcast id: ', broadcastID, outgoing)
-            // TODO: Not sure what to do here.
+            log.error(`Failed to send broadcast second messages. Broadcast id: ${broadcastID}, outgoing: ${outgoing}`)
           }
         } else {
-          log.error('Failed to send broadcast second messages. Broadcast id: ', broadcastID)
-          // TODO: Not sure what to do here.
+          log.error(`Failed to send broadcast second messages. Broadcast id: ${broadcastID}`)
         }
       }
     })
@@ -248,7 +247,7 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
         conversation,
       })
     } else {
-      log.error('Failed to send broadcast first message. Broadcast id: ', broadcastID)
+      log.error(`Failed to send broadcast first message. Broadcast id: ${broadcastID}`)
       // TODO: Saved to DB
       // TODO: Not sure what to do here.
     }
@@ -282,7 +281,6 @@ const getAll = async (
   }
   if (cursor && results[0].runAt < new Date()) {
     response.past = results.map((broadcast) => convertToPastBroadcast(broadcast))
-    // await slack({ "failureDetails": "No upcoming broadcast scheduled in data" }); // TODO add slack credential
   } else {
     response.upcoming = convertToUpcomingBroadcast(results[0])
     response.past = results.slice(1).map((broadcast) => convertToPastBroadcast(broadcast))
@@ -338,8 +336,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
         .where(eq(broadcasts.id, broadcastID))
     }
   } else {
-    log.error('Failed to fetch twilio messages. Broadcast id: ', broadcastID)
-    // await slack({ "failureDetails": e });
+    log.error(`Failed to fetch twilio messages. Broadcast id: ${broadcastID}`)
     return
   }
 
@@ -387,7 +384,6 @@ const insertBroadcastSegmentRecipients = async (
   nextBroadcast: Broadcast,
 ) => {
   // every user receives 2 messages
-
   const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
   const statement = insertOutgoingMessagesQuery(broadcastSegment, nextBroadcast, limit)
   await tx.execute(sql.raw(statement))
@@ -420,6 +416,27 @@ const isBroadcastRunning = async (): Promise<boolean> => {
   return jobs.some((job: { jobname: string }) => job.jobname != 'invoke-broadcast' && JOB_NAMES.includes(job.jobname))
 }
 
+const updateSubscriptionStatus = async (
+  phoneNumber: string,
+  isUnsubscribe: boolean,
+  authorName: string,
+) => {
+  await supabase
+    .update(authors)
+    .set({ unsubscribed: isUnsubscribe })
+    .where(eq(authors.phoneNumber, phoneNumber))
+
+  const action = isUnsubscribe ? 'unsubscribed' : 'resubscribed'
+  const postMessage = `This phone number ${phoneNumber} has now been ${action} by ${authorName}.`
+
+  try {
+    await MissiveUtils.createPost(postMessage)
+  } catch (error) {
+    log.error(`Failed to create post: ${error}`)
+    throw new SystemError('Failed to update subscription status and create post.')
+  }
+}
+
 export default {
   makeBroadcast,
   getAll,
@@ -428,4 +445,5 @@ export default {
   sendBroadcastSecondMessage,
   updateTwilioHistory,
   sendNow,
+  updateSubscriptionStatus,
 } as const

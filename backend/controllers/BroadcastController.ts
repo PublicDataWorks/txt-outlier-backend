@@ -5,14 +5,27 @@ import { validateAndResponse } from '../misc/validator.ts'
 import AppResponse from '../misc/AppResponse.ts'
 import BroadcastService from '../services/BroadcastService.ts'
 import { removeExtraSpaces } from '../misc/utils.ts'
+import Paths from '../constants/Paths.ts'
+import * as log from 'log'
+import * as DenoSentry from 'sentry/deno'
 
 async function makeBroadcast(_req: Request, res: Response) {
-  await BroadcastService.makeBroadcast()
+  try {
+    await BroadcastService.makeBroadcast()
+  } catch (error) {
+    log.error(`Error in makeBroadcast: error=${error}`)
+    DenoSentry.captureException(error)
+  }
   return AppResponse.ok(res, {}, 204)
 }
 
 async function sendNow(_req: Request, res: Response) {
-  await BroadcastService.sendNow()
+  try {
+    await BroadcastService.sendNow()
+  } catch (error) {
+    log.error(`Error in sendNow: error=${error}`)
+    DenoSentry.captureException(error)
+  }
   return AppResponse.ok(res, {}, 204)
 }
 
@@ -26,9 +39,19 @@ async function sendDraft(req: Request, res: Response) {
   const id = Number(req.params.broadcastID)
   const { isSecond } = req.query
   if (isSecond) {
-    await BroadcastService.sendBroadcastSecondMessage(id)
+    try {
+      await BroadcastService.sendBroadcastSecondMessage(id)
+    } catch (error) {
+      log.error(`Error in sendDraft: error=${error}`)
+      DenoSentry.captureException(error)
+    }
   } else {
-    await BroadcastService.sendBroadcastFirstMessage(id)
+    try {
+      await BroadcastService.sendBroadcastFirstMessage(id)
+    } catch (error) {
+      log.error(`Error in sendDraft: error=${error}`)
+      DenoSentry.captureException(error)
+    }
   }
   return AppResponse.ok(res)
 }
@@ -76,6 +99,46 @@ async function updateTwilioStatus(req: Request, res: Response) {
   return AppResponse.ok(res, {}, 204)
 }
 
+async function commentChangeSubscriptionStatus(req: Request, res: Response) {
+  if (
+    !req.body.conversation || !Array.isArray(req.body.conversation.external_authors)
+  ) {
+    return AppResponse.badRequest(res, 'Invalid or missing conversation data in request body')
+  }
+
+  const phoneNumber = req.body.conversation.external_authors[0]?.phone_number
+  if (!phoneNumber) {
+    return AppResponse.badRequest(res, 'Phone number not found in request body')
+  }
+
+  if (!req.body.comment || !req.body.comment.author || !req.body.comment.author.name) {
+    return AppResponse.badRequest(res, 'Invalid or missing author name in comment')
+  }
+  const authorName = req.body.comment.author.name
+
+  let isUnsubscribe: boolean
+  if (req.path === Paths.Comment.Unsubscribe.toString()) {
+    isUnsubscribe = true
+  } else if (req.path === Paths.Comment.Resubscribe.toString()) {
+    isUnsubscribe = false
+  } else {
+    return AppResponse.badRequest(res, 'Invalid request path')
+  }
+
+  try {
+    await BroadcastService.updateSubscriptionStatus(phoneNumber, isUnsubscribe, authorName)
+    return AppResponse.ok(res, {
+      message: `Author ${isUnsubscribe ? 'unsubscribed' : 'resubscribed'} successfully`,
+    }, 200)
+  } catch (error) {
+    log.error(
+      `Error in commentChangeSubscriptionStatus: error=${error} phoneNumber=${phoneNumber}, isUnsubscribe=${isUnsubscribe}, authorName=${authorName}`,
+    )
+    DenoSentry.captureException(error)
+    return AppResponse.internalServerError(res, 'An unexpected error occurred')
+  }
+}
+
 export default {
   makeBroadcast,
   sendDraft,
@@ -83,4 +146,5 @@ export default {
   patch,
   updateTwilioStatus,
   sendNow,
+  commentChangeSubscription: commentChangeSubscriptionStatus,
 } as const

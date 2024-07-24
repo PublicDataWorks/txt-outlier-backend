@@ -19,6 +19,8 @@
     "slack-API": "https://deno.land/x/deno_slack_api@2.1.1/mod.ts",
     "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
     "log": "https://deno.land/std@0.210.0/log/mod.ts",
-    "supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+    "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "sentry/deno": "https://deno.land/x/sentry@7.114.0/index.mjs",
+    "sentry/node": "npm:@sentry/node@^7.114.0"
   }
 }
