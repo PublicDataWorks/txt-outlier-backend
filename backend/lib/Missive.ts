@@ -71,13 +71,15 @@ const sendMessage = (message: string, toPhone: string) => {
   })
 }
 
-const createPost = async (postBody: string) => {
+const createPost = async (conversationId: string, postBody: string) => {
   const postData = {
     posts: {
       notification: {
         title: 'System',
-        body: postBody,
+        body: `Admins action`,
       },
+      text: postBody,
+      conversation: conversationId,
     },
   }
 
@@ -99,7 +101,7 @@ const createPost = async (postBody: string) => {
   })
 
   if (!response.ok) {
-    log.error(`HTTP error! detail: ${response.body}`)
+    log.error(`HTTP error! detail: ${JSON.stringify(await response.json())}`)
     throw new Error(`HTTP error! status: ${response.status}`)
   }
 

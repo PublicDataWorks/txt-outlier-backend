@@ -115,6 +115,10 @@ async function commentChangeSubscriptionStatus(req: Request, res: Response) {
     return AppResponse.badRequest(res, 'Invalid or missing author name in comment')
   }
   const authorName = req.body.comment.author.name
+  const conversationId = req.body.conversation.id
+  if (!conversationId) {
+    return AppResponse.badRequest(res, 'Conversation ID not found in request body')
+  }
 
   let isUnsubscribe: boolean
   if (req.path === Paths.Comment.Unsubscribe.toString()) {
@@ -126,7 +130,7 @@ async function commentChangeSubscriptionStatus(req: Request, res: Response) {
   }
 
   try {
-    await BroadcastService.updateSubscriptionStatus(phoneNumber, isUnsubscribe, authorName)
+    await BroadcastService.updateSubscriptionStatus(conversationId, phoneNumber, isUnsubscribe, authorName)
     return AppResponse.ok(res, {
       message: `Author ${isUnsubscribe ? 'unsubscribed' : 'resubscribed'} successfully`,
     }, 200)
