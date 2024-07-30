@@ -98,6 +98,7 @@ const convertToBroadcastMessagesStatus = (
     broadcastId: outgoing.broadcastId,
     missiveId: missiveID,
     missiveConversationId: convoID,
+    audienceSegmentId: outgoing.segmentId,
   }
 }
 
@@ -113,6 +114,7 @@ class BroadcastResponse {
       secondMessage: '',
       runAt: -1,
       delay: '',
+      noRecipients: -1,
     }
     this.past = []
     this.currentCursor = null

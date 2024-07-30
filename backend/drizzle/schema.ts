@@ -70,6 +70,11 @@ export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status
   twilioSentStatus: twilioStatus('twilio_sent_status').default('delivered').notNull(),
   twilioId: text('twilio_id'),
   message: text('message').notNull(),
+  audienceSegmentId: bigint('audience_segment_id', { mode: 'number' }).notNull().references(() =>
+    audienceSegments
+      .id, {
+    onDelete: 'cascade',
+  }),
 }, (table) => {
   return {
     broadcastSentMessageStatusMissiveIdKey: unique('broadcast_sent_message_status_missive_id_key').on(table.missiveId),
@@ -323,6 +328,7 @@ export const audienceSegments = pgTable('audience_segments', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   query: text('query').notNull(),
   description: text('description').notNull(),
+  name: text('name'),
 })
 
 export const broadcasts = pgTable('broadcasts', {

@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS "audience_segments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"query" text NOT NULL,
-	"description" text NOT NULL
+	"description" text NOT NULL,
+  "name" text
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "authors" (
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
 	"twilio_sent_status" "twilio_status" DEFAULT 'delivered' NOT NULL,
 	"twilio_id" text,
 	"message" text NOT NULL,
+  "audience_segment_id" bigint,
 	CONSTRAINT "broadcast_sent_message_status_missive_id_key" UNIQUE("missive_id")
 );
 --> statement-breakpoint
@@ -545,4 +547,10 @@ DO $$ BEGIN
  ALTER TABLE "user_history" ADD CONSTRAINT "user_history_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "broadcast_sent_message_status" ADD CONSTRAINT "broadcast_sent_message_status_audience_segment_id_fk" FOREIGN KEY ("audience_segment_id") REFERENCES "audience_segments"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+  WHEN duplicate_object THEN null;
 END $$;

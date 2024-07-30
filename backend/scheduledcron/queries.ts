@@ -1,5 +1,9 @@
-import { Broadcast, BroadcastSegment } from '../drizzle/schema.ts'
+import { audienceSegments, Broadcast, BroadcastSegment, outgoingMessages } from '../drizzle/schema.ts'
 import { escapeLiteral } from './helpers.ts'
+import { eq, sql } from 'drizzle-orm'
+import supabase from '../lib/supabase.ts'
+import * as log from 'log'
+import * as DenoSentry from 'sentry/deno'
 
 const updateTwilioStatusRaw = (updatedArray: string[]): string => {
   // updatedArray is already escaped
@@ -51,6 +55,62 @@ const insertOutgoingMessagesQuery = (
   `
 }
 
+const insertOutgoingMessagesFallbackQuery = async (
+  nextBroadcast: Broadcast,
+) => {
+  const fallbackSegment = await supabase
+    .select()
+    .from(audienceSegments)
+    .where(eq(audienceSegments.name, 'Inactive'))
+
+  if (fallbackSegment.length > 0) {
+    const pendingMessageNo = await supabase
+      .select({
+        count: sql<number>`cast
+          (count(${outgoingMessages.id}) as int)`,
+      })
+      .from(outgoingMessages)
+      .where(eq(outgoingMessages.broadcastId, nextBroadcast.id!))
+    if (pendingMessageNo.length === 0) {
+      log.error('No pending messages found.')
+      DenoSentry.captureException('No pending messages found.')
+      return
+    }
+    const limit = nextBroadcast.noUsers! - pendingMessageNo[0].count
+    const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
+    const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
+    return `
+      CREATE TEMPORARY TABLE phone_numbers_foo AS ${fallbackSegment[0].query};
+
+      INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
+      SELECT DISTINCT ON (phone_number) phone_number             AS recipient_phone_number,
+                                        ${nextBroadcast.id}      AS broadcast_id,
+                                        ${fallbackSegment[0].id} AS segment_id,
+                                        ${escapedFirstMessage}   AS message,
+                                        FALSE                    AS isSecond
+      FROM phone_numbers_foo
+      LIMIT ${limit}
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
+      SELECT DISTINCT ON (phone_number) phone_number             AS recipient_phone_number,
+                                        ${nextBroadcast.id}      AS broadcast_id,
+                                        ${fallbackSegment[0].id} AS segment_id,
+                                        ${escapedSecondMessage}  AS message,
+                                        TRUE                     AS isSecond
+      FROM phone_numbers_foo
+      LIMIT ${limit}
+      ON CONFLICT DO NOTHING;
+
+      DROP TABLE phone_numbers_foo;
+    `
+  } else {
+    log.error('No fallback segment found.')
+    DenoSentry.captureException('No fallback segment found.')
+    return
+  }
+}
+
 const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: number): string => {
   let WHERE_CLAUSE = (cursor && typeof cursor === 'number') ? `WHERE b.run_at < to_timestamp(${cursor})` : 'WHERE TRUE'
   if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND b.id = ${broadcastId}`)
@@ -94,6 +154,7 @@ interface BroadcastDashBoardQueryReturn {
 
 export {
   type BroadcastDashBoardQueryReturn,
+  insertOutgoingMessagesFallbackQuery,
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
   updateTwilioStatusRaw,
