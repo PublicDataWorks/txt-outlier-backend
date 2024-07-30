@@ -45,6 +45,7 @@
 - Proceed to the next step if the API endpoint executes the logic successfully.
 
 4. **Test Flow: `send-second-messages`**
+
 - On webhook side `user-actions`, when `incoming-message` rule is triggered we check the phone number and timestamp against `outgoing-messages`
 - If the received message belongs to broadcast recipients we consider it as reply to broadcast and delete the pending second message.
 - The logic is relatively the same as `send-first-messages`, running every

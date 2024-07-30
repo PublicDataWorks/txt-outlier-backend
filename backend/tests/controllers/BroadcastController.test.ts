@@ -396,7 +396,7 @@ describe(
         outgoingMessages.id,
       )
       assertEquals(after.length, 2)
-      assertEquals(after[0], before[0])
+      assertEquals(after[0].processed, true)
       assertEquals(after[1], before[1])
       assertEquals(response.statusCode, 200)
     })
@@ -524,6 +524,7 @@ describe(
         id: -1,
         runAt: -1,
         secondMessage: '',
+        noRecipients: -1,
       }
       assertEquals(nextData.upcoming, expectedNextPageUpcoming)
       const maxNextId = Math.max(

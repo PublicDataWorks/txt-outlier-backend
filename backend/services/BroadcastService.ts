@@ -45,6 +45,7 @@ import Twilio from '../lib/Twilio.ts'
 import { ProcessedItem } from './types.ts'
 import {
   BroadcastDashBoardQueryReturn,
+  insertOutgoingMessagesFallbackQuery,
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
   updateTwilioStatusRaw,
@@ -53,6 +54,7 @@ import RouteError from '../exception/RouteError.ts'
 import { escapeLiteral } from '../scheduledcron/helpers.ts'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { SEND_NOW_STATUS } from '../misc/AppResponse.ts'
+import * as DenoSentry from 'sentry/deno'
 
 // Called by Postgres Trigger
 const makeBroadcast = async (): Promise<void> => {
@@ -104,22 +106,22 @@ const sendNow = async (): Promise<void> => {
 
   if (!nextBroadcast) {
     log.error('SendNow: Unable to retrieve next broadcast')
-    throw new SystemError(SEND_NOW_STATUS.Error) //
+    throw new SystemError(SEND_NOW_STATUS.Error.toString()) //
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
     log.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
-    throw new SystemError(SEND_NOW_STATUS.Error)
+    throw new SystemError(SEND_NOW_STATUS.Error.toString())
   }
   const diffInMinutes = DateUtils.diffInMinutes(nextBroadcast.runAt)
   if (0 <= diffInMinutes && diffInMinutes <= 30) {
     log.error('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
-    throw new RouteError(400, SEND_NOW_STATUS.AboutToRun)
+    throw new RouteError(400, SEND_NOW_STATUS.AboutToRun.toString())
   }
 
   const isRunning = await isBroadcastRunning()
   if (isRunning) {
     log.error(`Unable to send now: another broadcast is running`)
-    throw new RouteError(400, SEND_NOW_STATUS.Running)
+    throw new RouteError(400, SEND_NOW_STATUS.Running.toString())
   }
 
   await supabase.transaction(async (tx) => {
@@ -188,7 +190,12 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
               conversation,
             })
           } else {
-            log.error(`Failed to send broadcast second messages. Broadcast id: ${broadcastID}, outgoing: ${outgoing}`)
+            const errorMessage =
+              `Failed to send broadcast second messages. Broadcast id: ${broadcastID}, outgoing: ${outgoing}, Missive's respond = ${
+                JSON.stringify(await response.json())
+              }`
+            log.error(errorMessage)
+            DenoSentry.captureException(errorMessage)
           }
         } else {
           log.error(`Failed to send broadcast second messages. Broadcast id: ${broadcastID}`)
@@ -247,9 +254,12 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
         conversation,
       })
     } else {
-      log.error(`Failed to send broadcast first message. Broadcast id: ${broadcastID}`)
-      // TODO: Saved to DB
-      // TODO: Not sure what to do here.
+      const errorMessage =
+        `Failed to send broadcast first message. Broadcast id: ${broadcastID}}, Missive's respond = ${
+          JSON.stringify(await response.json())
+        }`
+      log.error(errorMessage)
+      DenoSentry.captureException(errorMessage)
     }
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
@@ -306,7 +316,6 @@ const patch = async (
       .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
       .returning()
     if (result.length === 0) {
-      await tx.rollback()
       return
     }
     if (broadcast.runAt) {
@@ -387,8 +396,13 @@ const insertBroadcastSegmentRecipients = async (
   const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
   const statement = insertOutgoingMessagesQuery(broadcastSegment, nextBroadcast, limit)
   await tx.execute(sql.raw(statement))
+  const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+  if (fallbackStatement) {
+    await tx.execute(sql.raw(fallbackStatement))
+  }
 }
 
+// deno-lint-ignore no-unused-vars
 const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsProcessed: number[]) => {
   if (processed.length !== 0) {
     const outgoingIDsToDelete: number[] = []
@@ -403,12 +417,12 @@ const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsP
       .where(inArray(outgoingMessages.id, outgoingIDsToDelete))
   }
   // Messages failed to send, we need to reprocess them
-  const idsToUpdate = idsMarkedAsProcessed
-    .filter((id: number) => !processed.some((item) => item.outgoing.id === id))
-  // Give these messages back to the pool
-  if (idsToUpdate.length > 0) {
-    await supabase.update(outgoingMessages).set({ processed: false }).where(inArray(outgoingMessages.id, idsToUpdate))
-  }
+  // const idsToUpdate = idsMarkedAsProcessed
+  //   .filter((id: number) => !processed.some((item) => item.outgoing.id === id))
+  // // Give these messages back to the pool
+  // if (idsToUpdate.length > 0) {
+  //   await supabase.update(outgoingMessages).set({ processed: false }).where(inArray(outgoingMessages.id, idsToUpdate))
+  // }
 }
 
 const isBroadcastRunning = async (): Promise<boolean> => {

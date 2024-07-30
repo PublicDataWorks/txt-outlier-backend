@@ -1,9 +1,11 @@
 # Broadcaster backend (Deno)
+
 ## Project Overview
 
 This project aims to replicate Twilio messaging and implement a periodic broadcast system. It includes a comprehensive flow for creating, scheduling, and sending broadcast messages to specific audience segments.
 
 ## Key Features
+
 - Broadcast Creation and Scheduling
 - Audience Segmentation
 - Two-phase Message Sending (First and Second Messages)
@@ -12,14 +14,12 @@ This project aims to replicate Twilio messaging and implement a periodic broadca
 - Unsubscribe Handling
 - Cron Job Management for Automated Tasks
 
-
 ## Technical Stack
 
 - **Language**: Deno
 - **Hosting**: Amazon EC2
 - **Database**: PostgreSQL (Supabase)
 - **Job Scheduling**: pg_cron (Supabase)
-
 
 ## Running Locally
 
@@ -44,7 +44,6 @@ deno task run
 
 - Run `deno task test:dbTeardown`.
 
-
 ## API Overview
 
 ### POST /api/broadcasts/make
@@ -54,6 +53,7 @@ Purpose: Initiates the creation of a new broadcast.
 Request Body: None
 
 Response:
+
 - Returns a 204 No Content status on success.
 
 ### GET /api/broadcasts/send-now
@@ -63,6 +63,7 @@ Purpose: Triggers the immediate sending of the next scheduled broadcast.
 Request Body: None
 
 Response:
+
 - Returns a 204 No Content status on success.
 
 ### GET /api/broadcasts/draft/:broadcastID
@@ -70,9 +71,11 @@ Response:
 Purpose: Sends either the first or second message of a specific broadcast.
 
 Query Parameters:
+
 - `isSecond` (Boolean, optional): If true, sends the second message. If false or omitted, sends the first message.
 
 Response:
+
 - Returns a 200 OK status with the result of the operation.
 
 ### GET /api/broadcasts
@@ -80,10 +83,12 @@ Response:
 Purpose: Retrieves a list of all broadcasts.
 
 Query Parameters:
+
 - `limit` (Integer, optional): Number of broadcasts to retrieve.
 - `cursor` (Integer, optional): Pagination cursor.
 
 Response:
+
 - Returns a JSON object containing the list of broadcasts and pagination information.
 
 ### PATCH /api/broadcasts/:id
@@ -91,12 +96,14 @@ Response:
 Purpose: Updates an existing broadcast.
 
 Request Body:
+
 - `firstMessage` (String, optional): The updated first message.
 - `secondMessage` (String, optional): The updated second message.
 - `runAt` (Decimal, optional): The updated scheduled run time.
 - `delay` (String, optional): The updated delay between messages.
 
 Response:
+
 - Returns a JSON object with the updated broadcast information.
 
 ### GET /api/broadcasts/:broadcastID/update-twilio-status
@@ -104,11 +111,13 @@ Response:
 Purpose: Updates the Twilio status for messages in a specific broadcast.
 
 Response:
+
 - Returns a 204 No Content status on success.
 
 ## Database Overview
 
 ### Authors Table
+
 ```sql
 create table public.authors (
   created_at timestamp with time zone not null default now(),
@@ -120,6 +129,7 @@ create table public.authors (
 ```
 
 ### Comments Table
+
 ```sql
 create table public.comments (
   created_at timestamp with time zone not null default now(),
@@ -134,6 +144,7 @@ create table public.comments (
 ```
 
 ### Conversations Table
+
 ```sql
 create table public.conversations (
   id uuid primary key not null default gen_random_uuid(),
@@ -159,6 +170,7 @@ create table public.conversations (
 ```
 
 ### Labels Table
+
 ```sql
 create table public.labels (
   created_at timestamp with time zone not null default now(),
@@ -174,6 +186,7 @@ create table public.labels (
 ```
 
 ### Users Table
+
 ```sql
 create table public.users (
   created_at timestamp with time zone,
@@ -186,6 +199,7 @@ create table public.users (
 ```
 
 ### Broadcasts Table
+
 ```sql
 create table public.broadcasts (
   id serial primary key not null,
@@ -202,6 +216,7 @@ create table public.broadcasts (
 ```
 
 ### Organizations Table
+
 ```sql
 create table public.organizations (
   created_at timestamp with time zone not null default now(),
@@ -212,6 +227,7 @@ create table public.organizations (
 ```
 
 ### Audience Segments Table
+
 ```sql
 create table public.audience_segments (
   id serial primary key not null,
@@ -223,6 +239,7 @@ create table public.audience_segments (
 ```
 
 ### Lookup History Table
+
 ```sql
 create table public.lookup_history (
   id serial primary key,
