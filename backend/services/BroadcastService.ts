@@ -84,6 +84,10 @@ const makeBroadcast = async (): Promise<void> => {
     for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
       await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
     }
+    const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+    if (fallbackStatement) {
+      await tx.execute(sql.raw(fallbackStatement))
+    }
     await makeNextBroadcastSchedule(tx, nextBroadcast)
     await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
     await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
@@ -136,7 +140,10 @@ const sendNow = async (): Promise<void> => {
         ratio: broadcastSegment.ratio,
       })
     }
-
+    const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+    if (fallbackStatement) {
+      await tx.execute(sql.raw(fallbackStatement))
+    }
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
     await tx.insert(broadcastsSegments).values(newBroadcastSegments)
     await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
@@ -396,10 +403,6 @@ const insertBroadcastSegmentRecipients = async (
   const limit = Math.floor(broadcastSegment.ratio * nextBroadcast.noUsers! / 100)
   const statement = insertOutgoingMessagesQuery(broadcastSegment, nextBroadcast, limit)
   await tx.execute(sql.raw(statement))
-  const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
-  if (fallbackStatement) {
-    await tx.execute(sql.raw(fallbackStatement))
-  }
 }
 
 // deno-lint-ignore no-unused-vars

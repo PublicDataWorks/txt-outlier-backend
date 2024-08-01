@@ -29,7 +29,7 @@ const insertOutgoingMessagesQuery = (
   const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
   const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
   return `
-    CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query};
+    CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query} LIMIT ${limit};
 
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
     SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
@@ -38,7 +38,6 @@ const insertOutgoingMessagesQuery = (
                                       ${escapedFirstMessage}           AS message,
                                       FALSE                            AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit}
     ON CONFLICT DO NOTHING;
 
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
@@ -48,7 +47,6 @@ const insertOutgoingMessagesQuery = (
                                       ${escapedSecondMessage}          AS message,
                                       TRUE                             AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit}
     ON CONFLICT DO NOTHING;
 
     DROP TABLE phone_numbers_foo;
@@ -64,23 +62,19 @@ const insertOutgoingMessagesFallbackQuery = async (
     .where(eq(audienceSegments.name, 'Inactive'))
 
   if (fallbackSegment.length > 0) {
-    const pendingMessageNo = await supabase
-      .select({
-        count: sql<number>`cast
+    try {
+      const pendingMessageNo = await supabase
+        .select({
+          count: sql<number>`cast
           (count(${outgoingMessages.id}) as int)`,
-      })
-      .from(outgoingMessages)
-      .where(eq(outgoingMessages.broadcastId, nextBroadcast.id!))
-    if (pendingMessageNo.length === 0) {
-      log.error('No pending messages found.')
-      DenoSentry.captureException('No pending messages found.')
-      return
-    }
-    const limit = nextBroadcast.noUsers! - pendingMessageNo[0].count
-    const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
-    const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
-    return `
-      CREATE TEMPORARY TABLE phone_numbers_foo AS ${fallbackSegment[0].query};
+        })
+        .from(outgoingMessages)
+        .where(eq(outgoingMessages.broadcastId, nextBroadcast.id!))
+      const limit = nextBroadcast.noUsers! - pendingMessageNo[0].count
+      const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
+      const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
+      return `
+      CREATE TEMPORARY TABLE phone_numbers_foo AS ${fallbackSegment[0].query} LIMIT {$limit};
 
       INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
       SELECT DISTINCT ON (phone_number) phone_number             AS recipient_phone_number,
@@ -89,7 +83,7 @@ const insertOutgoingMessagesFallbackQuery = async (
                                         ${escapedFirstMessage}   AS message,
                                         FALSE                    AS isSecond
       FROM phone_numbers_foo
-      LIMIT ${limit}
+
       ON CONFLICT DO NOTHING;
 
       INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
@@ -104,6 +98,11 @@ const insertOutgoingMessagesFallbackQuery = async (
 
       DROP TABLE phone_numbers_foo;
     `
+    } catch (error) {
+      log.error(`Error getting pending message. ${error}`)
+      DenoSentry.captureException('Error getting pending message.')
+      return
+    }
   } else {
     log.error('No fallback segment found.')
     DenoSentry.captureException('No fallback segment found.')
