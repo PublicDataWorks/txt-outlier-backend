@@ -29,7 +29,7 @@ const insertOutgoingMessagesQuery = (
   const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
   const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
   return `
-    CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query};
+    CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query} LIMIT ${limit};
 
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
     SELECT DISTINCT ON (phone_number) phone_number                     AS recipient_phone_number,
@@ -38,7 +38,6 @@ const insertOutgoingMessagesQuery = (
                                       ${escapedFirstMessage}           AS message,
                                       FALSE                            AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit}
     ON CONFLICT DO NOTHING;
 
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
@@ -48,7 +47,6 @@ const insertOutgoingMessagesQuery = (
                                       ${escapedSecondMessage}          AS message,
                                       TRUE                             AS isSecond
     FROM phone_numbers_foo
-    LIMIT ${limit}
     ON CONFLICT DO NOTHING;
 
     DROP TABLE phone_numbers_foo;
@@ -76,7 +74,7 @@ const insertOutgoingMessagesFallbackQuery = async (
       const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
       const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
       return `
-      CREATE TEMPORARY TABLE phone_numbers_foo AS ${fallbackSegment[0].query};
+      CREATE TEMPORARY TABLE phone_numbers_foo AS ${fallbackSegment[0].query} LIMIT {$limit};
 
       INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
       SELECT DISTINCT ON (phone_number) phone_number             AS recipient_phone_number,
@@ -85,7 +83,7 @@ const insertOutgoingMessagesFallbackQuery = async (
                                         ${escapedFirstMessage}   AS message,
                                         FALSE                    AS isSecond
       FROM phone_numbers_foo
-      LIMIT ${limit}
+
       ON CONFLICT DO NOTHING;
 
       INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
