@@ -53,6 +53,12 @@ broadcastRouter.get(
   broadcastController.updateTwilioStatus,
 )
 
+broadcastRouter.get(
+  Paths.Broadcast.SendPost,
+  serviceRoleKeyVerify,
+  broadcastController.sendPost,
+)
+
 commentRouter.post(
   Paths.Comment.Unsubscribe,
   missiveWebhookCallbackVerify,

@@ -13,6 +13,7 @@ export default {
     Draft: '/draft/:broadcastID',
     ID: '/:id',
     UpdateTwilioStatus: '/twilio/:broadcastID',
+    SendPost: '/send-post/:broadcastID',
   },
   Comment: {
     Base: '',

@@ -71,8 +71,9 @@ const sendMessage = (message: string, toPhone: string) => {
   })
 }
 
-const createPost = async (conversationId: string, postBody: string) => {
-  const postData = {
+const createPost = async (conversationId: string, postBody: string, sharedLabelId?: string) => {
+  // deno-lint-ignore no-explicit-any
+  const postData: any = {
     posts: {
       notification: {
         title: 'System',
@@ -81,6 +82,11 @@ const createPost = async (conversationId: string, postBody: string) => {
       text: postBody,
       conversation: conversationId,
     },
+  }
+
+  if (sharedLabelId) {
+    postData.posts.add_shared_labels = [sharedLabelId]
+    postData.posts.close = true
   }
 
   const missiveSecretKey = missive_keys.find((key) => key.name === 'missive_secret')

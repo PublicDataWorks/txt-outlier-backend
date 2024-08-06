@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, ne, or, sql } from 'drizzle-orm'
 import * as log from 'log'
 import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
@@ -11,6 +11,7 @@ import {
   BroadcastSegment,
   broadcastSentMessageStatus,
   broadcastsSegments,
+  lookupTemplate,
   OutgoingMessage,
   outgoingMessages,
 } from '../drizzle/schema.ts'
@@ -20,9 +21,11 @@ import {
   JOB_NAMES,
   SELECT_JOB_NAMES,
   sendFirstMessagesCron,
+  sendPostCron,
   sendSecondMessagesCron,
   UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
+  UNSCHEDULE_SEND_POST_INVOKE,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
   unscheduleTwilioStatus,
@@ -79,19 +82,24 @@ const makeBroadcast = async (): Promise<void> => {
   if (nextBroadcast.broadcastToSegments.length === 0) {
     throw new SystemError(`Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
   }
-
-  await supabase.transaction(async (tx) => {
-    for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
-      await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
-    }
-    const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
-    if (fallbackStatement) {
-      await tx.execute(sql.raw(fallbackStatement))
-    }
-    await makeNextBroadcastSchedule(tx, nextBroadcast)
-    await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
-    await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
-  })
+  try {
+    await supabase.transaction(async (tx) => {
+      for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
+        await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
+      }
+      const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+      if (fallbackStatement) {
+        await tx.execute(sql.raw(fallbackStatement))
+      }
+      await makeNextBroadcastSchedule(tx, nextBroadcast)
+      await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
+      await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
+    })
+  } catch (error) {
+    log.error(`Error make broadcast. ${error}`)
+    DenoSentry.captureException(`Error make broadcast. ${error}`)
+    return
+  }
   // TODO: If this fails, recreate Postgres trigger
 }
 
@@ -127,27 +135,32 @@ const sendNow = async (): Promise<void> => {
     log.error(`Unable to send now: another broadcast is running`)
     throw new RouteError(400, SEND_NOW_STATUS.Running.toString())
   }
-
-  await supabase.transaction(async (tx) => {
-    const newId: { id: number }[] = await tx.insert(broadcasts).values(convertToFutureBroadcast(nextBroadcast))
-      .returning({ id: broadcasts.id })
-    const newBroadcastSegments: BroadcastSegment[] = []
-    for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
-      await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
-      newBroadcastSegments.push({
-        broadcastId: newId[0].id!,
-        segmentId: broadcastSegment.segment.id!,
-        ratio: broadcastSegment.ratio,
-      })
-    }
-    const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
-    if (fallbackStatement) {
-      await tx.execute(sql.raw(fallbackStatement))
-    }
-    await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
-    await tx.insert(broadcastsSegments).values(newBroadcastSegments)
-    await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
-  })
+  try {
+    await supabase.transaction(async (tx) => {
+      const newId: { id: number }[] = await tx.insert(broadcasts).values(convertToFutureBroadcast(nextBroadcast))
+        .returning({ id: broadcasts.id })
+      const newBroadcastSegments: BroadcastSegment[] = []
+      for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
+        await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
+        newBroadcastSegments.push({
+          broadcastId: newId[0].id!,
+          segmentId: broadcastSegment.segment.id!,
+          ratio: broadcastSegment.ratio,
+        })
+      }
+      const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+      if (fallbackStatement) {
+        await tx.execute(sql.raw(fallbackStatement))
+      }
+      await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
+      await tx.insert(broadcastsSegments).values(newBroadcastSegments)
+      await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
+    })
+  } catch (error) {
+    log.error(`Error send-now. ${error}`)
+    DenoSentry.captureException(`Error send-now. ${error}`)
+    return
+  }
 }
 
 const sendBroadcastSecondMessage = async (broadcastID: number) => {
@@ -171,6 +184,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
       await supabase.execute(sql.raw(unscheduleTwilioStatus(5)))
+      await supabase.execute(sql.raw(sendPostCron(broadcastID)))
       break
     }
     const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
@@ -373,6 +387,102 @@ const updateTwilioHistory = async (broadcastID: number) => {
   }
 }
 
+const updateFailedToSendConversations = async (broadcastID: number) => {
+  const CHUNK_SIZE = 200
+  const MISSIVE_API_RATE_LIMIT = 1000
+  const MAX_RUN_TIME = 4 * 60 * 1000
+
+  const startTime = Date.now()
+  let postErrorMessages = `❌ This message was undeliverable. The phone number has now been unsubscribed. `
+  let closingLabelId: string | undefined = undefined
+
+  try {
+    const failedConversations = await supabase
+      .selectDistinct({
+        missive_conversation_id: broadcastSentMessageStatus.missiveConversationId,
+        phones: broadcastSentMessageStatus.recipientPhoneNumber,
+      })
+      .from(broadcastSentMessageStatus)
+      .where(and(
+        eq(broadcastSentMessageStatus.broadcastId, broadcastID),
+        eq(broadcastSentMessageStatus.closed, false),
+        ne(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
+      ))
+      .limit(CHUNK_SIZE)
+      .execute()
+
+    log.info(`Processing ${failedConversations.length} failed conversations.`)
+    if (failedConversations.length === 0) {
+      await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
+      return
+    }
+
+    const errorMessage = await supabase
+      .select({ content: lookupTemplate.content, name: lookupTemplate.name })
+      .from(lookupTemplate)
+      .where(
+        or(
+          eq(lookupTemplate.name, 'missive_broadcast_post_closing_message'),
+          eq(lookupTemplate.name, 'missive_broadcast_post_closing_label_id'),
+        ),
+      )
+      .limit(2)
+
+    if (errorMessage.length > 0) {
+      for (const message of errorMessage) {
+        if (message.name === 'missive_broadcast_post_closing_message') {
+          postErrorMessages = message.content || postErrorMessages
+        } else if (message.name === 'missive_broadcast_post_closing_label_id') {
+          closingLabelId = message.content || undefined
+        }
+      }
+    }
+
+    if (!closingLabelId) {
+      log.error('Closing label ID not found. Aborting.')
+      DenoSentry.captureException('Closing label ID not found. Aborting.')
+      return
+    }
+
+    const conversationsToUpdate: string[] = []
+    const failedPhoneNumbers: string[] = []
+    for (const conversation of failedConversations) {
+      await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+      conversationsToUpdate.push(conversation.missive_conversation_id)
+      failedPhoneNumbers.push(conversation.phones)
+
+      const elapsedTime = Date.now() - startTime
+      if (elapsedTime > MAX_RUN_TIME) {
+        log.info(`Approaching time limit. Processed ${conversationsToUpdate.length} conversations. Stopping.`)
+        break
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))
+    }
+
+    if (conversationsToUpdate.length > 0 && failedPhoneNumbers.length > 0) {
+      await supabase
+        .update(broadcastSentMessageStatus)
+        .set({ closed: true })
+        .where(and(
+          eq(broadcastSentMessageStatus.broadcastId, broadcastID),
+          inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
+        ))
+      await supabase.update(authors)
+        .set({ exclude: true })
+        .where(inArray(authors.phoneNumber, failedPhoneNumbers))
+    }
+
+    log.info(`Processed and updated ${conversationsToUpdate.length} failed conversations.`)
+
+    return conversationsToUpdate.length
+  } catch (error) {
+    log.error(`Error fetching failed conversations for broadcast ID ${broadcastID}: ${error.toString()}`)
+    DenoSentry.captureException(error)
+    return
+  }
+}
+
 /* ======================================== UTILS ======================================== */
 
 const makeNextBroadcastSchedule = async (
@@ -463,5 +573,6 @@ export default {
   sendBroadcastSecondMessage,
   updateTwilioHistory,
   sendNow,
+  updateFailedToSendConversations,
   updateSubscriptionStatus,
 } as const

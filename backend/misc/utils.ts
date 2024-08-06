@@ -17,7 +17,12 @@ const intervalToString = (interval: string) => {
   }
 }
 
-const removeExtraSpaces = (str: string) => str.replace(/[ \t]{2,}/g, ' ')
+const removeExtraSpaces = (str: string): string => {
+  return str
+    .normalize('NFKC')
+    .replace(/\r\n/g, '\n')
+    .trim()
+}
 
 const sleep = (ms: number) => {
   return new Promise((resolve) => {

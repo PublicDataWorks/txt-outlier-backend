@@ -124,7 +124,8 @@ create table public.authors (
   updated_at timestamp with time zone,
   name text,
   phone_number text primary key not null,
-  unsubscribed boolean not null default false
+  unsubscribed boolean not null default false,
+  exclude boolean default false
 ) tablespace pg_default;
 ```
 
