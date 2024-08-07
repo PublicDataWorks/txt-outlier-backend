@@ -1,9 +1,9 @@
 import { audienceSegments, Broadcast, BroadcastSegment, outgoingMessages } from '../drizzle/schema.ts'
 import { escapeLiteral } from './helpers.ts'
-import { eq, sql } from 'drizzle-orm'
-import supabase from '../lib/supabase.ts'
+import { and, eq, sql } from 'drizzle-orm'
 import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
+import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
 const updateTwilioStatusRaw = (updatedArray: string[]): string => {
   // updatedArray is already escaped
@@ -54,22 +54,23 @@ const insertOutgoingMessagesQuery = (
 }
 
 const insertOutgoingMessagesFallbackQuery = async (
+  tx: PostgresJsTransaction<any, any>,
   nextBroadcast: Broadcast,
 ) => {
-  const fallbackSegment = await supabase
+  const fallbackSegment = await tx
     .select()
     .from(audienceSegments)
     .where(eq(audienceSegments.name, 'Inactive'))
 
   if (fallbackSegment.length > 0) {
     try {
-      const pendingMessageNo = await supabase
+      const pendingMessageNo = await tx
         .select({
           count: sql<number>`cast
-          (count(${outgoingMessages.id}) as int)`,
+          (count(${outgoingMessages.recipientPhoneNumber}) as int)`,
         })
         .from(outgoingMessages)
-        .where(eq(outgoingMessages.broadcastId, nextBroadcast.id!))
+        .where(and(eq(outgoingMessages.broadcastId, nextBroadcast.id!), eq(outgoingMessages.isSecond, false)))
       const limit = nextBroadcast.noUsers! - pendingMessageNo[0].count
       const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
       const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)

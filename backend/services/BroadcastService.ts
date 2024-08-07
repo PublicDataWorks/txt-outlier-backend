@@ -39,22 +39,18 @@ import {
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
-  TwilioMessage,
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { sleep } from '../misc/utils.ts'
-import Twilio from '../lib/Twilio.ts'
 import { ProcessedItem } from './types.ts'
 import {
   BroadcastDashBoardQueryReturn,
   insertOutgoingMessagesFallbackQuery,
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
-  updateTwilioStatusRaw,
 } from '../scheduledcron/queries.ts'
 import RouteError from '../exception/RouteError.ts'
-import { escapeLiteral } from '../scheduledcron/helpers.ts'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { SEND_NOW_STATUS } from '../misc/AppResponse.ts'
 import * as DenoSentry from 'sentry/deno'
@@ -87,7 +83,7 @@ const makeBroadcast = async (): Promise<void> => {
       for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
         await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
       }
-      const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+      const fallbackStatement = await insertOutgoingMessagesFallbackQuery(tx, nextBroadcast)
       if (fallbackStatement) {
         await tx.execute(sql.raw(fallbackStatement))
       }
@@ -148,7 +144,7 @@ const sendNow = async (): Promise<void> => {
           ratio: broadcastSegment.ratio,
         })
       }
-      const fallbackStatement = await insertOutgoingMessagesFallbackQuery(nextBroadcast)
+      const fallbackStatement = await insertOutgoingMessagesFallbackQuery(tx, nextBroadcast)
       if (fallbackStatement) {
         await tx.execute(sql.raw(fallbackStatement))
       }
@@ -205,6 +201,9 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
           if (response.ok) {
             const responseBody = await response.json()
             const { id, conversation } = responseBody.drafts
+            await supabase.insert(broadcastSentMessageStatus).values(
+              convertToBroadcastMessagesStatus(outgoing, id, conversation),
+            )
             processed.push({
               outgoing: outgoing,
               id,
@@ -274,6 +273,9 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
         id,
         conversation,
       })
+      await supabase.insert(broadcastSentMessageStatus).values(
+        convertToBroadcastMessagesStatus(outgoing, id, conversation),
+      )
     } else {
       const errorMessage =
         `Failed to send broadcast first message. Broadcast id: ${broadcastID}}, Missive's respond = ${
@@ -349,42 +351,42 @@ const patch = async (
 }
 
 const updateTwilioHistory = async (broadcastID: number) => {
-  const broadcast: Broadcast[] = await supabase.select().from(broadcasts).where(eq(broadcasts.id, broadcastID))
-  if (broadcast.length === 0) return
-  let updatedArray: string[] = []
-  const response = await Twilio.getTwilioMessages(broadcast[0].twilioPaging, broadcast[0].runAt)
-
-  if (response.ok) {
-    const data = await response.json()
-    updatedArray = data.messages.map((message: TwilioMessage) =>
-      `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8,
-        ${escapeLiteral(message.body)}::text)`
-    )
-    if (data.next_page_uri) {
-      await supabase.update(broadcasts)
-        .set({ twilioPaging: data.next_page_uri })
-        .where(eq(broadcasts.id, broadcastID))
-    }
-  } else {
-    log.error(`Failed to fetch twilio messages. Broadcast id: ${broadcastID}`)
-    return
+  // const broadcast: Broadcast[] = await supabase.select().from(broadcasts).where(eq(broadcasts.id, broadcastID))
+  // if (broadcast.length === 0) return
+  // let updatedArray: string[] = []
+  // const response = await Twilio.getTwilioMessages(broadcast[0].twilioPaging, broadcast[0].runAt)
+  //
+  // if (response.ok) {
+  //   const data = await response.json()
+  //   updatedArray = data.messages.map((message: TwilioMessage) =>
+  //     `('${message.status}'::twilio_status, '${message.sid}'::text, '${message.date_sent}'::timestamptz, '${message.to}'::text, ${broadcastID}::int8,
+  //       ${escapeLiteral(message.body)}::text)`
+  //   )
+  //   if (data.next_page_uri) {
+  //     await supabase.update(broadcasts)
+  //       .set({ twilioPaging: data.next_page_uri })
+  //       .where(eq(broadcasts.id, broadcastID))
+  //   }
+  // } else {
+  //   log.error(`Failed to fetch twilio messages. Broadcast id: ${broadcastID}`)
+  //   return
+  // }
+  //
+  // if (updatedArray.length > 0) {
+  // const updateRaw = updateTwilioStatusRaw(updatedArray)
+  // await supabase.execute(sql.raw(updateRaw))
+  // Send realtime update to the sidebar
+  const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)
+  const result: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
+  const payload: BroadcastSentDetail = {
+    totalFirstSent: Number(result[0].totalFirstSent),
+    totalSecondSent: Number(result[0].totalSecondSent),
+    successfullyDelivered: Number(result[0].successfullyDelivered),
+    failedDelivered: Number(result[0].failedDelivered),
+    totalUnsubscribed: Number(result[0].totalUnsubscribed),
   }
-
-  if (updatedArray.length > 0) {
-    const updateRaw = updateTwilioStatusRaw(updatedArray)
-    await supabase.execute(sql.raw(updateRaw))
-    // Send realtime update to the sidebar
-    const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)
-    const result: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
-    const payload: BroadcastSentDetail = {
-      totalFirstSent: Number(result[0].totalFirstSent),
-      totalSecondSent: Number(result[0].totalSecondSent),
-      successfullyDelivered: Number(result[0].successfullyDelivered),
-      failedDelivered: Number(result[0].failedDelivered),
-      totalUnsubscribed: Number(result[0].totalUnsubscribed),
-    }
-    sendMostRecentBroadcastDetail(payload)
-  }
+  sendMostRecentBroadcastDetail(payload)
+  // }
 }
 
 const updateFailedToSendConversations = async (broadcastID: number) => {
@@ -519,12 +521,9 @@ const insertBroadcastSegmentRecipients = async (
 const postSendBroadcastMessage = async (processed: ProcessedItem[], idsMarkedAsProcessed: number[]) => {
   if (processed.length !== 0) {
     const outgoingIDsToDelete: number[] = []
-    const sentMessageStatuses: BroadcastMessageStatus[] = []
     for (const item of processed) {
       outgoingIDsToDelete.push(item.outgoing.id!)
-      sentMessageStatuses.push(convertToBroadcastMessagesStatus(item.outgoing, item.id, item.conversation))
     }
-    await supabase.insert(broadcastSentMessageStatus).values(sentMessageStatuses)
     await supabase
       .delete(outgoingMessages)
       .where(inArray(outgoingMessages.id, outgoingIDsToDelete))
