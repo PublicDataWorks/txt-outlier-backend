@@ -90,7 +90,7 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
   if (sharedLabelId) {
     postData.posts.add_shared_labels = [sharedLabelId]
     postData.posts.close = true
-    postData.organization = MISSIVE_ORGANIZATION_ID
+    postData.posts.organization = MISSIVE_ORGANIZATION_ID
   }
 
   const missiveSecretKey = missive_keys.find((key) => key.name === 'missive_secret')

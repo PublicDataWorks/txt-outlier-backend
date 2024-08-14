@@ -409,6 +409,7 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
         eq(broadcastSentMessageStatus.broadcastId, broadcastID),
         eq(broadcastSentMessageStatus.closed, false),
         ne(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
+        eq(broadcastSentMessageStatus.isSecond, false),
       ))
       .limit(CHUNK_SIZE)
       .execute()
