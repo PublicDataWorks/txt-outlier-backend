@@ -54,6 +54,7 @@ const insertOutgoingMessagesQuery = (
 }
 
 const insertOutgoingMessagesFallbackQuery = async (
+  // deno-lint-ignore no-explicit-any
   tx: PostgresJsTransaction<any, any>,
   nextBroadcast: Broadcast,
 ) => {
