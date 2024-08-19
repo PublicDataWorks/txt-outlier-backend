@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS "authors" (
 	"updated_at" timestamp with time zone,
 	"name" text,
 	"phone_number" text PRIMARY KEY NOT NULL,
-	"unsubscribed" boolean DEFAULT false NOT NULL
+	"unsubscribed" boolean DEFAULT false NOT NULL,
+  "exclude" boolean DEFAULT false
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
@@ -82,6 +83,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
 	"twilio_id" text,
 	"message" text NOT NULL,
   "audience_segment_id" bigint,
+  "closed" boolean DEFAULT false,
 	CONSTRAINT "broadcast_sent_message_status_missive_id_key" UNIQUE("missive_id")
 );
 --> statement-breakpoint

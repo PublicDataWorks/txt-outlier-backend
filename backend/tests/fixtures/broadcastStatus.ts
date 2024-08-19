@@ -11,10 +11,12 @@ const createBroadcastStatus = async (times = 1, broadcast: Broadcast) => {
       recipientPhoneNumber: newAuthors[i].phoneNumber,
       missiveId: faker.random.uuid(),
       missiveConversationId: faker.random.uuid(),
-      broadcastId: broadcast.id,
+      broadcastId: broadcast.id ?? 1,
       isSecond: false,
       twilioSentStatus: 'delivered',
       message: broadcast.firstMessage,
+      audienceSegmentId: 1,
+      closed: false,
     }
 
     const secondHistory = Object.assign({}, firstHistory)

@@ -377,6 +377,9 @@ const updateTwilioHistory = async (broadcastID: number) => {
   // Send realtime update to the sidebar
   const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)
   const result: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
+  if (!result[0]) {
+    return
+  }
   const payload: BroadcastSentDetail = {
     totalFirstSent: Number(result[0].totalFirstSent),
     totalSecondSent: Number(result[0].totalSecondSent),

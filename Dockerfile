@@ -15,4 +15,4 @@ RUN chmod 644 /usr/local/share/ca-certificates/prod-ca-2021.crt && update-ca-cer
 
 RUN deno cache backend/index.ts
 
-CMD ["run", "--allow-all", "--env=.env", "backend/index.ts"]
+CMD ["run", "--allow-all", "backend/index.ts"]

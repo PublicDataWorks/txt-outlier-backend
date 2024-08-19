@@ -39,9 +39,10 @@ if (!BROADCAST_PHONE_NUMBER) {
   throw new Error('BROADCAST_SOURCE_PHONE_NUMBER environment variable is not set')
 }
 const MISSIVE_ORGANIZATION_ID = Deno.env.get('MISSIVE_ORGANIZATION_ID')
-if (!MISSIVE_ORGANIZATION_ID) {
+if (!MISSIVE_ORGANIZATION_ID && !isTesting) {
   throw new Error('MISSIVE_ORGANIZATION_ID environment variable is not set')
 }
+
 const sendMessage = (message: string, toPhone: string) => {
   const body = {
     drafts: {

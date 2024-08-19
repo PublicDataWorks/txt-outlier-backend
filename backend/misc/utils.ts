@@ -18,10 +18,13 @@ const intervalToString = (interval: string) => {
 }
 
 const removeExtraSpaces = (str: string): string => {
-  return str
+  const preserveEdgeSpaces = str.replace(/^(\s+)|\s+$/g, (match) => match.length > 1 ? ' ' : match)
+
+  return preserveEdgeSpaces
     .normalize('NFKC')
     .replace(/\r\n/g, '\n')
-    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^\s|\s$/g, (match) => match.length > 1 ? ' ' : match)
 }
 
 const sleep = (ms: number) => {
