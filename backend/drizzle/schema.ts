@@ -75,6 +75,7 @@ export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status
       .id, {
     onDelete: 'cascade',
   }),
+  closed: boolean('closed').default(false),
 }, (table) => {
   return {
     broadcastSentMessageStatusMissiveIdKey: unique('broadcast_sent_message_status_missive_id_key').on(table.missiveId),
@@ -101,6 +102,7 @@ export const authors = pgTable('authors', {
   name: text('name'),
   phoneNumber: text('phone_number').primaryKey().notNull(),
   unsubscribed: boolean('unsubscribed').default(false).notNull(),
+  exclude: boolean('exclude').default(false),
 })
 
 export const comments = pgTable('comments', {

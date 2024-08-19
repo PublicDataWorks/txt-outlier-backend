@@ -93,10 +93,29 @@ const updateTwilioStatusCron = (broadcastId: number): string => {
     );
   `
 }
+
+const sendPostCron = (broadcastId: number): string => {
+  return `
+    SELECT cron.schedule(
+      'send-post-cron',
+      '*/4 * * * *',
+      $$
+        SELECT net.http_get(
+          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/send-post/${broadcastId}',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
+        ) as request_id;
+      $$
+    );
+  `
+}
+
 const UNSCHEDULE_INVOKE = "SELECT cron.unschedule('invoke-broadcast');"
 const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
+const UNSCHEDULE_SEND_POST_INVOKE = "SELECT cron.unschedule('send-post-cron');"
 const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
 
 const JOB_NAMES = [
@@ -105,6 +124,7 @@ const JOB_NAMES = [
   'delay-send-second-messages',
   'delay-unschedule-twilio-status',
   'twilio-status',
+  'send-post-cron',
 ]
 
 const dateToCron = (date: Date) => {
@@ -123,9 +143,11 @@ export {
   JOB_NAMES,
   SELECT_JOB_NAMES,
   sendFirstMessagesCron,
+  sendPostCron,
   sendSecondMessagesCron,
   UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
+  UNSCHEDULE_SEND_POST_INVOKE,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
   unscheduleTwilioStatus,

@@ -38,6 +38,10 @@ const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')
 if (!BROADCAST_PHONE_NUMBER) {
   throw new Error('BROADCAST_SOURCE_PHONE_NUMBER environment variable is not set')
 }
+const MISSIVE_ORGANIZATION_ID = Deno.env.get('MISSIVE_ORGANIZATION_ID')
+if (!MISSIVE_ORGANIZATION_ID && !isTesting) {
+  throw new Error('MISSIVE_ORGANIZATION_ID environment variable is not set')
+}
 
 const sendMessage = (message: string, toPhone: string) => {
   const body = {
@@ -71,9 +75,11 @@ const sendMessage = (message: string, toPhone: string) => {
   })
 }
 
-const createPost = async (conversationId: string, postBody: string) => {
-  const postData = {
+const createPost = async (conversationId: string, postBody: string, sharedLabelId?: string) => {
+  // deno-lint-ignore no-explicit-any
+  const postData: any = {
     posts: {
+      'username': 'TXT Outlier',
       notification: {
         title: 'System',
         body: `Admins action`,
@@ -81,6 +87,12 @@ const createPost = async (conversationId: string, postBody: string) => {
       text: postBody,
       conversation: conversationId,
     },
+  }
+
+  if (sharedLabelId) {
+    postData.posts.add_shared_labels = [sharedLabelId]
+    postData.posts.close = true
+    postData.posts.organization = MISSIVE_ORGANIZATION_ID
   }
 
   const missiveSecretKey = missive_keys.find((key) => key.name === 'missive_secret')

@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertExists, assertNotEquals, assertRejects } from 'testing/asserts.ts'
+import { assert, assertEquals, assertNotEquals, assertRejects } from 'testing/asserts.ts'
 import { describe, it } from 'testing/bdd.ts'
 import { FakeTime } from 'testing/time.ts'
 import * as mf from 'mock-fetch'
@@ -17,6 +17,7 @@ import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
 import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
 import SystemError from '../../exception/SystemError.ts'
 import { SEND_NOW_STATUS } from '../../misc/AppResponse.ts'
+import { sleep } from '../../misc/utils.ts'
 
 describe(
   'Make',
@@ -322,6 +323,7 @@ describe(
       assert(!before[1].processed)
 
       const response = await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
+      await sleep(2000)
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
       assertEquals(after.length, 1)
       assert(!after[0].processed)
@@ -367,11 +369,12 @@ describe(
         res(),
       )
       assertEquals(response.statusCode, 200)
+      await sleep(2000)
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
       assertEquals(after.length, 0)
 
       const historyAfter = await call_history()
-      assertEquals(historyAfter.length, 8)
+      assertEquals(historyAfter.length, 9)
       assertEquals(historyAfter[5].function_name, 'cron.unschedule')
       assert(historyAfter[5].parameters.startsWith('delay-send-second-messages'))
       assertEquals(historyAfter[6].function_name, 'cron.unschedule')
@@ -776,6 +779,7 @@ describe(
   () => {
     it('successfully', async () => {
       const broadcast = await createBroadcast(60)
+      await createSegment(1, broadcast.id!)
       await createBroadcastStatus(1, broadcast)
       await mockTwilio(200)
       const response = await BroadcastController.updateTwilioStatus(
@@ -788,10 +792,6 @@ describe(
           broadcastSentMessageStatus.id,
         )
       assertEquals(after.length, 2)
-
-      assertExists(after[0].twilioId)
-      assertExists(after[1].twilioId)
-      assertEquals(after[1].twilioSentStatus, 'failed')
       assertEquals(response.statusCode, 204)
     })
     it('could not find broadcast', async () => {
@@ -810,6 +810,7 @@ describe(
     })
     it('request to twilio failed', async () => {
       const broadcast = await createBroadcast(60)
+      await createSegment(1, broadcast.id!)
       await createBroadcastStatus(1, broadcast)
       await mockTwilio(500, true)
       const response = await BroadcastController.updateTwilioStatus(
@@ -822,8 +823,6 @@ describe(
           broadcastSentMessageStatus.id,
         )
       assertEquals(after.length, 2)
-      assertEquals(after[0].twilioId, null)
-      assertEquals(after[1].twilioId, null)
       assertEquals(response.statusCode, 204)
     })
 

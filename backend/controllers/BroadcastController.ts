@@ -99,6 +99,17 @@ async function updateTwilioStatus(req: Request, res: Response) {
   return AppResponse.ok(res, {}, 204)
 }
 
+async function sendPost(req: Request, res: Response) {
+  const validations = [
+    param('broadcastID').isInt().toInt(),
+  ]
+  await validateAndResponse(validations, req)
+
+  const id = Number(req.params.broadcastID)
+  await BroadcastService.updateFailedToSendConversations(id)
+  return AppResponse.ok(res, { message: 'Processing completed or no conversations to process' })
+}
+
 async function commentChangeSubscriptionStatus(req: Request, res: Response) {
   if (
     !req.body.conversation || !Array.isArray(req.body.conversation.external_authors)
@@ -150,5 +161,6 @@ export default {
   patch,
   updateTwilioStatus,
   sendNow,
+  sendPost,
   commentChangeSubscription: commentChangeSubscriptionStatus,
 } as const
