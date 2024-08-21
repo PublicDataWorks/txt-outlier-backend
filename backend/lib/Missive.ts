@@ -7,6 +7,7 @@ export const isTesting = Deno.env.get('ENV') === 'testing'
 
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
+const GET_MESSAGE_URL = 'https://public.missiveapp.com/v1/messages/'
 
 interface MissiveKey {
   name: string
@@ -43,6 +44,15 @@ if (!MISSIVE_ORGANIZATION_ID && !isTesting) {
   throw new Error('MISSIVE_ORGANIZATION_ID environment variable is not set')
 }
 
+const getHeaders = (keyName: string) => {
+  const key = missive_keys.find((k) => k.name === keyName)
+  if (!key) throw new Error(`${keyName} not found`)
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${key.content}`,
+  }
+}
+
 const sendMessage = (message: string, toPhone: string) => {
   const body = {
     drafts: {
@@ -57,20 +67,10 @@ const sendMessage = (message: string, toPhone: string) => {
       'send': true, // Send right away
     },
   }
-  const missiveSecretKey = missive_keys.find((key) => key.name === 'missive_broadcast_use_secret')
-
-  if (!missiveSecretKey) {
-    throw new Error('missive_broadcast_use_secret key not found')
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${missiveSecretKey.content}`,
-  }
 
   return fetch(CREATE_MESSAGE_URL, {
     method: 'POST',
-    headers: headers,
+    headers: getHeaders('missive_broadcast_use_secret'),
     body: JSON.stringify(body),
   })
 }
@@ -95,20 +95,9 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
     postData.posts.organization = MISSIVE_ORGANIZATION_ID
   }
 
-  const missiveSecretKey = missive_keys.find((key) => key.name === 'missive_secret')
-
-  if (!missiveSecretKey) {
-    throw new Error('MISSIVE_SECRET key not found')
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${missiveSecretKey.content}`,
-  }
-
   const response = await fetch(CREATE_POST_URL, {
     method: 'POST',
-    headers: headers,
+    headers: getHeaders('missive_secret'),
     body: JSON.stringify(postData),
   })
 
@@ -120,8 +109,26 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
   return response.json()
 }
 
+const getMissiveMessage = async (id: string) => {
+  const url = `${GET_MESSAGE_URL}${id}`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: getHeaders('missive_broadcast_use_secret'),
+  })
+  if (response.ok) {
+    return await response.json()
+  } else {
+    const errorMessage = `Failed to get Missive message. Message id: ${id}}, Missive's respond = ${
+      JSON.stringify(await response.json())
+    }`
+    log.error(errorMessage)
+    throw new Error(`HTTP error! status: ${response.status}, ${errorMessage}`)
+  }
+}
+
 export default {
   sendMessage,
   createPost,
+  getMissiveMessage,
   CREATE_MESSAGE_URL,
 } as const
