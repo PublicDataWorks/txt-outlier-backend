@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
@@ -357,13 +357,14 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
   const CHUNK_SIZE = 200
   const MISSIVE_API_RATE_LIMIT = 1000
   const MAX_RUN_TIME = 4 * 60 * 1000
+  const MAX_RETRIES = 3
 
   const startTime = Date.now()
   let postErrorMessages = `❌ This message was undeliverable. The phone number has now been unsubscribed. `
   let closingLabelId: string | undefined = undefined
 
   try {
-    const failedConversations = await supabase
+    let failedConversations = await supabase
       .selectDistinct({
         missive_conversation_id: broadcastSentMessageStatus.missiveConversationId,
         phones: broadcastSentMessageStatus.recipientPhoneNumber,
@@ -380,8 +381,75 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
 
     log.info(`Processing ${failedConversations.length} failed conversations.`)
     if (failedConversations.length === 0) {
-      await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
-      return
+      failedConversations = await supabase
+        .selectDistinct({
+          missive_conversation_id: broadcastSentMessageStatus.missiveConversationId,
+          phones: broadcastSentMessageStatus.recipientPhoneNumber,
+          missive_id: broadcastSentMessageStatus.missiveId,
+        })
+        .from(broadcastSentMessageStatus)
+        .where(and(
+          eq(broadcastSentMessageStatus.broadcastId, broadcastID),
+          eq(broadcastSentMessageStatus.closed, false),
+          isNull(broadcastSentMessageStatus.twilioSentAt),
+          eq(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
+        ))
+        .limit(CHUNK_SIZE)
+        .execute()
+
+      if (failedConversations.length === 0) {
+        await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
+        await updateTwilioHistory(broadcastID)
+        return
+      }
+      // deno-lint-ignore no-explicit-any
+      const conversationsToProcess: any[] = []
+      for (const conversation of failedConversations) {
+        let retries = 0
+        let response
+        while (retries < MAX_RETRIES) {
+          try {
+            response = await MissiveUtils.getMissiveMessage(conversation.missive_conversation_id)
+            break
+          } catch (_) {
+            retries++
+            if (retries === MAX_RETRIES) {
+              log.error(`Failed to get message ${conversation.missive_conversation_id} after ${MAX_RETRIES} attempts.`)
+              break
+            }
+            await sleep(MISSIVE_API_RATE_LIMIT)
+          }
+        }
+
+        let updateData = {}
+        const missiveMessage = response.messages
+        if (missiveMessage.external_id) {
+          updateData = {
+            twilioSentAt: missiveMessage.delivered_at ? new Date(missiveMessage.delivered_at * 1000) : null,
+            twilioId: missiveMessage.external_id,
+            twilioSentStatus: missiveMessage.delivered_at ? 'delivered' : 'sent',
+          }
+        } else {
+          updateData = {
+            twilioSentAt: null,
+            twilioId: null,
+            twilioSentStatus: 'undelivered',
+          }
+          conversationsToProcess.push(conversation)
+        }
+        await supabase
+          .update(broadcastSentMessageStatus)
+          .set(updateData)
+          .where(eq(broadcastSentMessageStatus.missiveId, conversation.missive_conversation_id))
+        log.info(
+          `Successfully updated broadcastSentMessageStatus for ${conversation.missive_conversation_id}. Data: ${
+            JSON.stringify(updateData)
+          }`,
+        )
+
+        await sleep(MISSIVE_API_RATE_LIMIT)
+      }
+      failedConversations = conversationsToProcess
     }
 
     const errorMessage = await supabase
