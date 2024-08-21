@@ -1,4 +1,4 @@
-const invokeBroadcastCron = (runAt: Date): string => {
+const invokeBroadcastCron = (runAt: number | Date): string => {
   const runTime = dateToCron(new Date(runAt))
   return `
     SELECT cron.schedule(
