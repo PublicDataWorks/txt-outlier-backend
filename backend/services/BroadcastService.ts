@@ -250,8 +250,15 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     await supabase.execute(sql.raw(updateTwilioStatusCron(broadcastID)))
     return
   }
-
+  let processed = []
   for (const outgoing of results) {
+    if (processed.length >= 10) {
+      // OPTIMIZEME: https://github.com/drizzle-team/drizzle-orm/discussions/2677
+      await supabase
+        .delete(outgoingMessages)
+        .where(inArray(outgoingMessages.id, processed))
+      processed = []
+    }
     const loopStartTime = Date.now()
     const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
     if (response.ok) {
@@ -269,6 +276,7 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
       log.error(errorMessage)
       DenoSentry.captureException(errorMessage)
     }
+    processed.push(outgoing.id)
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
@@ -278,10 +286,11 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     // Wait for 1s, considering the time spent in API call and other operations
     await sleep(Math.max(0, 1000 - (Date.now() - loopStartTime)))
   }
-  const processedIds = results.map((outgoing: OutgoingMessage) => outgoing.id!)
-  await supabase
-    .delete(outgoingMessages)
-    .where(inArray(outgoingMessages.id, processedIds))
+  if (processed.length > 0) {
+    await supabase
+      .delete(outgoingMessages)
+      .where(inArray(outgoingMessages.id, processed))
+  }
   // We haven't started the updateTwilioHistory cron
   await updateTwilioHistory(broadcastID)
 }
