@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
@@ -250,15 +250,13 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     await supabase.execute(sql.raw(updateTwilioStatusCron(broadcastID)))
     return
   }
-  let processed = []
+
+  const processedIds = results.map((outgoing: OutgoingMessage) => outgoing.id!)
+  await supabase
+    .delete(outgoingMessages)
+    .where(inArray(outgoingMessages.id, processedIds))
+
   for (const outgoing of results) {
-    if (processed.length >= 10) {
-      // OPTIMIZEME: https://github.com/drizzle-team/drizzle-orm/discussions/2677
-      await supabase
-        .delete(outgoingMessages)
-        .where(inArray(outgoingMessages.id, processed))
-      processed = []
-    }
     const loopStartTime = Date.now()
     const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
     if (response.ok) {
@@ -276,7 +274,6 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
       log.error(errorMessage)
       DenoSentry.captureException(errorMessage)
     }
-    processed.push(outgoing.id)
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
@@ -285,11 +282,6 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     }
     // Wait for 1s, considering the time spent in API call and other operations
     await sleep(Math.max(0, 1000 - (Date.now() - loopStartTime)))
-  }
-  if (processed.length > 0) {
-    await supabase
-      .delete(outgoingMessages)
-      .where(inArray(outgoingMessages.id, processed))
   }
   // We haven't started the updateTwilioHistory cron
   await updateTwilioHistory(broadcastID)
@@ -365,7 +357,7 @@ const updateTwilioHistory = async (broadcastID: number) => {
 const updateFailedToSendConversations = async (broadcastID: number) => {
   const CHUNK_SIZE = 200
   const MISSIVE_API_RATE_LIMIT = 1000
-  const MAX_RUN_TIME = 4 * 60 * 1000
+  const MAX_RUN_TIME = 6 * 60 * 1000
   const MAX_RETRIES = 3
 
   const startTime = Date.now()
@@ -373,91 +365,74 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
   let closingLabelId: string | undefined = undefined
 
   try {
-    let failedConversations = await supabase
+    const failedStatusConversations = await supabase
       .selectDistinct({
         missive_conversation_id: broadcastSentMessageStatus.missiveConversationId,
         phones: broadcastSentMessageStatus.recipientPhoneNumber,
+        missive_id: broadcastSentMessageStatus.missiveId,
       })
       .from(broadcastSentMessageStatus)
       .where(and(
         eq(broadcastSentMessageStatus.broadcastId, broadcastID),
         eq(broadcastSentMessageStatus.closed, false),
-        ne(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
-        eq(broadcastSentMessageStatus.isSecond, false),
+        isNull(broadcastSentMessageStatus.twilioId),
+        eq(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
       ))
       .limit(CHUNK_SIZE)
       .execute()
 
-    log.info(`Processing ${failedConversations.length} failed conversations.`)
-    if (failedConversations.length === 0) {
-      const failedStatusConversations = await supabase
-        .selectDistinct({
-          missive_conversation_id: broadcastSentMessageStatus.missiveConversationId,
-          phones: broadcastSentMessageStatus.recipientPhoneNumber,
-          missive_id: broadcastSentMessageStatus.missiveId,
-        })
-        .from(broadcastSentMessageStatus)
-        .where(and(
-          eq(broadcastSentMessageStatus.broadcastId, broadcastID),
-          eq(broadcastSentMessageStatus.closed, false),
-          isNull(broadcastSentMessageStatus.twilioId),
-          eq(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
-        ))
-        .limit(CHUNK_SIZE)
-        .execute()
-
-      if (failedStatusConversations.length === 0) {
-        await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
-        await updateTwilioHistory(broadcastID)
-        return
-      }
-      // deno-lint-ignore no-explicit-any
-      const conversationsToProcess: any[] = []
-      for (const conversation of failedStatusConversations) {
-        let retries = 0
-        let response
-        while (retries < MAX_RETRIES) {
-          try {
-            response = await MissiveUtils.getMissiveMessage(conversation.missive_id)
+    if (failedStatusConversations.length === 0) {
+      await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
+      await updateTwilioHistory(broadcastID)
+      return
+    }
+    // deno-lint-ignore no-explicit-any
+    const conversationsToProcess: any[] = []
+    for (const conversation of failedStatusConversations) {
+      let retries = 0
+      let response
+      while (retries < MAX_RETRIES) {
+        try {
+          response = await MissiveUtils.getMissiveMessage(conversation.missive_id)
+          break
+        } catch (_) {
+          retries++
+          if (retries === MAX_RETRIES) {
+            log.error(`Failed to get message ${conversation.missive_id} after ${MAX_RETRIES} attempts.`)
             break
-          } catch (_) {
-            retries++
-            if (retries === MAX_RETRIES) {
-              log.error(`Failed to get message ${conversation.missive_id} after ${MAX_RETRIES} attempts.`)
-              break
-            }
-            await sleep(MISSIVE_API_RATE_LIMIT)
           }
-        }
-        if (response) {
-          let updateData = {}
-          const missiveMessage = response.messages
-          if (missiveMessage.external_id) {
-            updateData = {
-              twilioSentAt: missiveMessage.delivered_at ? new Date(missiveMessage.delivered_at * 1000) : null,
-              twilioId: missiveMessage.external_id,
-              twilioSentStatus: missiveMessage.delivered_at ? 'delivered' : 'sent',
-            }
-          } else {
-            updateData = {
-              twilioSentAt: null,
-              twilioId: null,
-              twilioSentStatus: 'undelivered',
-            }
-            conversationsToProcess.push(conversation)
-          }
-          await supabase
-            .update(broadcastSentMessageStatus)
-            .set(updateData)
-            .where(eq(broadcastSentMessageStatus.missiveId, conversation.missive_id))
-          log.info(
-            `Successfully updated broadcastSentMessageStatus for ${conversation.missive_id}. Data: ${
-              JSON.stringify(updateData)
-            }`,
-          )
           await sleep(MISSIVE_API_RATE_LIMIT)
         }
-        failedConversations = conversationsToProcess
+      }
+      if (response) {
+        let updateData = {}
+        const missiveMessage = response.messages
+        if (missiveMessage.external_id) {
+          updateData = {
+            twilioSentAt: missiveMessage.delivered_at
+              ? new Date(missiveMessage.delivered_at * 1000).toISOString()
+              : null,
+            twilioId: missiveMessage.external_id,
+            twilioSentStatus: missiveMessage.delivered_at ? 'delivered' : 'sent',
+          }
+        } else {
+          updateData = {
+            twilioSentAt: null,
+            twilioId: null,
+            twilioSentStatus: 'undelivered',
+          }
+          conversationsToProcess.push(conversation)
+        }
+        await supabase
+          .update(broadcastSentMessageStatus)
+          .set(updateData)
+          .where(eq(broadcastSentMessageStatus.missiveId, conversation.missive_id))
+        log.info(
+          `Successfully updated broadcastSentMessageStatus for ${conversation.missive_id}. Data: ${
+            JSON.stringify(updateData)
+          }`,
+        )
+        await sleep(MISSIVE_API_RATE_LIMIT)
       }
     }
 
@@ -490,7 +465,7 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
 
     const conversationsToUpdate: string[] = []
     const failedPhoneNumbers: string[] = []
-    for (const conversation of failedConversations) {
+    for (const conversation of conversationsToProcess) {
       await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
       conversationsToUpdate.push(conversation.missive_conversation_id)
       failedPhoneNumbers.push(conversation.phones)

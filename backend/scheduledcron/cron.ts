@@ -98,7 +98,7 @@ const sendPostCron = (broadcastId: number): string => {
   return `
     SELECT cron.schedule(
       'send-post-cron',
-      '*/4 * * * *',
+      '*/6 * * * *',
       $$
         SELECT net.http_get(
           url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/send-post/${broadcastId}',
