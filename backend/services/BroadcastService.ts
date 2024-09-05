@@ -184,6 +184,9 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       await supabase.execute(sql.raw(sendPostCron(broadcastID)))
       return
     }
+    const processedIds: number[] = results.map((outgoing: OutgoingMessage) => outgoing.id!)
+    await supabase.delete(outgoingMessages).where(inArray(outgoingMessages.id, processedIds))
+
     const missiveResponses = results.map(async (outgoing: OutgoingMessage) => {
       const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
       return ({ response, outgoing })
@@ -201,7 +204,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
               .values(convertToBroadcastMessagesStatus(outgoing, id, conversation))
           } else {
             const errorMessage = `Failed to send broadcast second messages.
-              Broadcast id: ${broadcastID}, outgoing: ${outgoing},
+              Broadcast id: ${broadcastID}, outgoing: ${JSON.stringify(outgoing)},
               Missive's respond = ${JSON.stringify(await response.json())}`
             log.error(errorMessage)
             DenoSentry.captureException(errorMessage)
@@ -214,10 +217,6 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
         }
       }
     })
-    const processIds = results.map((outgoing: OutgoingMessage) => outgoing.id!)
-    await supabase
-      .delete(outgoingMessages)
-      .where(inArray(outgoingMessages.id, processIds))
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
@@ -238,6 +237,7 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
       and(
         eq(outgoingMessages.broadcastId, broadcastID),
         eq(outgoingMessages.isSecond, false),
+        eq(outgoingMessages.processed, false),
       ),
     )
     .orderBy(outgoingMessages.id)
@@ -250,12 +250,12 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     await supabase.execute(sql.raw(updateTwilioStatusCron(broadcastID)))
     return
   }
-
-  const processedIds = results.map((outgoing: OutgoingMessage) => outgoing.id!)
-  await supabase
-    .delete(outgoingMessages)
-    .where(inArray(outgoingMessages.id, processedIds))
-
+  const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
+  // Temporarily mark these messages as processed, so later requests don't pick them up
+  await supabase.update(outgoingMessages).set({ processed: true }).where(
+    inArray(outgoingMessages.id, idsToMarkAsProcessed),
+  )
+  const processedIds = []
   for (const outgoing of results) {
     const loopStartTime = Date.now()
     const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
@@ -274,6 +274,7 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
       log.error(errorMessage)
       DenoSentry.captureException(errorMessage)
     }
+    processedIds.push(outgoing.id)
     const elapsedTime = Date.now() - startTime
     // We break because CRON job will run every minute, next time it will pick up the remaining messages
     if (elapsedTime >= 60000) {
@@ -282,6 +283,15 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     }
     // Wait for 1s, considering the time spent in API call and other operations
     await sleep(Math.max(0, 1000 - (Date.now() - loopStartTime)))
+  }
+
+  if (processedIds.length > 0) {
+    await supabase
+      .delete(outgoingMessages)
+      .where(inArray(outgoingMessages.id, processedIds))
+    await supabase.update(outgoingMessages).set({ processed: false }).where(
+      inArray(outgoingMessages.id, idsToMarkAsProcessed),
+    )
   }
   // We haven't started the updateTwilioHistory cron
   await updateTwilioHistory(broadcastID)
