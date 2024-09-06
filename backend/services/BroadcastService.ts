@@ -291,6 +291,7 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     const remainingTime = 1000 - (Date.now() - loopStartTime)
     if (remainingTime > 0) {
       await sleep(remainingTime)
+    }
   }
 
   if (processedIds.length > 0) {
