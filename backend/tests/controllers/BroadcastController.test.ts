@@ -372,7 +372,10 @@ describe(
       await sleep(2000)
       const after = await supabase.select().from(outgoingMessages).orderBy(outgoingMessages.id)
       assertEquals(after.length, 0)
-
+      await BroadcastController.sendDraft(
+        req(DRAFT_PATH, { broadcastID }, { isSecond: true }),
+        res(),
+      )
       const historyAfter = await call_history()
       assertEquals(historyAfter.length, 9)
       assertEquals(historyAfter[5].function_name, 'cron.unschedule')
