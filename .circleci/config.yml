@@ -9,7 +9,7 @@ jobs:
       image: default
     steps:
       - checkout
-      - run: curl -fsSL https://deno.land/install.sh | sh
+      - run: curl -fsSL https://deno.land/x/install@v0.1.9/install.sh?source | sh
       - run: /home/circleci/.deno/bin/deno upgrade --version 1.39.0
       - run:
           name: Run lint
