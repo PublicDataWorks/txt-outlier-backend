@@ -73,13 +73,11 @@ async function patch(req: Request, res: Response) {
     body('firstMessage')
       .optional()
       .isString()
-      .notEmpty()
-      .customSanitizer((value) => removeExtraSpaces(value)),
+      .notEmpty(),
     body('secondMessage')
       .optional()
       .isString()
-      .notEmpty()
-      .customSanitizer((value) => removeExtraSpaces(value)),
+      .notEmpty(),
     body('runAt').optional().isDecimal(),
     body('delay').optional().isString().notEmpty(),
   ]
