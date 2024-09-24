@@ -4,7 +4,6 @@ import { BroadcastUpdate } from '../dto/BroadcastRequestResponse.ts'
 import { validateAndResponse } from '../misc/validator.ts'
 import AppResponse from '../misc/AppResponse.ts'
 import BroadcastService from '../services/BroadcastService.ts'
-import { removeExtraSpaces } from '../misc/utils.ts'
 import Paths from '../constants/Paths.ts'
 import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
@@ -73,13 +72,11 @@ async function patch(req: Request, res: Response) {
     body('firstMessage')
       .optional()
       .isString()
-      .notEmpty()
-      .customSanitizer((value) => removeExtraSpaces(value)),
+      .notEmpty(),
     body('secondMessage')
       .optional()
       .isString()
-      .notEmpty()
-      .customSanitizer((value) => removeExtraSpaces(value)),
+      .notEmpty(),
     body('runAt').optional().isDecimal(),
     body('delay').optional().isString().notEmpty(),
   ]
