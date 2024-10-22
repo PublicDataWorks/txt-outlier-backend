@@ -95,17 +95,20 @@ const updateTwilioStatusCron = (broadcastId: number): string => {
 }
 
 const sendPostCron = (broadcastId: number): string => {
+  const runAt = dateToCron(new Date(Date.now() +  2 * 60 * 60 * 1000))
   return `
     SELECT cron.schedule(
-      'send-post-cron',
-      '*/6 * * * *',
+      'delay-send-post',
+      '${runAt}',
       $$
-        SELECT net.http_get(
-          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/send-post/${broadcastId}',
-          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-    'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
-        ) as request_id;
+        SELECT cron.schedule(
+          'send-post-cron',
+          '*/6 * * * *',
+          'SELECT net.http_get(
+             url:=''${Deno.env.get('BACKEND_URL')!}/broadcasts/send-post/${broadcastId}'',
+             headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"}''::jsonb
+          ) as request_id;'
+        );
       $$
     );
   `
