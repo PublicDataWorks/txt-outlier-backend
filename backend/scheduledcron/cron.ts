@@ -121,6 +121,7 @@ const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messa
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
 const UNSCHEDULE_SEND_POST_INVOKE = "SELECT cron.unschedule('send-post-cron');"
+const UNSCHEDULE_DELAY_SEND_POST = "SELECT cron.unschedule('delay-send-post');"
 const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
 
 const JOB_NAMES = [
@@ -150,6 +151,7 @@ export {
   sendFirstMessagesCron,
   sendPostCron,
   sendSecondMessagesCron,
+  UNSCHEDULE_DELAY_SEND_POST,
   UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_POST_INVOKE,

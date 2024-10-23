@@ -25,6 +25,7 @@ import {
   sendFirstMessagesCron,
   sendPostCron,
   sendSecondMessagesCron,
+  UNSCHEDULE_DELAY_SEND_POST,
   UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_POST_INVOKE,
@@ -403,6 +404,7 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
 
     if (failedStatusConversations.length === 0) {
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
+      await supabase.execute(sql.raw(UNSCHEDULE_DELAY_SEND_POST))
       await updateTwilioHistory(broadcastID)
       return
     }
