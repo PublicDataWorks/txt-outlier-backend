@@ -88,14 +88,6 @@ async function patch(req: Request, res: Response) {
   return AppResponse.ok(res, result)
 }
 
-async function updateTwilioStatus(req: Request, res: Response) {
-  const validations = [param('broadcastID').isInt().toInt()]
-  await validateAndResponse(validations, req)
-  const id = Number(req.params.broadcastID)
-  await BroadcastService.updateTwilioHistory(id)
-  return AppResponse.ok(res, {}, 204)
-}
-
 async function sendPost(req: Request, res: Response) {
   const validations = [
     param('broadcastID').isInt().toInt(),
@@ -103,8 +95,13 @@ async function sendPost(req: Request, res: Response) {
   await validateAndResponse(validations, req)
 
   const id = Number(req.params.broadcastID)
-  await BroadcastService.updateFailedToSendConversations(id)
-  return AppResponse.ok(res, { message: 'Processing completed or no conversations to process' })
+  await BroadcastService.reconcileTwilioStatus(id)
+  return AppResponse.ok(res, { message: 'Processing completed.' })
+}
+
+async function handleFailedDeliveries(_req: Request, res: Response) {
+  await BroadcastService.handleFailedDeliveries()
+  return AppResponse.ok(res, { message: 'Processing completed.' })
 }
 
 async function commentChangeSubscriptionStatus(req: Request, res: Response) {
@@ -156,8 +153,8 @@ export default {
   sendDraft,
   getAll,
   patch,
-  updateTwilioStatus,
   sendNow,
   sendPost,
-  commentChangeSubscription: commentChangeSubscriptionStatus,
+  commentChangeSubscriptionStatus,
+  handleFailedDeliveries,
 } as const

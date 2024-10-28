@@ -5,22 +5,6 @@ import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
-const updateTwilioStatusRaw = (updatedArray: string[]): string => {
-  // updatedArray is already escaped
-  return `
-    WITH new_values (twilio_sent_status, twilio_id, twilio_sent_at, recipient_phone_number, broadcast_id, body)
-           AS (VALUES ${updatedArray.join(',')})
-    UPDATE broadcast_sent_message_status
-    SET twilio_sent_status = new_values.twilio_sent_status,
-        twilio_id          = new_values.twilio_id,
-        twilio_sent_at     = new_values.twilio_sent_at
-    FROM new_values
-    WHERE broadcast_sent_message_status.recipient_phone_number = new_values.recipient_phone_number
-      AND broadcast_sent_message_status.broadcast_id = new_values.broadcast_id
-      AND broadcast_sent_message_status.message = new_values.body;
-  `
-}
-
 const insertOutgoingMessagesQuery = (
   broadcastSegment: BroadcastSegment,
   nextBroadcast: Broadcast,
@@ -136,6 +120,32 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
   `
 }
 
+const FAILED_DELIVERED_QUERY = `
+  WITH RankedMessages AS (
+    SELECT
+        twilio_sent_status,
+        recipient_phone_number,
+        missive_conversation_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY recipient_phone_number
+            ORDER BY id DESC
+        ) as rn
+    FROM broadcast_sent_message_status
+    WHERE created_at > NOW() - INTERVAL '10 week'
+  )
+  SELECT
+    r.recipient_phone_number as phone_number,
+    (array_agg(r.missive_conversation_id))[1] as missive_conversation_id
+  FROM RankedMessages r
+  JOIN authors a ON a.phone_number = r.recipient_phone_number
+  WHERE r.rn <= 3
+    AND a.exclude = FALSE
+  GROUP BY r.recipient_phone_number
+  HAVING COUNT(*) = 3
+    AND SUM(CASE WHEN r.twilio_sent_status = 'delivered' THEN 1 ELSE 0 END) = 0
+  LIMIT 330;
+`
+
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -151,8 +161,8 @@ interface BroadcastDashBoardQueryReturn {
 
 export {
   type BroadcastDashBoardQueryReturn,
+  FAILED_DELIVERED_QUERY,
   insertOutgoingMessagesFallbackQuery,
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
-  updateTwilioStatusRaw,
 }

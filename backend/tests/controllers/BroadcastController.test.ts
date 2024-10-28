@@ -3,7 +3,6 @@ import { describe, it } from 'testing/bdd.ts'
 import { FakeTime } from 'testing/time.ts'
 import * as mf from 'mock-fetch'
 import { desc, eq, sql } from 'drizzle-orm'
-import { faker } from 'faker'
 
 import { createBroadcast } from '../fixtures/broadcast.ts'
 import { createSegment } from '../fixtures/segment.ts'
@@ -14,7 +13,6 @@ import BroadcastController from '../../controllers/BroadcastController.ts'
 import supabase from '../../lib/supabase.ts'
 import RouteError from '../../exception/RouteError.ts'
 import { PastBroadcastResponse } from '../../dto/BroadcastRequestResponse.ts'
-import { createBroadcastStatus } from '../fixtures/broadcastStatus.ts'
 import SystemError from '../../exception/SystemError.ts'
 import { SEND_NOW_STATUS } from '../../misc/AppResponse.ts'
 import { sleep } from '../../misc/utils.ts'
@@ -776,78 +774,11 @@ describe(
     assertEquals(after[0].runAt, before[0].runAt)
   }),
 )
-describe(
-  'Twilio History Update',
-  { sanitizeOps: false, sanitizeResources: false },
-  () => {
-    it('successfully', async () => {
-      const broadcast = await createBroadcast(60)
-      await createSegment(1, broadcast.id!)
-      await createBroadcastStatus(1, broadcast)
-      await mockTwilio(200)
-      const response = await BroadcastController.updateTwilioStatus(
-        req(TWILIO_PATH, { broadcastID: broadcast.id }),
-        res(),
-      )
 
-      const after = await supabase.select().from(broadcastSentMessageStatus)
-        .orderBy(
-          broadcastSentMessageStatus.id,
-        )
-      assertEquals(after.length, 2)
-      assertEquals(response.statusCode, 204)
-    })
-    it('could not find broadcast', async () => {
-      await mockTwilio(200)
-      const response = await BroadcastController.updateTwilioStatus(
-        req(TWILIO_PATH, { broadcastID: 10 }),
-        res(),
-      )
-
-      const after = await supabase.select().from(broadcastSentMessageStatus)
-        .orderBy(
-          broadcastSentMessageStatus.id,
-        )
-      assertEquals(after.length, 0)
-      assertEquals(response.statusCode, 204)
-    })
-    it('request to twilio failed', async () => {
-      const broadcast = await createBroadcast(60)
-      await createSegment(1, broadcast.id!)
-      await createBroadcastStatus(1, broadcast)
-      await mockTwilio(500, true)
-      const response = await BroadcastController.updateTwilioStatus(
-        req(TWILIO_PATH, { broadcastID: broadcast.id }),
-        res(),
-      )
-
-      const after = await supabase.select().from(broadcastSentMessageStatus)
-        .orderBy(
-          broadcastSentMessageStatus.id,
-        )
-      assertEquals(after.length, 2)
-      assertEquals(response.statusCode, 204)
-    })
-
-    it('not clean up cronjob', async () => {
-      const broadcast = await createBroadcast(60)
-      // await createBroadcastStatus(1, broadcast);
-      await mockTwilio(200)
-      const response = await BroadcastController.updateTwilioStatus(
-        req(TWILIO_PATH, { broadcastID: broadcast.id }),
-        res(),
-      )
-      const history = await call_history()
-      assertEquals(history.length, 0)
-      assertEquals(response.statusCode, 204)
-    })
-  },
-)
 /* =====================================Utils===================================== */
 // TODO: test make get order by id
 const DRAFT_PATH = 'broadcasts/draft'
 const MAKE_PATH = 'broadcasts/make'
-const TWILIO_PATH = 'broadcasts/twilio'
 const SEND_NOW_PATH = 'broadcasts/send-now'
 
 const mockDraftMissive = (code: number) => {
@@ -860,31 +791,6 @@ const mockDraftMissive = (code: number) => {
     }, { status: code }))
 }
 
-const mockTwilio = async (code: number, fail = false) => {
-  const histories = await supabase.select().from(broadcastSentMessageStatus)
-  mf.mock(`GET@/2010-04-01/Accounts/*/Messages.json`, () => {
-    const messages = histories.map((history) => {
-      const randomDateSent = faker.date.past()
-      return {
-        body: history.message,
-        direction: 'outbound-api',
-        from: '+18336856203',
-        to: history.recipientPhoneNumber,
-        date_created: randomDateSent.toISOString(),
-        status: !history.isSecond ? 'delivered' : 'failed',
-        sid: faker.random.uuid(),
-        date_sent: randomDateSent.toISOString(),
-      }
-    })
-    if (fail) {
-      return Response.json({}, { status: code })
-    }
-    return Response.json({
-      messages: messages,
-      next_page_uri: null,
-    }, { status: code })
-  })
-}
 const call_history = async () =>
   await supabase.execute(
     sql.raw('SELECT id, function_name, parameters from cron.call_history'),
