@@ -480,6 +480,7 @@ const handleFailedDeliveries = async () => {
   for (const conversation of failedDelivers) {
     try {
       await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+      log.info(`Successfully unsubscribe ${conversation.phone_number}.`)
     } catch (error) {
       log.error(`Failed to create post when handleFailedDeliveries: ${error}`)
       continue
@@ -496,7 +497,6 @@ const handleFailedDeliveries = async () => {
       await supabase.update(authors)
         .set({ exclude: true })
         .where(inArray(authors.phoneNumber, phonesToUpdate))
-
       conversationsToUpdate = []
       phonesToUpdate = []
     }
@@ -518,8 +518,6 @@ const handleFailedDeliveries = async () => {
     await supabase.update(authors)
       .set({ exclude: true })
       .where(inArray(authors.phoneNumber, phonesToUpdate))
-    console.log(conversationsToUpdate)
-    console.log(phonesToUpdate)
   }
 }
 
