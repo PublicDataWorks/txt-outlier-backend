@@ -80,7 +80,6 @@ describe(
 
       const history = await call_history()
       assertEquals(history.length, 2)
-      console.log(history[0].parameters, 'kykyky')
       assert(history[0].parameters.startsWith('invoke-broadcast 0 14 1 2 4'))
       assertEquals(history[0].function_name, 'cron.schedule')
       assert(history[1].parameters.startsWith('send-first-messages * * * * *'))
@@ -345,13 +344,11 @@ describe(
       )
       assertEquals(response.statusCode, 200)
       const history = await call_history()
-      assertEquals(history.length, 5)
+      assertEquals(history.length, 4)
       assertEquals(history[2].function_name, 'cron.schedule')
       assert(history[2].parameters.startsWith('delay-send-second-messages'))
       assertEquals(history[3].function_name, 'cron.unschedule')
       assert(history[3].parameters.startsWith('send-first-messages'))
-      assertEquals(history[4].function_name, 'cron.schedule')
-      assert(history[4].parameters.startsWith('twilio-status'))
     })
 
     it('successfully send second message', async () => {
@@ -360,7 +357,7 @@ describe(
       await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
       await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
       const historyBefore = await call_history()
-      assertEquals(historyBefore.length, 5)
+      assertEquals(historyBefore.length, 4)
 
       const response = await BroadcastController.sendDraft(
         req(DRAFT_PATH, { broadcastID }, { isSecond: true }),
@@ -375,13 +372,11 @@ describe(
         res(),
       )
       const historyAfter = await call_history()
-      assertEquals(historyAfter.length, 9)
+      assertEquals(historyAfter.length, 7)
+      assertEquals(historyAfter[4].function_name, 'cron.unschedule')
+      assert(historyAfter[4].parameters.startsWith('delay-send-second-messages'))
       assertEquals(historyAfter[5].function_name, 'cron.unschedule')
-      assert(historyAfter[5].parameters.startsWith('delay-send-second-messages'))
-      assertEquals(historyAfter[6].function_name, 'cron.unschedule')
-      assert(historyAfter[6].parameters.startsWith('send-second-messages'))
-      assertEquals(historyAfter[7].function_name, 'cron.schedule')
-      assert(historyAfter[7].parameters.startsWith('delay-unschedule-twilio-status'))
+      assert(historyAfter[5].parameters.startsWith('send-second-messages'))
     })
 
     // it('not do anything if failed to call Missive', async () => {

@@ -33,7 +33,6 @@ import {
   UNSCHEDULE_SEND_POST_INVOKE,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
-  unscheduleTwilioStatus,
 } from '../scheduledcron/cron.ts'
 import {
   BroadcastResponse,
@@ -181,7 +180,6 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
     // No messages found, unschedule CRON jobs
     await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_INVOKE))
     await supabase.execute(sql.raw(UNSCHEDULE_SEND_SECOND_MESSAGES))
-    await supabase.execute(sql.raw(unscheduleTwilioStatus(5)))
     await supabase.execute(sql.raw(sendPostCron(broadcastID)))
     return
   }
@@ -480,7 +478,12 @@ const handleFailedDeliveries = async () => {
   let conversationsToUpdate = []
   let phonesToUpdate = []
   for (const conversation of failedDelivers) {
-    await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    try {
+      await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    } catch (error) {
+      log.error(`Failed to create post when handleFailedDeliveries: ${error}`)
+      continue
+    }
     conversationsToUpdate.push(conversation.missive_conversation_id)
     phonesToUpdate.push(conversation.phone_number)
     if (conversationsToUpdate.length > 4) {
