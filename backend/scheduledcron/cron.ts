@@ -60,23 +60,6 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
   `
 }
 
-/**
- * @param delay in minutes
- */
-const unscheduleTwilioStatus = (delay: number) => {
-  const runAt = dateToCron(new Date(Date.now() + delay * 60 * 1000))
-  return `
-    SELECT cron.schedule(
-      'delay-unschedule-twilio-status',
-      '${runAt}',
-      $$
-        SELECT cron.unschedule('twilio-status');
-        SELECT cron.unschedule('delay-unschedule-twilio-status');
-      $$
-    );
-  `
-}
-
 const sendPostCron = (broadcastId: number): string => {
   const runAt = dateToCron(new Date(Date.now() + 2 * 60 * 60 * 1000))
   return `
@@ -160,5 +143,4 @@ export {
   UNSCHEDULE_SEND_POST_INVOKE,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
-  unscheduleTwilioStatus,
 }
