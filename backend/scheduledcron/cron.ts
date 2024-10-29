@@ -77,23 +77,6 @@ const unscheduleTwilioStatus = (delay: number) => {
   `
 }
 
-const updateTwilioStatusCron = (broadcastId: number): string => {
-  return `
-    SELECT cron.schedule(
-      'twilio-status',
-      '* * * * *',
-      $$
-        SELECT net.http_get(
-          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/twilio/${broadcastId}',
-          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
-    'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb
-        ) as request_id;
-      $$
-    );
-  `
-}
-
 const sendPostCron = (broadcastId: number): string => {
   const runAt = dateToCron(new Date(Date.now() + 2 * 60 * 60 * 1000))
   return `
@@ -116,12 +99,30 @@ const sendPostCron = (broadcastId: number): string => {
   `
 }
 
+const handleFailedDeliveriesCron = (): string => {
+  return `
+    SELECT cron.schedule(
+      'handle-failed-deliveries',
+      '*/6 * * * *',
+      $$
+        SELECT net.http_get(
+          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/handle-failures/',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+    'SUPABASE_SERVICE_ROLE_KEY',
+  )!}"}'::jsonb
+        ) as request_id;
+      $$
+    );
+  `
+}
+
 const UNSCHEDULE_INVOKE = "SELECT cron.unschedule('invoke-broadcast');"
 const UNSCHEDULE_SEND_FIRST_MESSAGES = "SELECT cron.unschedule('send-first-messages');"
 const UNSCHEDULE_SEND_SECOND_MESSAGES = "SELECT cron.unschedule('send-second-messages');"
 const UNSCHEDULE_SEND_SECOND_INVOKE = "SELECT cron.unschedule('delay-send-second-messages');"
 const UNSCHEDULE_SEND_POST_INVOKE = "SELECT cron.unschedule('send-post-cron');"
 const UNSCHEDULE_DELAY_SEND_POST = "SELECT cron.unschedule('delay-send-post');"
+const UNSCHEDULE_HANDLE_FAILED_DELIVERIES = "SELECT cron.unschedule('handle-failed-deliveries');"
 const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
 
 const JOB_NAMES = [
@@ -145,6 +146,7 @@ const dateToCron = (date: Date) => {
 
 export {
   dateToCron,
+  handleFailedDeliveriesCron,
   invokeBroadcastCron,
   JOB_NAMES,
   SELECT_JOB_NAMES,
@@ -152,11 +154,11 @@ export {
   sendPostCron,
   sendSecondMessagesCron,
   UNSCHEDULE_DELAY_SEND_POST,
+  UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
   UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_POST_INVOKE,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
   unscheduleTwilioStatus,
-  updateTwilioStatusCron,
 }

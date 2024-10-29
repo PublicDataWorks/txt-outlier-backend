@@ -12,8 +12,8 @@ export default {
     Status: '/status',
     Draft: '/draft/:broadcastID',
     ID: '/:id',
-    UpdateTwilioStatus: '/twilio/:broadcastID',
     SendPost: '/send-post/:broadcastID',
+    HandleFailedDeliveries: '/handle-failures/',
   },
   Comment: {
     Base: '',

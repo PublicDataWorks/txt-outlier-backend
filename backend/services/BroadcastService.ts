@@ -3,7 +3,7 @@ import * as log from 'log'
 import * as DenoSentry from 'sentry/deno'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
-import supabase, { sendMostRecentBroadcastDetail } from '../lib/supabase.ts'
+import supabase from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
 import {
   AudienceSegment,
@@ -19,6 +19,7 @@ import {
 } from '../drizzle/schema.ts'
 import SystemError from '../exception/SystemError.ts'
 import {
+  handleFailedDeliveriesCron,
   invokeBroadcastCron,
   JOB_NAMES,
   SELECT_JOB_NAMES,
@@ -26,17 +27,16 @@ import {
   sendPostCron,
   sendSecondMessagesCron,
   UNSCHEDULE_DELAY_SEND_POST,
+  UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
   UNSCHEDULE_INVOKE,
   UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_POST_INVOKE,
   UNSCHEDULE_SEND_SECOND_INVOKE,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
   unscheduleTwilioStatus,
-  updateTwilioStatusCron,
 } from '../scheduledcron/cron.ts'
 import {
   BroadcastResponse,
-  BroadcastSentDetail,
   BroadcastUpdate,
   convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
@@ -48,12 +48,14 @@ import MissiveUtils from '../lib/Missive.ts'
 import { sleep } from '../misc/utils.ts'
 import {
   BroadcastDashBoardQueryReturn,
+  FAILED_DELIVERED_QUERY,
   insertOutgoingMessagesFallbackQuery,
   insertOutgoingMessagesQuery,
   selectBroadcastDashboard,
 } from '../scheduledcron/queries.ts'
 import RouteError from '../exception/RouteError.ts'
 import { SEND_NOW_STATUS } from '../misc/AppResponse.ts'
+import { MISSIVE_API_RATE_LIMIT } from '../constants/constants.ts'
 
 // Called by Postgres Trigger
 const makeBroadcast = async (): Promise<void> => {
@@ -216,7 +218,7 @@ const sendBroadcastSecondMessage = async (broadcastID: number) => {
       break
     }
     // Wait for 1s, considering the time spent in API call and other operations
-    const remainingTime = 1000 - (Date.now() - loopStartTime)
+    const remainingTime = MISSIVE_API_RATE_LIMIT - (Date.now() - loopStartTime)
     if (remainingTime > 0) {
       await sleep(remainingTime)
     }
@@ -253,7 +255,6 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
     await supabase.execute(sql.raw(sendSecondMessagesCron(startTime, broadcastID, 1)))
     // TODO: There may be some messages that were not processed in the last batch
     await supabase.execute(sql.raw(UNSCHEDULE_SEND_FIRST_MESSAGES))
-    await supabase.execute(sql.raw(updateTwilioStatusCron(broadcastID)))
     return
   }
   const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
@@ -304,8 +305,6 @@ const sendBroadcastFirstMessage = async (broadcastID: number) => {
       .set({ processed: false })
       .where(inArray(outgoingMessages.id, idsToMarkAsProcessed))
   }
-  // We haven't started the updateTwilioHistory cron
-  await updateTwilioHistory(broadcastID)
 }
 
 const getAll = async (
@@ -358,32 +357,9 @@ const patch = async (
   })
 }
 
-// TODO: RENAMEME
-const updateTwilioHistory = async (broadcastID: number) => {
-  const selectQuery = selectBroadcastDashboard(1, undefined, broadcastID)
-  const result: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
-  if (!result[0]) {
-    return
-  }
-  const payload: BroadcastSentDetail = {
-    totalFirstSent: Number(result[0].totalFirstSent),
-    totalSecondSent: Number(result[0].totalSecondSent),
-    successfullyDelivered: Number(result[0].successfullyDelivered),
-    failedDelivered: Number(result[0].failedDelivered),
-    totalUnsubscribed: Number(result[0].totalUnsubscribed),
-  }
-  sendMostRecentBroadcastDetail(payload)
-}
-
-const updateFailedToSendConversations = async (broadcastID: number) => {
+const reconcileTwilioStatus = async (broadcastID: number) => {
   const CHUNK_SIZE = 200
-  const MISSIVE_API_RATE_LIMIT = 1000
-  const MAX_RUN_TIME = 6 * 60 * 1000
   const MAX_RETRIES = 3
-
-  const startTime = Date.now()
-  let postErrorMessages = `❌ This message was undeliverable. The phone number has now been unsubscribed. `
-  let closingLabelId: string | undefined = undefined
 
   try {
     const failedStatusConversations = await supabase
@@ -405,11 +381,9 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
     if (failedStatusConversations.length === 0) {
       await supabase.execute(sql.raw(UNSCHEDULE_SEND_POST_INVOKE))
       await supabase.execute(sql.raw(UNSCHEDULE_DELAY_SEND_POST))
-      await updateTwilioHistory(broadcastID)
+      await supabase.execute(sql.raw(handleFailedDeliveriesCron()))
       return
     }
-    // deno-lint-ignore no-explicit-any
-    const conversationsToProcess: any[] = []
     for (const conversation of failedStatusConversations) {
       let retries = 0
       let response
@@ -443,7 +417,6 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
             twilioId: null,
             twilioSentStatus: 'undelivered',
           }
-          conversationsToProcess.push(conversation)
         }
         await supabase
           .update(broadcastSentMessageStatus)
@@ -457,69 +430,93 @@ const updateFailedToSendConversations = async (broadcastID: number) => {
         await sleep(MISSIVE_API_RATE_LIMIT)
       }
     }
+  } catch (error) {
+    log.error(`Error fetching failed conversations for broadcast ID ${broadcastID}: ${error.toString()}`)
+    DenoSentry.captureException(error)
+  }
+}
 
-    const errorMessage = await supabase
-      .select({ content: lookupTemplate.content, name: lookupTemplate.name })
-      .from(lookupTemplate)
-      .where(
-        or(
-          eq(lookupTemplate.name, 'missive_broadcast_post_closing_message'),
-          eq(lookupTemplate.name, 'missive_broadcast_post_closing_label_id'),
-        ),
-      )
-      .limit(2)
+const handleFailedDeliveries = async () => {
+  const MAX_RUN_TIME = 6 * 60 * 1000
+  const startTime = Date.now()
 
-    if (errorMessage.length > 0) {
-      for (const message of errorMessage) {
-        if (message.name === 'missive_broadcast_post_closing_message') {
-          postErrorMessages = message.content || postErrorMessages
-        } else if (message.name === 'missive_broadcast_post_closing_label_id') {
-          closingLabelId = message.content || undefined
-        }
-      }
+  const failedDelivers = await supabase.execute(sql.raw(FAILED_DELIVERED_QUERY))
+  if (!failedDelivers || failedDelivers.length === 0) {
+    try {
+      await supabase.execute(sql.raw(UNSCHEDULE_HANDLE_FAILED_DELIVERIES))
+    } catch (e) {
+      log.error(`Failed to unschedule handleFailedDeliveries: ${e}`)
     }
+    return
+  }
 
-    if (!closingLabelId) {
-      log.error('Closing label ID not found. Aborting.')
-      DenoSentry.captureException('Closing label ID not found. Aborting.')
-      return
+  const errorMessage = await supabase
+    .select({ content: lookupTemplate.content, name: lookupTemplate.name })
+    .from(lookupTemplate)
+    .where(
+      or(
+        eq(lookupTemplate.name, 'missive_broadcast_post_closing_message'),
+        eq(lookupTemplate.name, 'missive_broadcast_post_closing_label_id'),
+      ),
+    )
+    .limit(2)
+
+  let postErrorMessages = `❌ This message was undeliverable. The phone number has now been unsubscribed. `
+  let closingLabelId: string | undefined = undefined
+
+  for (const message of errorMessage) {
+    if (message.name === 'missive_broadcast_post_closing_message') {
+      postErrorMessages = message.content || postErrorMessages
+    } else if (message.name === 'missive_broadcast_post_closing_label_id') {
+      closingLabelId = message.content
     }
+  }
+  if (!closingLabelId) {
+    log.error('Closing label ID not found. Aborting.')
+    DenoSentry.captureException('Closing label ID not found. Aborting.')
+    return
+  }
 
-    const conversationsToUpdate: string[] = []
-    const failedPhoneNumbers: string[] = []
-    for (const conversation of conversationsToProcess) {
-      await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
-      conversationsToUpdate.push(conversation.missive_conversation_id)
-      failedPhoneNumbers.push(conversation.phones)
-
-      const elapsedTime = Date.now() - startTime
-      if (elapsedTime > MAX_RUN_TIME) {
-        log.info(`Approaching time limit. Processed ${conversationsToUpdate.length} conversations. Stopping.`)
-        break
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))
-    }
-
-    if (conversationsToUpdate.length > 0 && failedPhoneNumbers.length > 0) {
+  let conversationsToUpdate = []
+  let phonesToUpdate = []
+  for (const conversation of failedDelivers) {
+    await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    conversationsToUpdate.push(conversation.missive_conversation_id)
+    phonesToUpdate.push(conversation.phone_number)
+    if (conversationsToUpdate.length > 4) {
       await supabase
         .update(broadcastSentMessageStatus)
         .set({ closed: true })
         .where(and(
-          eq(broadcastSentMessageStatus.broadcastId, broadcastID),
           inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
         ))
       await supabase.update(authors)
         .set({ exclude: true })
-        .where(inArray(authors.phoneNumber, failedPhoneNumbers))
-    }
+        .where(inArray(authors.phoneNumber, phonesToUpdate))
 
-    log.info(`Processed and updated ${conversationsToUpdate.length} failed conversations.`)
-    return conversationsToUpdate.length
-  } catch (error) {
-    log.error(`Error fetching failed conversations for broadcast ID ${broadcastID}: ${error.toString()}`)
-    DenoSentry.captureException(error)
-    return
+      conversationsToUpdate = []
+      phonesToUpdate = []
+    }
+    const elapsedTime = Date.now() - startTime
+    if (elapsedTime > MAX_RUN_TIME) {
+      log.info(`Approaching time limit. Processed ${conversationsToUpdate.length} conversations. Stopping.`)
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))
+  }
+
+  if (conversationsToUpdate.length > 0) {
+    await supabase
+      .update(broadcastSentMessageStatus)
+      .set({ closed: true })
+      .where(and(
+        inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
+      ))
+    await supabase.update(authors)
+      .set({ exclude: true })
+      .where(inArray(authors.phoneNumber, phonesToUpdate))
+    console.log(conversationsToUpdate)
+    console.log(phonesToUpdate)
   }
 }
 
@@ -588,8 +585,8 @@ export default {
   patch,
   sendBroadcastFirstMessage,
   sendBroadcastSecondMessage,
-  updateTwilioHistory,
   sendNow,
-  updateFailedToSendConversations,
+  reconcileTwilioStatus,
   updateSubscriptionStatus,
+  handleFailedDeliveries,
 } as const

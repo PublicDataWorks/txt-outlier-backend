@@ -42,33 +42,27 @@ broadcastRouter.patch(
 )
 
 broadcastRouter.get(
-  Paths.Broadcast.UpdateTwilioStatus,
-  serviceRoleKeyVerify,
-  broadcastController.updateTwilioStatus,
-)
-
-broadcastRouter.get(
-  Paths.Broadcast.UpdateTwilioStatus,
-  serviceRoleKeyVerify,
-  broadcastController.updateTwilioStatus,
-)
-
-broadcastRouter.get(
   Paths.Broadcast.SendPost,
   serviceRoleKeyVerify,
   broadcastController.sendPost,
 )
 
+broadcastRouter.get(
+  Paths.Broadcast.HandleFailedDeliveries,
+  serviceRoleKeyVerify,
+  broadcastController.handleFailedDeliveries,
+)
+
 commentRouter.post(
   Paths.Comment.Unsubscribe,
   missiveWebhookCallbackVerify,
-  broadcastController.commentChangeSubscription,
+  broadcastController.commentChangeSubscriptionStatus,
 )
 
 commentRouter.post(
   Paths.Comment.Resubscribe,
   missiveWebhookCallbackVerify,
-  broadcastController.commentChangeSubscription,
+  broadcastController.commentChangeSubscriptionStatus,
 )
 
 apiRouter.use(Paths.Users.Base, userRouter)
