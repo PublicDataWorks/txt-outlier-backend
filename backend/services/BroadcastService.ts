@@ -480,7 +480,12 @@ const handleFailedDeliveries = async () => {
   let conversationsToUpdate = []
   let phonesToUpdate = []
   for (const conversation of failedDelivers) {
-    await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    try {
+      await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    } catch (error) {
+      log.error(`Failed to create post when handleFailedDeliveries: ${error}`)
+      continue
+    }
     conversationsToUpdate.push(conversation.missive_conversation_id)
     phonesToUpdate.push(conversation.phone_number)
     if (conversationsToUpdate.length > 4) {
