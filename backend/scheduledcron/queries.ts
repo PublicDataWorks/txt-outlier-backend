@@ -131,7 +131,6 @@ const FAILED_DELIVERED_QUERY = `
             ORDER BY id DESC
         ) as rn
     FROM broadcast_sent_message_status
-    WHERE created_at > NOW() - INTERVAL '1 week'
   )
   SELECT
     r.recipient_phone_number as phone_number,
