@@ -562,7 +562,7 @@ const updateSubscriptionStatus = async (
   conversationId: string,
   phoneNumber: string,
   isUnsubscribe: boolean,
-  authorName: string,
+  authorName?: string,
 ) => {
   await supabase
     .update(authors)
@@ -570,7 +570,8 @@ const updateSubscriptionStatus = async (
     .where(eq(authors.phoneNumber, phoneNumber))
 
   const action = isUnsubscribe ? 'unsubscribed' : 'resubscribed'
-  const postMessage = `This phone number ${phoneNumber} has now been ${action} by ${authorName}.`
+  const byAuthor = authorName ? ` by ${authorName}` : ''
+  const postMessage = `This phone number ${phoneNumber} has now been ${action}${byAuthor}.`
 
   try {
     await MissiveUtils.createPost(conversationId, postMessage)

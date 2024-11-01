@@ -115,11 +115,6 @@ async function commentChangeSubscriptionStatus(req: Request, res: Response) {
   if (!phoneNumber) {
     return AppResponse.badRequest(res, 'Phone number not found in request body')
   }
-
-  if (!req.body.comment || !req.body.comment.author || !req.body.comment.author.name) {
-    return AppResponse.badRequest(res, 'Invalid or missing author name in comment')
-  }
-  const authorName = req.body.comment.author.name
   const conversationId = req.body.conversation.id
   if (!conversationId) {
     return AppResponse.badRequest(res, 'Conversation ID not found in request body')
@@ -133,7 +128,7 @@ async function commentChangeSubscriptionStatus(req: Request, res: Response) {
   } else {
     return AppResponse.badRequest(res, 'Invalid request path')
   }
-
+  const authorName = req.body.comment?.author?.name
   try {
     await BroadcastService.updateSubscriptionStatus(conversationId, phoneNumber, isUnsubscribe, authorName)
     return AppResponse.ok(res, {
