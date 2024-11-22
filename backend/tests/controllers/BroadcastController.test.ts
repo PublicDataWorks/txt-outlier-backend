@@ -63,7 +63,7 @@ describe(
     })
 
     it('creates tomorrow broadcast', async () => {
-      using _time = new FakeTime(new Date('2024-01-31T05:16:57.000Z')) // Wednesday
+      using _time = new FakeTime(new Date('2024-01-31T06:16:57.000Z')) // Wednesday
       await seed()
 
       const results = await supabase.select().from(broadcasts).orderBy(
@@ -73,14 +73,15 @@ describe(
       assertEquals(results.length, 2)
       assert(!results[0].editable)
       assert(results[1].editable)
-      assertEquals(results[1].runAt, new Date('2024-02-01T14:00:57.000Z'))
+      assertEquals(results[1].runAt, new Date('2024-02-01T06:00:57.000Z'))
       assertEquals(results[0].firstMessage, results[1].firstMessage)
       assertEquals(results[0].secondMessage, results[1].secondMessage)
       assertEquals(results[0].delay, results[1].delay)
 
       const history = await call_history()
       assertEquals(history.length, 2)
-      assert(history[0].parameters.startsWith('invoke-broadcast 0 14 1 2 4'))
+      console.log(history[0].parameters, 'kykykyk')
+      assert(history[0].parameters.startsWith('invoke-broadcast 0 6 1 2 4'))
       assertEquals(history[0].function_name, 'cron.schedule')
       assert(history[1].parameters.startsWith('send-first-messages * * * * *'))
       assertEquals(history[1].function_name, 'cron.schedule')
@@ -93,7 +94,7 @@ describe(
       const results = await supabase.select().from(broadcasts).orderBy(
         broadcasts.id,
       )
-      assertEquals(results[1].runAt, new Date('2024-02-06T14:00:57.000Z'))
+      assertEquals(results[1].runAt, new Date('2024-02-06T05:00:57.000Z'))
     })
 
     it('with multiple segments', async () => {
@@ -379,6 +380,35 @@ describe(
       assert(historyAfter[5].parameters.startsWith('send-second-messages'))
     })
 
+    it('clones broadcast with same runAt time instead of future time', async () => {
+      using _time = new FakeTime(new Date('2024-01-31T05:16:57.000Z'))
+      const broadcast = await createBroadcast(60, new Date('2024-02-03T07:16:57.000Z'), undefined, undefined, true)
+      await createSegment(1, broadcast.id!)
+      await createTwilioMessages(30)
+
+      const before = await supabase.select().from(broadcasts)
+      assertEquals(before.length, 1)
+      assertEquals(before[0].runAt.toISOString(), '2024-02-03T07:16:57.000Z')
+
+      const response = await BroadcastController.sendNow(req(SEND_NOW_PATH), res())
+      assertEquals(response.statusCode, 204)
+
+      const after = await supabase.select().from(broadcasts).orderBy(desc(broadcasts.id))
+      assertEquals(after.length, 2)
+
+      // Original broadcast should be marked as not editable with same runAt
+      assertEquals(after[1].editable, false)
+      assertEquals(after[1].runAt.toISOString(), '2024-01-31T05:16:57.000Z')
+
+      // New broadcast should have same runAt as original (not future date)
+      assertEquals(after[0].editable, true)
+      assertEquals(after[0].runAt.toISOString(), '2024-02-03T07:16:57.000Z')
+
+      // Both broadcasts should have same messages and delay
+      assertEquals(after[0].firstMessage, after[1].firstMessage)
+      assertEquals(after[0].secondMessage, after[1].secondMessage)
+      assertEquals(after[0].delay, after[1].delay)
+    })
     // it('not do anything if failed to call Missive', async () => {
     //   mockDraftMissive(400)
     //   const broadcastID = await seed(5)

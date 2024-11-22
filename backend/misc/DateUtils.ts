@@ -1,5 +1,4 @@
-import { addDays, getDay, setHours, setMinutes } from 'date-fns'
-import { toZonedTime } from 'date-fns-tz'
+import { addDays, getDay, setMinutes } from 'date-fns'
 
 const advance = (milis: number): Date => {
   const date = new Date()
@@ -12,11 +11,8 @@ const diffInMinutes = (runAt: Date): number => {
   return (runAt.getTime() - now.getTime()) / (1000 * 60)
 }
 
-const getNextTimestamp = (date: Date = new Date()): Date => {
-  const timeZone = 'America/New_York' // EDT timezone
-  // Any date input should be in UTC
-  const edtTime = toZonedTime(date, timeZone)
-  const day = getDay(edtTime)
+const getNextTimestamp = (date: Date): Date => {
+  const day = getDay(date)
 
   // Calculate the number of days to add to reach the next Tuesday, Wednesday, or Thursday at 10 AM
   let daysToAdd = 0
@@ -40,8 +36,7 @@ const getNextTimestamp = (date: Date = new Date()): Date => {
       break
   }
 
-  let nextDay = addDays(edtTime, daysToAdd)
-  nextDay = setHours(nextDay, 14)
+  let nextDay = addDays(date, daysToAdd)
   nextDay = setMinutes(nextDay, 0)
   return nextDay
 }

@@ -37,6 +37,7 @@ import {
 import {
   BroadcastResponse,
   BroadcastUpdate,
+  cloneBroadcast,
   convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
   convertToPastBroadcast,
@@ -115,7 +116,7 @@ const sendNow = async (): Promise<void> => {
 
   if (!nextBroadcast) {
     log.error('SendNow: Unable to retrieve next broadcast')
-    throw new SystemError(SEND_NOW_STATUS.Error.toString()) //
+    throw new SystemError(SEND_NOW_STATUS.Error.toString())
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
     log.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
@@ -134,7 +135,7 @@ const sendNow = async (): Promise<void> => {
   }
   try {
     await supabase.transaction(async (tx) => {
-      const newId: { id: number }[] = await tx.insert(broadcasts).values(convertToFutureBroadcast(nextBroadcast))
+      const newId: { id: number }[] = await tx.insert(broadcasts).values(cloneBroadcast(nextBroadcast))
         .returning({ id: broadcasts.id })
       const newBroadcastSegments: BroadcastSegment[] = []
       for (const broadcastSegment of nextBroadcast.broadcastToSegments) {

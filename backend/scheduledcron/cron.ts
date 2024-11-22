@@ -111,10 +111,11 @@ const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
 const JOB_NAMES = [
   'invoke-broadcast',
   'send-first-messages',
+  'send-second-messages',
   'delay-send-second-messages',
-  'delay-unschedule-twilio-status',
-  'twilio-status',
   'send-post-cron',
+  'delay-send-post',
+  'handle-failed-deliveries',
 ]
 
 const dateToCron = (date: Date) => {
