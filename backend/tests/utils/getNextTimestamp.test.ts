@@ -9,8 +9,8 @@ describe('getNextTimestamp', () => {
       const result = dateUtils.getNextTimestamp(date)
 
       assertEquals(result.getUTCDay(), 2)
-      assertEquals(result.getUTCHours(), 14)
-      assertEquals(result.toISOString(), '2022-12-06T14:00:00.000Z')
+      assertEquals(result.getUTCHours(), 13)
+      assertEquals(result.toISOString(), '2022-12-06T13:00:00.000Z')
     })
   })
 
@@ -20,8 +20,8 @@ describe('getNextTimestamp', () => {
       const result = dateUtils.getNextTimestamp(date)
 
       assertEquals(result.getUTCDay(), 3)
-      assertEquals(result.getUTCHours(), 14)
-      assertEquals(result.toISOString(), '2022-12-07T14:00:00.000Z')
+      assertEquals(result.getUTCHours(), 15)
+      assertEquals(result.toISOString(), '2022-12-07T15:00:00.000Z')
     })
   })
 
@@ -31,8 +31,8 @@ describe('getNextTimestamp', () => {
       const result = dateUtils.getNextTimestamp(date)
 
       assertEquals(result.getUTCDay(), 2)
-      assertEquals(result.getUTCHours(), 14)
-      assertEquals(result.toISOString(), '2022-12-13T14:00:00.000Z')
+      assertEquals(result.getUTCHours(), 15)
+      assertEquals(result.toISOString(), '2022-12-13T15:00:00.000Z')
     })
   })
 
@@ -42,8 +42,8 @@ describe('getNextTimestamp', () => {
       const result = dateUtils.getNextTimestamp(date)
 
       assertEquals(result.getUTCDay(), 2)
-      assertEquals(result.getUTCHours(), 14)
-      assertEquals(result.toISOString(), '2022-12-13T14:00:00.000Z')
+      assertEquals(result.getUTCHours(), 15)
+      assertEquals(result.toISOString(), '2022-12-13T15:00:00.000Z')
     })
   })
 })

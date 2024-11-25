@@ -86,6 +86,17 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
   }
 }
 
+const cloneBroadcast = (broadcast: Broadcast): Broadcast => {
+  return {
+    firstMessage: broadcast.firstMessage,
+    secondMessage: broadcast.secondMessage,
+    runAt: broadcast.runAt,
+    delay: broadcast.delay,
+    editable: broadcast.editable,
+    noUsers: broadcast.noUsers,
+  }
+}
+
 const convertToBroadcastMessagesStatus = (
   outgoing: OutgoingMessage,
   missiveID: string,
@@ -125,6 +136,7 @@ export {
   BroadcastResponse,
   type BroadcastSentDetail,
   type BroadcastUpdate,
+  cloneBroadcast,
   convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
   convertToPastBroadcast,
