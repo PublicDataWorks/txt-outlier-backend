@@ -7,7 +7,7 @@ describe(
   'Invoke broadcast cron',
   { sanitizeOps: false, sanitizeResources: false },
   () => {
-    it.only('creates correct cron job format', () => {
+    it('creates correct cron job format', () => {
       using _time = new FakeTime(new Date('2024-01-31T06:16:57.000Z'))
       const runAt = new Date('2024-02-01T06:00:57.000Z')
 

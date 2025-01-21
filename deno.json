@@ -50,9 +50,9 @@
     "lint": "deno lint **/*.ts",
     "test:dbSetup": "cd backend/tests && supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer",
     "test:dbTeardown": "cd backend/tests && supabase stop",
-    "test": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --quiet .",
-    "test:debug": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json .",
-    "test:coverage": "TZ=UTC deno test --no-check --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --coverage=cov_profile --quiet .",
+    "test": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --quiet .",
+    "test:debug": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json .",
+    "test:coverage": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --coverage=cov_profile --quiet .",
     "coverage": "deno coverage cov_profile --exclude=tests"
   },
   "importMap": "./import_map.json"

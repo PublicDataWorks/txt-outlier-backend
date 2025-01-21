@@ -97,10 +97,10 @@ describe(
     })
 
     it('with multiple segments', async () => {
-      await seed(60, 2, 30)
+      await seed(100, 2, 30, 1)
 
       const results = await supabase.select().from(outgoingMessages)
-      assertEquals(results.length, 48)
+      assertEquals(results.length, 4)
     })
 
     it('next broadcast not found', async () => {
@@ -824,9 +824,10 @@ const seed = async (
   noUsers = 60,
   noSegments = 1,
   noTwilioMessages = 30,
+  ratio = 20,
 ): Promise<number> => {
   const broadcast = await createBroadcast(noUsers)
-  await createSegment(noSegments, broadcast.id!)
+  await createSegment(noSegments, broadcast.id!, ratio)
   await createTwilioMessages(noTwilioMessages)
   const response = await BroadcastController.makeBroadcast(
     req(MAKE_PATH),
