@@ -93,6 +93,7 @@ const makeBroadcast = async (): Promise<void> => {
       await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
       await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, nextBroadcast.id))
     })
+    await supabase.execute(sql.raw(UNSCHEDULE_INVOKE))
   } catch (error) {
     log.error(`Error make broadcast. ${error}`)
     DenoSentry.captureException(`Error make broadcast. ${error}`)

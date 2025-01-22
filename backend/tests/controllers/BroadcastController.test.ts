@@ -66,9 +66,7 @@ describe(
       using _time = new FakeTime(new Date('2024-01-31T06:16:57.000Z')) // Wednesday
       await seed()
 
-      const results = await supabase.select().from(broadcasts).orderBy(
-        broadcasts.id,
-      )
+      const results = await supabase.select().from(broadcasts).orderBy(broadcasts.id)
 
       assertEquals(results.length, 2)
       assert(!results[0].editable)
@@ -79,12 +77,13 @@ describe(
       assertEquals(results[0].delay, results[1].delay)
 
       const history = await call_history()
-      assertEquals(history.length, 2)
-      console.log(history[0].parameters, 'kykykyk')
-      assert(history[0].parameters.startsWith('invoke-broadcast 0 6 1 2 4'))
+      assertEquals(history.length, 3)
+      assert(history[0].parameters.startsWith('delay-invoke-broadcast 0 6 1 2 4'))
       assertEquals(history[0].function_name, 'cron.schedule')
       assert(history[1].parameters.startsWith('send-first-messages * * * * *'))
       assertEquals(history[1].function_name, 'cron.schedule')
+      assertEquals(history[2].parameters, 'invoke-broadcast')
+      assertEquals(history[2].function_name, 'cron.unschedule')
     })
 
     it('tomorrow broadcast skips Weekend', async () => {
@@ -98,10 +97,10 @@ describe(
     })
 
     it('with multiple segments', async () => {
-      await seed(60, 2, 30)
+      await seed(100, 2, 30, 1)
 
       const results = await supabase.select().from(outgoingMessages)
-      assertEquals(results.length, 48)
+      assertEquals(results.length, 4)
     })
 
     it('next broadcast not found', async () => {
@@ -337,7 +336,7 @@ describe(
         res(),
       )
       const before = await call_history()
-      assertEquals(before.length, 2)
+      assertEquals(before.length, 3)
 
       const response = await BroadcastController.sendDraft(
         req(DRAFT_PATH, { broadcastID }),
@@ -345,11 +344,11 @@ describe(
       )
       assertEquals(response.statusCode, 200)
       const history = await call_history()
-      assertEquals(history.length, 4)
-      assertEquals(history[2].function_name, 'cron.schedule')
-      assert(history[2].parameters.startsWith('delay-send-second-messages'))
-      assertEquals(history[3].function_name, 'cron.unschedule')
-      assert(history[3].parameters.startsWith('send-first-messages'))
+      assertEquals(history.length, 5)
+      assertEquals(history[3].function_name, 'cron.schedule')
+      assert(history[3].parameters.startsWith('delay-send-second-messages'))
+      assertEquals(history[4].function_name, 'cron.unschedule')
+      assert(history[4].parameters.startsWith('send-first-messages'))
     })
 
     it('successfully send second message', async () => {
@@ -358,7 +357,7 @@ describe(
       await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
       await BroadcastController.sendDraft(req(DRAFT_PATH, { broadcastID }), res())
       const historyBefore = await call_history()
-      assertEquals(historyBefore.length, 4)
+      assertEquals(historyBefore.length, 5)
 
       const response = await BroadcastController.sendDraft(
         req(DRAFT_PATH, { broadcastID }, { isSecond: true }),
@@ -373,11 +372,11 @@ describe(
         res(),
       )
       const historyAfter = await call_history()
-      assertEquals(historyAfter.length, 7)
-      assertEquals(historyAfter[4].function_name, 'cron.unschedule')
-      assert(historyAfter[4].parameters.startsWith('delay-send-second-messages'))
+      assertEquals(historyAfter.length, 8)
       assertEquals(historyAfter[5].function_name, 'cron.unschedule')
-      assert(historyAfter[5].parameters.startsWith('send-second-messages'))
+      assert(historyAfter[5].parameters.startsWith('delay-send-second-messages'))
+      assertEquals(historyAfter[6].function_name, 'cron.unschedule')
+      assert(historyAfter[6].parameters.startsWith('send-second-messages'))
     })
 
     it('clones broadcast with same runAt time instead of future time', async () => {
@@ -825,9 +824,10 @@ const seed = async (
   noUsers = 60,
   noSegments = 1,
   noTwilioMessages = 30,
+  ratio = 20,
 ): Promise<number> => {
   const broadcast = await createBroadcast(noUsers)
-  await createSegment(noSegments, broadcast.id!)
+  await createSegment(noSegments, broadcast.id!, ratio)
   await createTwilioMessages(noTwilioMessages)
   const response = await BroadcastController.makeBroadcast(
     req(MAKE_PATH),

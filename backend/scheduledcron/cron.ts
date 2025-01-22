@@ -2,15 +2,18 @@ const invokeBroadcastCron = (runAt: number | Date): string => {
   const runTime = dateToCron(new Date(runAt))
   return `
     SELECT cron.schedule(
-      'invoke-broadcast',
+      'delay-invoke-broadcast',
       '${runTime}',
       $$
-        SELECT cron.unschedule('invoke-broadcast');
-        SELECT net.http_get(
-          url:='${Deno.env.get('BACKEND_URL')!}/broadcasts/make',
-          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
+        SELECT cron.schedule(
+          'invoke-broadcast',
+          '* * * * *',
+          'SELECT net.http_get(
+          url:=''${Deno.env.get('BACKEND_URL')!}/broadcasts/make'',
+          headers:=''{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get(
     'SUPABASE_SERVICE_ROLE_KEY',
-  )!}"}'::jsonb) as request_id;
+  )!}"}''::jsonb) as request_id;'
+        );
       $$
     );
   `

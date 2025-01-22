@@ -2,13 +2,13 @@ import { faker } from 'faker'
 import { audienceSegments, broadcastsSegments } from '../../drizzle/schema.ts'
 import supabase from '../../lib/supabase.ts'
 
-const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
+const createSegment = async (times = 1, broadcastId: number, ratio = 20) => {
   const newSegments = []
   for (let i = 0; i < times; i++) {
     const segment = {
       query: `SELECT from_field as phone_number
               FROM twilio_messages
-              ORDER BY id ${order}`,
+              ORDER BY RANDOM()`,
       description: faker.lorem.sentence(),
     }
     newSegments.push(segment)
@@ -21,7 +21,7 @@ const createSegment = async (times = 1, broadcastId: number, order = 'ASC') => {
     newBroadcastSegments.push({
       broadcastId,
       segmentId: segment.id,
-      ratio: 20,
+      ratio,
     })
   }
   await supabase.insert(broadcastsSegments).values(newBroadcastSegments)
