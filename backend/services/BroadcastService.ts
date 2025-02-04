@@ -349,11 +349,6 @@ const patch = async (
       return
     }
     if (broadcast.runAt) {
-      try {
-        await tx.execute(sql.raw(UNSCHEDULE_INVOKE))
-      } catch (e) {
-        log.error(`Failed to unschedule invoke-broadcast: ${e}`)
-      }
       const invokeNextBroadcast = invokeBroadcastCron(broadcast.runAt * 1000)
       await tx.execute(sql.raw(invokeNextBroadcast))
     }
