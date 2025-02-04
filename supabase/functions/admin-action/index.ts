@@ -1,6 +1,6 @@
 import Sentry from '../_shared/lib/Sentry.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
-import BroadcastService from '../_shared/services/BroadcastService.ts'
+import BroadcastSidebar from '../_shared/services/BroadcastSidebar.ts'
 import { verifySignature } from './webhookAuth.ts'
 
 Deno.serve(async (req) => {
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const isUnsubscribe = action === 'unsubscribe'
     const authorName = body.comment?.author?.name
 
-    await BroadcastService.updateSubscriptionStatus(
+    await BroadcastSidebar.updateSubscriptionStatus(
       conversationId,
       phoneNumber,
       isUnsubscribe,

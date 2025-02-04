@@ -1,8 +1,13 @@
+import { and, eq, sql } from 'drizzle-orm'
+import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
+
 import { audienceSegments, Broadcast, BroadcastSegment, outgoingMessages } from '../drizzle/schema.ts'
 import Sentry from '../lib/Sentry.ts'
 import { escapeLiteral } from './helpers.ts'
-import { and, eq, sql } from 'drizzle-orm'
-import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
+
+const queueBroadcastMessages = (broadcastId: number) => {
+  return `SELECT queue_broadcast_messages(${broadcastId})`
+}
 
 const insertOutgoingMessagesQuery = (
   broadcastSegment: BroadcastSegment,
@@ -12,6 +17,33 @@ const insertOutgoingMessagesQuery = (
   const escapedFirstMessage: string = escapeLiteral(nextBroadcast.firstMessage)
   const escapedSecondMessage = escapeLiteral(nextBroadcast.secondMessage)
   return `
+    CREATE OR REPLACE FUNCTION queue_sms_messages(
+      broadcast_query text,
+      limit int,
+      broadcast_id int,
+      segment_id int,
+      first_message text,
+      second_message text
+    ) RETURNS void as $$
+        EXECUTE 'CREATE TEMPORARY TABLE recipient_phone_numbers_foo AS ' || broadcast_query || ' LIMIT ' || limit;
+        SELECT pgmq.send_batch(
+          'test_first',
+          ARRAY(
+              SELECT jsonb_build_object(
+                  'recipient_phone_number', phone_number,
+                  'broadcast_id', broadcast_id,
+                  'segment_id', segment_id,
+                  'message', first_message,
+                  'is_second', false
+              )
+              FROM (
+                  SELECT DISTINCT phone_number phone_number
+                  FROM recipient_phone_numbers_foo
+              ) foo
+          )
+
+    $$ LANGUAGE sql;
+
     CREATE TEMPORARY TABLE phone_numbers_foo AS ${broadcastSegment.segment.query} LIMIT ${limit};
 
     INSERT INTO outgoing_messages (recipient_phone_number, broadcast_id, segment_id, message, is_second)
@@ -33,6 +65,8 @@ const insertOutgoingMessagesQuery = (
     ON CONFLICT DO NOTHING;
 
     DROP TABLE phone_numbers_foo;
+
+);
   `
 }
 
@@ -144,6 +178,30 @@ const FAILED_DELIVERED_QUERY = `
   LIMIT 330;
 `
 
+const CRON_JOB_NAMES = {
+  INVOKE_BROADCAST: 'invoke-broadcast',
+  SEND_FIRST_MESSAGES: 'send-first-messages',
+  SEND_SECOND_MESSAGES: 'send-second-messages',
+  DELAY_SEND_SECOND_MESSAGES: 'delay-send-second-messages',
+  RECONCILE_TWILIO_STATUS: 'reconcile-twilio-status',
+  DELAY_RECONCILE_TWILIO: 'delay-reconcile-twilio-status',
+  HANDLE_FAILED_DELIVERIES: 'handle-failed-deliveries',
+} as const
+
+const UNSCHEDULE_COMMANDS = {
+  INVOKE_BROADCAST: `SELECT cron.unschedule('${CRON_JOB_NAMES.INVOKE_BROADCAST}');`,
+  SEND_FIRST_MESSAGES: `SELECT cron.unschedule('${CRON_JOB_NAMES.SEND_FIRST_MESSAGES}');`,
+  SEND_SECOND_MESSAGES: `SELECT cron.unschedule('${CRON_JOB_NAMES.SEND_SECOND_MESSAGES}');`,
+  DELAY_SEND_SECOND_MESSAGES: `SELECT cron.unschedule('${CRON_JOB_NAMES.DELAY_SEND_SECOND_MESSAGES}');`,
+  RECONCILE_TWILIO: `SELECT cron.unschedule('${CRON_JOB_NAMES.RECONCILE_TWILIO_STATUS}');`,
+  DELAY_RECONCILE_TWILIO: `SELECT cron.unschedule('${CRON_JOB_NAMES.DELAY_RECONCILE_TWILIO}');`,
+  HANDLE_FAILED_DELIVERIES: `SELECT cron.unschedule('${CRON_JOB_NAMES.HANDLE_FAILED_DELIVERIES}');`,
+} as const
+
+const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
+
+const JOB_NAMES: string[] = Object.values(CRON_JOB_NAMES)
+
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -162,5 +220,9 @@ export {
   FAILED_DELIVERED_QUERY,
   insertOutgoingMessagesFallbackQuery,
   insertOutgoingMessagesQuery,
+  JOB_NAMES,
+  SELECT_JOB_NAMES,
   selectBroadcastDashboard,
+  UNSCHEDULE_COMMANDS,
+  queueBroadcastMessages
 }

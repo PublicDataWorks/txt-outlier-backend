@@ -1,7 +1,3 @@
-import supabase from '../lib/supabase.ts'
-import { JOB_NAMES, SELECT_JOB_NAMES } from './cron.ts'
-import { sql } from 'drizzle-orm'
-
 const escapeLiteral = (val: boolean | string | null): string => {
   if (val == null) {
     return 'NULL'
@@ -26,9 +22,15 @@ const escapeLiteral = (val: boolean | string | null): string => {
   return prefix + "'" + val + "'"
 }
 
-const isBroadcastRunning = async (): Promise<boolean> => {
-  const jobs = await supabase.execute(sql.raw(SELECT_JOB_NAMES))
-  return jobs.some((job: { jobname: string }) => job.jobname != 'invoke-broadcast' && JOB_NAMES.includes(job.jobname))
+
+const dateToCron = (date: Date) => {
+  const minutes = date.getMinutes()
+  const hours = date.getHours()
+  const days = date.getDate()
+  const months = date.getMonth() + 1
+  const dayOfWeek = date.getDay()
+
+  return `${minutes} ${hours} ${days} ${months} ${dayOfWeek}`
 }
 
-export { escapeLiteral, isBroadcastRunning }
+export { escapeLiteral, dateToCron }
