@@ -18,15 +18,15 @@ import {
 import {
   handleFailedDeliveriesCron,
   invokeBroadcastCron,
-  sendFirstMessagesCron,
   reconcileTwilioStatusCron,
+  sendFirstMessagesCron,
   sendSecondMessagesCron,
   UNSCHEDULE_DELAY_RECONCILE_TWILLIO,
+  UNSCHEDULE_DELAY_SEND_SECOND_MESSAGES,
   UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
   UNSCHEDULE_INVOKE_BROADCAST,
-  UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_RECONCILE_TWILLIO,
-  UNSCHEDULE_DELAY_SEND_SECOND_MESSAGES,
+  UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
 } from '../scheduledcron/cron.ts'
 import {
@@ -50,9 +50,9 @@ import {
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
 import { MISSIVE_API_RATE_LIMIT } from '../constants/constants.ts'
-import BadRequestError from "../exception/BadRequestError.ts";
-import { isBroadcastRunning } from "../scheduledcron/helpers.ts";
-import Sentry from "../lib/Sentry.ts";
+import BadRequestError from '../exception/BadRequestError.ts'
+import { isBroadcastRunning } from '../scheduledcron/helpers.ts'
+import Sentry from '../lib/Sentry.ts'
 
 const makeBroadcast = async (): Promise<void> => {
   const isRunning = await isBroadcastRunning()
@@ -108,11 +108,11 @@ const sendNow = async (): Promise<void> => {
   })
 
   if (!nextBroadcast) {
-    throw new Error("Unable to retrieve next broadcast.")
+    throw new Error('Unable to retrieve next broadcast.')
   }
   if (nextBroadcast.broadcastToSegments.length === 0) {
     console.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
-    throw new Error("Broadcast has no associated segment.")
+    throw new Error('Broadcast has no associated segment.')
   }
   const diffInMinutes = DateUtils.diffInMinutes(nextBroadcast.runAt)
   if (0 <= diffInMinutes && diffInMinutes <= 30) {

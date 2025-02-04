@@ -1,9 +1,8 @@
-// deno-lint-ignore no-explicit-any
-import supabase from "../lib/supabase.ts";
-import { sql } from "drizzle-orm";
-import { JOB_NAMES, SELECT_JOB_NAMES } from "./cron.ts";
+import supabase from '../lib/supabase.ts'
+import { JOB_NAMES, SELECT_JOB_NAMES } from './cron.ts'
+import { sql } from 'drizzle-orm'
 
-const escapeLiteral = (val: any): string => {
+const escapeLiteral = (val: boolean | string | null): string => {
   if (val == null) {
     return 'NULL'
   }
@@ -32,4 +31,4 @@ const isBroadcastRunning = async (): Promise<boolean> => {
   return jobs.some((job: { jobname: string }) => job.jobname != 'invoke-broadcast' && JOB_NAMES.includes(job.jobname))
 }
 
-export { escapeLiteral, isBroadcastRunning };
+export { escapeLiteral, isBroadcastRunning }

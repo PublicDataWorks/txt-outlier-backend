@@ -1,5 +1,5 @@
 # dotenv environment variable files
-.env
+supabase/functions/.env
 .env.sample
 .env.development.local
 .env.test.local

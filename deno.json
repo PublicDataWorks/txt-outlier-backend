@@ -8,10 +8,9 @@
   },
   "lint": {
     "include": [
-      "supabase/"
+      "supabase/functions/"
     ],
     "exclude": [
-      "backend/drizzle/node_modules",
       "node_modules"
     ],
     "rules": {
@@ -28,10 +27,11 @@
     "singleQuote": true,
     "proseWrap": "preserve",
     "include": [
-      "supabase/"
+      "supabase/functions/"
     ],
     "exclude": [
-      "node_modules"
+      "node_modules",
+      "**/*.json"
     ]
   },
   "test": {
@@ -44,9 +44,9 @@
     ]
   },
   "tasks": {
-    "run": "deno run --watch --allow-all --env=.env --unsafely-ignore-certificate-errors backend/index.ts",
-    "fmt": "deno fmt **/*.ts",
-    "lint": "deno lint **/*.ts",
+    "dev": "supabase start && supabase functions serve",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
     "test:dbSetup": "cd backend/tests && supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer",
     "test:dbTeardown": "cd backend/tests && supabase stop",
     "test": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --quiet .",
@@ -55,25 +55,15 @@
     "coverage": "deno coverage cov_profile --exclude=tests"
   },
   "imports": {
-    "express": "npm:express",
-    "express-async-errors": "npm:express-async-errors@^3.1.1",
-    "express-validator": "npm:express-validator@^7.0.1",
-    "helmet": "npm:helmet@^7.1.0",
     "drizzle-orm": "npm:drizzle-orm@0.28.5",
     "drizzle-orm/postgres-js": "npm:drizzle-orm@0.28.5/postgres-js",
     "drizzle-orm/pg-core": "npm:drizzle-orm@0.28.5/pg-core",
-    "morgan": "npm:morgan",
-    "cors": "npm:cors",
     "date-fns": "https://esm.sh/date-fns@3.6.0",
-    "date-fns-tz": "https://esm.sh/date-fns-tz@3.1.3",
     "encoding/": "https://deno.land/std@0.210.0/encoding/",
     "twilio": "npm:twilio@^4.21.0",
-    "slack-API": "https://deno.land/x/deno_slack_api@2.2.0/mod.ts",
     "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
-    "log": "https://deno.land/std@0.218.2/log/mod.ts",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
-    "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
-    "jsonwebtoken": "npm:jsonwebtoken",
-    "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs"
+    "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
+    "hono": "jsr:@hono/hono@4.6.20"
   }
 }

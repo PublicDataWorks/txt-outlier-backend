@@ -1,23 +1,24 @@
-import BroadcastService from '../_shared/services/BroadcastService.ts';
-import AppResponse from "../_shared/misc/AppResponse.ts";
+import BroadcastService from '../_shared/services/BroadcastService.ts'
+import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
+import { Hono } from 'hono'
 
-Deno.serve(async (req: Request) => {
-  if (req.method !== 'POST') {
-    return AppResponse.badRequest('Method not allowed');
+const app = new Hono()
+
+app.post('/reconcile-twilio-status/', async (c) => {
+  const { broadcastId } = await c.req.json()
+  if (!broadcastId || isNaN(Number(broadcastId))) {
+    return AppResponse.badRequest('Invalid broadcastId')
   }
   try {
-    const body = await req.json();
-    const { broadcastId } = body;
-    if (!broadcastId || isNaN(Number(broadcastId))) {
-      return AppResponse.badRequest('Invalid broadcastId');
-    }
-    await BroadcastService.reconcileTwilioStatus(Number(broadcastId));
+    await BroadcastService.reconcileTwilioStatus(Number(broadcastId))
   } catch (error) {
-    console.error(`Error in BroadcastService.reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`);
-    Sentry.captureException(error);
+    console.error(`Error in BroadcastService.reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`)
+    Sentry.captureException(error)
     // Still return 200 since it's called by CRON
   }
 
-  return AppResponse.ok();
-});
+  return AppResponse.ok()
+})
+
+Deno.serve(app.fetch)

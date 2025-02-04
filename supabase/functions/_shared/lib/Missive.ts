@@ -1,4 +1,3 @@
-import * as log from 'log'
 import supabase from './supabase.ts'
 import { lookupTemplate } from '../drizzle/schema.ts'
 import { eq, or } from 'drizzle-orm'
@@ -102,7 +101,7 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
   })
 
   if (!response.ok) {
-    log.error(`HTTP error! detail: ${JSON.stringify(await response.json())}`)
+    console.error(`HTTP error! detail: ${JSON.stringify(await response.json())}`)
     throw new Error(`HTTP error! status: ${response.status}`)
   }
 
@@ -121,7 +120,7 @@ const getMissiveMessage = async (id: string) => {
     const errorMessage = `Failed to get Missive message. Message id: ${id}}, Missive's respond = ${
       JSON.stringify(await response.json())
     }`
-    log.error(errorMessage)
+    console.error(errorMessage)
     throw new Error(`HTTP error! status: ${response.status}, ${errorMessage}`)
   }
 }

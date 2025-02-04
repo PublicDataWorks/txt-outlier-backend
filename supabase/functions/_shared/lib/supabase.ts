@@ -3,13 +3,9 @@ import postgres from 'postgres'
 import * as schema from '../drizzle/schema.ts'
 import * as relationSchema from '../drizzle/relations.ts'
 
-export const isTesting = Deno.env.get('ENV') === 'testing'
 const postgresClient = postgres(
   Deno.env.get('DB_POOL_URL')!,
-  {
-    prepare: false,
-    ssl: isTesting ? undefined : { rejectUnauthorized: true },
-  },
+  { prepare: false },
 )
 const supabase: PostgresJsDatabase = drizzle(postgresClient, {
   schema: { ...schema, ...relationSchema },

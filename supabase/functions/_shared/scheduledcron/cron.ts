@@ -9,7 +9,7 @@ const invokeBroadcastCron = (runAt: number | Date): string => {
           'invoke-broadcast',
           '* * * * *',
           'SELECT net.http_get(
-             url:=''${Deno.env.get('EDGE_FUNCTION_URL')!}make'',
+             url:=''${Deno.env.get('EDGE_FUNCTION_URL')!}make/'',
              headers:=''{
                "Content-Type": "application/json",
                "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"
@@ -28,7 +28,7 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
       '* * * * *',
       $$
         SELECT net.http_post(
-          url:='${Deno.env.get('EDGE_FUNCTION_URL')!}send-messages',
+          url:='${Deno.env.get('EDGE_FUNCTION_URL')!}send-messages/',
           body:='{"broadcastId": "${broadcastId}", "isSecond": false}'::jsonb,
           headers:='{
             "Content-Type": "application/json",
@@ -147,15 +147,15 @@ export {
   handleFailedDeliveriesCron,
   invokeBroadcastCron,
   JOB_NAMES,
+  reconcileTwilioStatusCron,
   SELECT_JOB_NAMES,
   sendFirstMessagesCron,
-  reconcileTwilioStatusCron,
   sendSecondMessagesCron,
   UNSCHEDULE_DELAY_RECONCILE_TWILLIO,
+  UNSCHEDULE_DELAY_SEND_SECOND_MESSAGES,
   UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
   UNSCHEDULE_INVOKE_BROADCAST,
-  UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_RECONCILE_TWILLIO,
-  UNSCHEDULE_DELAY_SEND_SECOND_MESSAGES,
+  UNSCHEDULE_SEND_FIRST_MESSAGES,
   UNSCHEDULE_SEND_SECOND_MESSAGES,
 }
