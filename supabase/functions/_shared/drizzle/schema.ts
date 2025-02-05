@@ -21,7 +21,7 @@ export const aalLevel = pgEnum('aal_level', ['aal1', 'aal2', 'aal3'])
 export const codeChallengeMethod = pgEnum('code_challenge_method', ['s256', 'plain'])
 export const factorStatus = pgEnum('factor_status', ['unverified', 'verified'])
 export const factorType = pgEnum('factor_type', ['totp', 'webauthn'])
-export const twilioStatus = pgEnum('twilio_status', ['delivered', 'undelivered', 'failed', 'received'])
+export const twilioStatus = pgEnum('twilio_status', ['delivered', 'undelivered', 'failed', 'received', 'sent'])
 export const keyStatus = pgEnum('key_status', ['default', 'valid', 'invalid', 'expired'])
 export const equalityOp = pgEnum('equality_op', ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in'])
 export const action = pgEnum('action', ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR'])
@@ -67,7 +67,7 @@ export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status
   }),
   isSecond: boolean('is_second').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
-  twilioSentStatus: twilioStatus('twilio_sent_status').default('delivered').notNull(),
+  twilioSentStatus: twilioStatus('twilio_sent_status'),
   twilioId: text('twilio_id'),
   message: text('message').notNull(),
   audienceSegmentId: bigint('audience_segment_id', { mode: 'number' }).notNull().references(() =>

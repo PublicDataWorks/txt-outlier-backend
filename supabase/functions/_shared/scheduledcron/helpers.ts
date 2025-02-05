@@ -22,7 +22,6 @@ const escapeLiteral = (val: boolean | string | null): string => {
   return prefix + "'" + val + "'"
 }
 
-
 const dateToCron = (date: Date) => {
   const minutes = date.getMinutes()
   const hours = date.getHours()
@@ -33,4 +32,12 @@ const dateToCron = (date: Date) => {
   return `${minutes} ${hours} ${days} ${months} ${dayOfWeek}`
 }
 
-export { escapeLiteral, dateToCron }
+const buildQueueMessage = (recipientPhoneNumber: string, broadcastId: number, segmentId: number, message: string) => {
+  return {
+    'recipient_phone_number': recipientPhoneNumber,
+    'broadcast_id': broadcastId,
+    'segment_id': segmentId,
+    'message': message,
+  }
+}
+export { dateToCron, escapeLiteral, buildQueueMessage }

@@ -11,6 +11,7 @@ DECLARE
     v_first_message text;
     v_second_message text;
     v_segment_record RECORD;
+    v_delay int;
     v_offset int;
     v_target_users int;
     v_batch_size constant int := 100;
@@ -22,10 +23,12 @@ BEGIN
     SELECT
         first_message,
         second_message,
-        no_users INTO
+        no_users,
+        delay INTO
         v_first_message,
         v_second_message,
-        v_target_users
+        v_target_users,
+        v_delay
     FROM public.broadcasts
     WHERE id = p_broadcast_id;
 
@@ -83,22 +86,9 @@ BEGIN
                     'recipient_phone_number', phone_number,
                     'broadcast_id', p_broadcast_id,
                     'segment_id', segment_id,
-                    'message', v_first_message
-                )
-                FROM recipients_temp
-                LIMIT v_batch_size
-                OFFSET v_offset * v_batch_size
-            )
-        );
-
-        PERFORM pgmq.send_batch(
-            'broadcast_second_messages',
-            ARRAY(
-                SELECT jsonb_build_object(
-                    'recipient_phone_number', phone_number,
-                    'broadcast_id', p_broadcast_id,
-                    'segment_id', segment_id,
-                    'message', v_second_message
+                    'first_message', v_first_message,
+                    'second_message', v_second_message,
+                    'delay', v_delay  -- in seconds
                 )
                 FROM recipients_temp
                 LIMIT v_batch_size

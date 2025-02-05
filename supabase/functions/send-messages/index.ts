@@ -7,13 +7,9 @@ import Sentry from '../_shared/lib/Sentry.ts'
 const app = new Hono()
 
 app.post('/send-messages/', async (c) => {
-  const { broadcastId, isSecond } = await c.req.json()
-  if (!broadcastId || isNaN(Number(broadcastId))) {
-    return AppResponse.badRequest('Invalid broadcastId')
-  }
-
+  const { isSecond } = await c.req.json()
   try {
-    await BroadcastService.sendBroadcastMessage(Number(broadcastId), isSecond)
+    await BroadcastService.sendBroadcastMessage(isSecond)
   } catch (error) {
     console.error(`Error in BroadcastService.sendMessages: ${error.message}. Stack: ${error.stack}`)
     Sentry.captureException(error)

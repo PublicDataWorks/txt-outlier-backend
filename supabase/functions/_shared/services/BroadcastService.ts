@@ -10,17 +10,17 @@ import {
   broadcastsSegments,
   lookupTemplate,
 } from '../drizzle/schema.ts'
-import {
-  handleFailedDeliveriesCron,
-  reconcileTwilioStatusCron,
-  sendFirstMessagesCron, sendSecondMessagesCron,
-} from '../scheduledcron/cron.ts'
+import { handleFailedDeliveriesCron, reconcileTwilioStatusCron } from '../scheduledcron/cron.ts'
 import { cloneBroadcast } from '../dto/BroadcastRequestResponse.ts'
 import MissiveUtils from '../lib/Missive.ts'
+import Twilio from '../lib/Twilio.ts'
 import { sleep } from '../misc/utils.ts'
 import {
   FAILED_DELIVERED_QUERY,
-  insertOutgoingMessagesFallbackQuery, pgmq_delete, pgmq_read,
+  insertOutgoingMessagesFallbackQuery,
+  pgmq_delete,
+  pgmq_read,
+  pgmq_send,
   queueBroadcastMessages,
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
@@ -42,7 +42,7 @@ const makeBroadcast = async (): Promise<void> => {
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
-      lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
+      // lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
     ),
     with: {
       broadcastToSegments: {
@@ -58,8 +58,10 @@ const makeBroadcast = async (): Promise<void> => {
 
   await supabase.transaction(async (tx) => {
     await tx.execute(sql.raw(queueBroadcastMessages(broadcast.id)))
+    await tx.execute(
+      sql.raw(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300)),
+    )
     await makeNextBroadcastSchedule(tx, broadcast)
-    await tx.execute(sendFirstMessagesCron(broadcast.id))
     await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, broadcast.id))
   })
   await supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST)
@@ -112,133 +114,109 @@ const sendNow = async (): Promise<void> => {
     }
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
     await tx.insert(broadcastsSegments).values(newBroadcastSegments)
-    await tx.execute(sendFirstMessagesCron(nextBroadcast.id))
   })
 }
 
-const sendBroadcastMessage = async (broadcastId: number, isSecond: boolean) => {
+const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  const results = await supabase.execute(pgmq_read(queueName, 1))
+  const results = await supabase.execute(pgmq_read(queueName, 10))
   if (results.length === 0) {
-    if (isSecond) {
-      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.SEND_SECOND_MESSAGES))
-      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.DELAY_SEND_SECOND_MESSAGES))
-      await supabase.execute(sql.raw(reconcileTwilioStatusCron(broadcastId)))
-    } else {
-      await supabase.execute(UNSCHEDULE_COMMANDS.SEND_FIRST_MESSAGES)
-      await supabase.execute(sendSecondMessagesCron(broadcastId))
-    }
     return
   }
-  const message = results[0].message
-  const response = await MissiveUtils.sendMessage(message.message, message.recipient_phone_number)
+  const messageMetadata = results[0].message
+  const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
+  const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
   if (response.ok) {
-    await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+    console.log(pgmq_delete(queueName, results[0].msg_id))
+    if (!isSecond) {
+      await Promise.all([
+        supabase.execute(pgmq_delete(queueName, results[0].msg_id)),
+        supabase.execute(pgmq_send(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
+      ])
+    } else {
+      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+    }
     const responseBody = await response.json()
     const { id, conversation } = responseBody.drafts
+    console.log(JSON.stringify(responseBody))
     await supabase
       .insert(broadcastSentMessageStatus)
       .values({
-        recipientPhoneNumber: message.recipient_phone_number,
-        message: message.message,
-        isSecond: true,
-        broadcastId: message.broadcast_id,
+        recipientPhoneNumber: messageMetadata.recipient_phone_number,
+        message: message,
+        isSecond: isSecond,
+        broadcastId: messageMetadata.broadcast_id,
         missiveId: id,
         missiveConversationId: conversation,
-        audienceSegmentId: message.segment_id,
+        audienceSegmentId: messageMetadata.segment_id,
       })
   } else {
     let errorMessage = `
         Failed to send broadcast message.
         Message: ${JSON.stringify(results[0])},
         isSecond: ${isSecond},
-        broadcast: ${broadcastId}
+        broadcast: ${messageMetadata.broadcast_id}
         Missive's response = ${JSON.stringify(await response.json())}
-      `;
+      `
     if (results[0].read_ct > 2) {
-      await supabase.execute(pgmq_delete(queueName, results[0].msg_id));
-      errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`;
+      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+      errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`
     }
-    Sentry.captureException(errorMessage);
-    console.error(errorMessage);
+    console.error(errorMessage)
+    Sentry.captureException(errorMessage)
   }
 }
 
-const reconcileTwilioStatus = async (broadcastId: number) => {
-  const CHUNK_SIZE = 200
-  const MAX_RETRIES = 3
-
+const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number) => {
+  const [broadcast] = await supabase
+    .select({ twilioPaging: broadcasts.twilioPaging })
+    .from(broadcasts)
+    .where(eq(broadcasts.id, broadcastId))
+    .limit(1)
+  const { messages, nextPageUrl } = await Twilio.getMessages(
+    new Date(broadcastRunAt),
+    broadcast?.twilioPaging || undefined,
+  )
   try {
-    const failedStatusConversations = await supabase
-      .selectDistinct({
-        missive_conversation_id: broadcastSentMessageStatus.missiveConversationId,
-        phones: broadcastSentMessageStatus.recipientPhoneNumber,
-        missive_id: broadcastSentMessageStatus.missiveId,
-      })
-      .from(broadcastSentMessageStatus)
-      .where(and(
-        eq(broadcastSentMessageStatus.broadcastId, broadcastId),
-        eq(broadcastSentMessageStatus.closed, false),
-        isNull(broadcastSentMessageStatus.twilioId),
-        eq(broadcastSentMessageStatus.twilioSentStatus, 'delivered'),
-      ))
-      .limit(CHUNK_SIZE)
-      .execute()
-    if (failedStatusConversations.length === 0) {
-      await supabase.execute(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO)
-      await supabase.execute(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO)
-      await supabase.execute(sql.raw(handleFailedDeliveriesCron()))
-      return
-    }
-    for (const conversation of failedStatusConversations) {
-      let retries = 0
-      let response
-      while (retries < MAX_RETRIES) {
-        try {
-          response = await MissiveUtils.getMissiveMessage(conversation.missive_id)
-          break
-        } catch (_) {
-          retries++
-          if (retries === MAX_RETRIES) {
-            console.error(`Failed to get message ${conversation.missive_id} after ${MAX_RETRIES} attempts.`)
-            break
-          }
-          await sleep(MISSIVE_API_RATE_LIMIT)
-        }
-      }
-      if (response) {
-        let updateData = {}
-        const missiveMessage = response.messages
-        if (missiveMessage.external_id) {
-          updateData = {
-            twilioSentAt: missiveMessage.delivered_at
-              ? new Date(missiveMessage.delivered_at * 1000).toISOString()
-              : null,
-            twilioId: missiveMessage.external_id,
-            twilioSentStatus: missiveMessage.delivered_at ? 'delivered' : 'sent',
-          }
-        } else {
-          updateData = {
-            twilioSentAt: null,
-            twilioId: null,
-            twilioSentStatus: 'undelivered',
-          }
-        }
-        await supabase
-          .update(broadcastSentMessageStatus)
-          .set(updateData)
-          .where(eq(broadcastSentMessageStatus.missiveId, conversation.missive_id))
-        console.info(
-          `Successfully updated broadcastSentMessageStatus for ${conversation.missive_id}. Data: ${
-            JSON.stringify(updateData)
-          }`,
+    for (const msg of messages) {
+      await supabase
+        .update(broadcastSentMessageStatus)
+        .set({
+          twilioSentStatus: msg.status,
+          twilioId: msg.sid,
+          twilioSentAt: msg.dateSent,
+        })
+        .where(
+          and(
+            eq(
+              broadcastSentMessageStatus.id,
+              sql`(SELECT id
+               FROM broadcast_sent_message_status
+               WHERE broadcast_id = ${broadcastId}
+               AND recipient_phone_number = ${msg.to}
+               AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+               ORDER BY id DESC LIMIT 1)`,
+            ),
+          ),
         )
-        await sleep(MISSIVE_API_RATE_LIMIT)
-      }
+    }
+    if (!nextPageUrl) {
+      await Promise.all([
+        await supabase.execute(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO),
+        await supabase.execute(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO),
+      ])
+    } else {
+      await supabase
+        .update(broadcasts)
+        .set({
+          twilioPaging: nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null,
+        })
+        .where(eq(broadcasts.id, broadcastId))
     }
   } catch (error) {
-    console.error(`Error fetching failed conversations for broadcast ID ${broadcastId}: ${error.toString()}`)
-    Sentry.captureException(error)
+    const errorMessage = `Error in reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`
+    console.error(errorMessage)
+    Sentry.captureException(errorMessage)
   }
 }
 

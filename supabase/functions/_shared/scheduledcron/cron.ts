@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm'
 import { dateToCron } from './helpers.ts'
 
 const invokeBroadcastCron = (runAt: number | Date): string => {
@@ -24,51 +23,12 @@ const invokeBroadcastCron = (runAt: number | Date): string => {
   `
 }
 
-const sendFirstMessagesCron = (broadcastId: number) => {
-  return sql.raw(`
-    SELECT cron.schedule(
-      'send-first-messages',
-      '30 seconds',
-      $$
-        SELECT net.http_post(
-          url:='${Deno.env.get('EDGE_FUNCTION_URL')!}send-messages/',
-          body:='{"broadcastId": "${broadcastId}", "isSecond": false}'::jsonb,
-          headers:='{
-            "Content-Type": "application/json",
-            "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"
-          }'::jsonb
-        ) as request_id;
-      $$
-    );
-  `)
-}
-
-const sendSecondMessagesCron = (broadcastId: number) => {
-  const runAt = dateToCron(new Date(Date.now() + 60 * 1000))
-  return sql.raw(`
-    SELECT cron.schedule(
-      'delay-send-second-messages',
-      '${runAt}',
-      $$
-        SELECT cron.schedule(
-          'send-second-messages',
-          '30 seconds',
-          'SELECT net.http_post(
-            url:=''${Deno.env.get('EDGE_FUNCTION_URL')!}send-messages/'',
-            body:=''{"broadcastId": "${broadcastId}", "isSecond": true}''::jsonb,
-            headers:=''{
-              "Content-Type": "application/json",
-              "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"
-            }''::jsonb
-          ) as request_id'
-        );
-      $$
-    );
-  `)
-}
-
-const reconcileTwilioStatusCron = (broadcastId: number): string => {
-  const runAt = dateToCron(new Date(Date.now() + 2 * 60 * 60 * 1000))
+/**
+ * delay: number of seconds to wait before scheduling the cron
+ */
+const reconcileTwilioStatusCron = (broadcastId: number, delay: number): string => {
+  const now = Date.now()
+  const runAt = dateToCron(new Date(now + delay * 1000))
   return `
     SELECT cron.schedule(
       'delay-reconcile-twilio-status',
@@ -76,10 +36,10 @@ const reconcileTwilioStatusCron = (broadcastId: number): string => {
       $$
         SELECT cron.schedule(
           'reconcile-twilio-status',
-          '*/6 * * * *',
+          '* * * * *',
           'SELECT net.http_post(
              url:=''${Deno.env.get('EDGE_FUNCTION_URL')!}reconcile-twilio-status/'',
-             body:=''{"broadcastId": "${broadcastId}"}''::jsonb,
+             body:=''{"broadcastId": "${broadcastId}", "broadcastRunAt": ${now}}''::jsonb,
              headers:=''{
                "Content-Type": "application/json",
                "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"
@@ -109,10 +69,4 @@ const handleFailedDeliveriesCron = (): string => {
   `
 }
 
-export {
-  handleFailedDeliveriesCron,
-  invokeBroadcastCron,
-  reconcileTwilioStatusCron,
-  sendFirstMessagesCron,
-  sendSecondMessagesCron,
-}
+export { handleFailedDeliveriesCron, invokeBroadcastCron, reconcileTwilioStatusCron }
