@@ -1,7 +1,8 @@
+import { Hono } from 'hono'
+
 import BroadcastService from '../_shared/services/BroadcastService.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { Hono } from 'hono'
 
 const app = new Hono()
 

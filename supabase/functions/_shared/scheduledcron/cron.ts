@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { dateToCron } from './helpers.ts'
 
 const invokeBroadcastCron = (runAt: number | Date): string => {
@@ -23,11 +24,11 @@ const invokeBroadcastCron = (runAt: number | Date): string => {
   `
 }
 
-const sendFirstMessagesCron = (broadcastId: number): string => {
-  return `
+const sendFirstMessagesCron = (broadcastId: number) => {
+  return sql.raw(`
     SELECT cron.schedule(
       'send-first-messages',
-      '* * * * *',
+      '30 seconds',
       $$
         SELECT net.http_post(
           url:='${Deno.env.get('EDGE_FUNCTION_URL')!}send-messages/',
@@ -39,26 +40,19 @@ const sendFirstMessagesCron = (broadcastId: number): string => {
         ) as request_id;
       $$
     );
-  `
+  `)
 }
 
-/**
- * @param startTime run time of the last sent first message
- * @param broadcastId
- * @param delay in minutes
- */
-const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: number) => {
-  const startTimeInDate = new Date(startTime)
-  const runAt = dateToCron(new Date(startTimeInDate.getTime() + delay * 60 * 1000))
-
-  return `
+const sendSecondMessagesCron = (broadcastId: number) => {
+  const runAt = dateToCron(new Date(Date.now() + 60 * 1000))
+  return sql.raw(`
     SELECT cron.schedule(
       'delay-send-second-messages',
       '${runAt}',
       $$
         SELECT cron.schedule(
           'send-second-messages',
-          '* * * * *',
+          '30 seconds',
           'SELECT net.http_post(
             url:=''${Deno.env.get('EDGE_FUNCTION_URL')!}send-messages/'',
             body:=''{"broadcastId": "${broadcastId}", "isSecond": true}''::jsonb,
@@ -70,7 +64,7 @@ const sendSecondMessagesCron = (startTime: number, broadcastId: number, delay: n
         );
       $$
     );
-  `
+  `)
 }
 
 const reconcileTwilioStatusCron = (broadcastId: number): string => {

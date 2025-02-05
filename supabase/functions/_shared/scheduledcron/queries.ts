@@ -9,6 +9,14 @@ const queueBroadcastMessages = (broadcastId: number) => {
   return `SELECT queue_broadcast_messages(${broadcastId})`
 }
 
+const pgmq_read = (queueName: string, sleepSeconds: number, n: number = 1) => {
+  return sql.raw(`SELECT * FROM pgmq.read('${queueName}', ${sleepSeconds}, ${n});`)
+}
+
+const pgmq_delete = (queueName: string, msgId: string) => {
+  return sql.raw(`SELECT pgmq.delete('${queueName}', ${msgId});`)
+}
+
 const insertOutgoingMessagesQuery = (
   broadcastSegment: BroadcastSegment,
   nextBroadcast: Broadcast,
@@ -189,13 +197,13 @@ const CRON_JOB_NAMES = {
 } as const
 
 const UNSCHEDULE_COMMANDS = {
-  INVOKE_BROADCAST: `SELECT cron.unschedule('${CRON_JOB_NAMES.INVOKE_BROADCAST}');`,
-  SEND_FIRST_MESSAGES: `SELECT cron.unschedule('${CRON_JOB_NAMES.SEND_FIRST_MESSAGES}');`,
+  INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('${CRON_JOB_NAMES.INVOKE_BROADCAST}');`),
+  SEND_FIRST_MESSAGES: sql.raw(`SELECT cron.unschedule('${CRON_JOB_NAMES.SEND_FIRST_MESSAGES}');`),
   SEND_SECOND_MESSAGES: `SELECT cron.unschedule('${CRON_JOB_NAMES.SEND_SECOND_MESSAGES}');`,
   DELAY_SEND_SECOND_MESSAGES: `SELECT cron.unschedule('${CRON_JOB_NAMES.DELAY_SEND_SECOND_MESSAGES}');`,
-  RECONCILE_TWILIO: `SELECT cron.unschedule('${CRON_JOB_NAMES.RECONCILE_TWILIO_STATUS}');`,
-  DELAY_RECONCILE_TWILIO: `SELECT cron.unschedule('${CRON_JOB_NAMES.DELAY_RECONCILE_TWILIO}');`,
-  HANDLE_FAILED_DELIVERIES: `SELECT cron.unschedule('${CRON_JOB_NAMES.HANDLE_FAILED_DELIVERIES}');`,
+  RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('${CRON_JOB_NAMES.RECONCILE_TWILIO_STATUS}');`),
+  DELAY_RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('${CRON_JOB_NAMES.DELAY_RECONCILE_TWILIO}');`),
+  HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('${CRON_JOB_NAMES.HANDLE_FAILED_DELIVERIES}');`),
 } as const
 
 const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
@@ -224,5 +232,7 @@ export {
   SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,
-  queueBroadcastMessages
+  queueBroadcastMessages,
+  pgmq_read,
+  pgmq_delete
 }

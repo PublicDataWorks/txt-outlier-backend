@@ -1,7 +1,8 @@
+import { Hono } from 'hono'
+
 import BroadcastService from '../_shared/services/BroadcastService.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { Hono } from 'hono'
 
 const app = new Hono()
 
@@ -12,10 +13,7 @@ app.post('/send-messages/', async (c) => {
   }
 
   try {
-    const sendMessages = isSecond
-      ? BroadcastService.sendBroadcastSecondMessages
-      : BroadcastService.sendBroadcastFirstMessages
-    await sendMessages(Number(broadcastId))
+    await BroadcastService.sendBroadcastMessage(Number(broadcastId), isSecond)
   } catch (error) {
     console.error(`Error in BroadcastService.sendMessages: ${error.message}. Stack: ${error.stack}`)
     Sentry.captureException(error)

@@ -9,21 +9,18 @@ import {
   broadcastSentMessageStatus,
   broadcastsSegments,
   lookupTemplate,
-  OutgoingMessage,
-  outgoingMessages,
 } from '../drizzle/schema.ts'
 import {
   handleFailedDeliveriesCron,
   reconcileTwilioStatusCron,
-  sendFirstMessagesCron,
-  sendSecondMessagesCron,
+  sendFirstMessagesCron, sendSecondMessagesCron,
 } from '../scheduledcron/cron.ts'
-import { cloneBroadcast, convertToBroadcastMessagesStatus } from '../dto/BroadcastRequestResponse.ts'
+import { cloneBroadcast } from '../dto/BroadcastRequestResponse.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { sleep } from '../misc/utils.ts'
 import {
   FAILED_DELIVERED_QUERY,
-  insertOutgoingMessagesFallbackQuery,
+  insertOutgoingMessagesFallbackQuery, pgmq_delete, pgmq_read,
   queueBroadcastMessages,
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
@@ -35,14 +32,13 @@ import {
   isBroadcastRunning,
   makeNextBroadcastSchedule,
 } from './BroadcastServiceUtils.ts'
-import { MISSIVE_API_RATE_LIMIT } from '../constants.ts'
+import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
 
 const makeBroadcast = async (): Promise<void> => {
   const isRunning = await isBroadcastRunning()
   if (isRunning) {
     throw new BadRequestError('Unable to make broadcast: another broadcast is running')
   }
-
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
@@ -63,10 +59,10 @@ const makeBroadcast = async (): Promise<void> => {
   await supabase.transaction(async (tx) => {
     await tx.execute(sql.raw(queueBroadcastMessages(broadcast.id)))
     await makeNextBroadcastSchedule(tx, broadcast)
-    await tx.execute(sql.raw(sendFirstMessagesCron(broadcast.id)))
+    await tx.execute(sendFirstMessagesCron(broadcast.id))
     await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, broadcast.id))
   })
-  await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST))
+  await supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST)
 }
 
 const sendNow = async (): Promise<void> => {
@@ -116,159 +112,55 @@ const sendNow = async (): Promise<void> => {
     }
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
     await tx.insert(broadcastsSegments).values(newBroadcastSegments)
-    await tx.execute(sql.raw(sendFirstMessagesCron(nextBroadcast.id)))
+    await tx.execute(sendFirstMessagesCron(nextBroadcast.id))
   })
 }
 
-const sendBroadcastSecondMessages = async (broadcastID: number) => {
-
-  const startTime = Date.now()
-  const results = await supabase
-    .select()
-    .from(outgoingMessages)
-    .where(
-      and(
-        eq(outgoingMessages.broadcastId, broadcastID),
-        eq(outgoingMessages.isSecond, true),
-        eq(outgoingMessages.processed, false),
-      ),
-    )
-    .orderBy(outgoingMessages.id)
-    .limit(40)
-
+const sendBroadcastMessage = async (broadcastId: number, isSecond: boolean) => {
+  const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
+  const results = await supabase.execute(pgmq_read(queueName, 1))
   if (results.length === 0) {
-    // No messages found, unschedule CRON jobs
-    await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.DELAY_SEND_SECOND_MESSAGES))
-    await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.SEND_SECOND_MESSAGES))
-    await supabase.execute(sql.raw(reconcileTwilioStatusCron(broadcastID)))
+    if (isSecond) {
+      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.SEND_SECOND_MESSAGES))
+      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.DELAY_SEND_SECOND_MESSAGES))
+      await supabase.execute(sql.raw(reconcileTwilioStatusCron(broadcastId)))
+    } else {
+      await supabase.execute(UNSCHEDULE_COMMANDS.SEND_FIRST_MESSAGES)
+      await supabase.execute(sendSecondMessagesCron(broadcastId))
+    }
     return
   }
-
-  const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
-  // Temporarily mark these messages as processed, so later requests don't pick them up
-  await supabase
-    .update(outgoingMessages)
-    .set({ processed: true })
-    .where(inArray(outgoingMessages.id, idsToMarkAsProcessed))
-
-  const processedIds = []
-  for (const outgoing of results) {
-    const loopStartTime = Date.now()
-    const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
-    if (response.ok) {
-      const responseBody = await response.json()
-      const { id, conversation } = responseBody.drafts
-      // Can not bulk insert because the webhook service run in parallel to update the status
-      await supabase
-        .insert(broadcastSentMessageStatus)
-        .values(convertToBroadcastMessagesStatus(outgoing, id, conversation))
-    } else {
-      const errorMessage = `Failed to send broadcast second messages.
-              Broadcast id: ${broadcastID}, outgoing: ${JSON.stringify(outgoing)},
-              Missive's respond = ${JSON.stringify(await response.json())}`
-      console.error(errorMessage)
-      Sentry.captureException(errorMessage)
-    }
-    processedIds.push(outgoing.id)
-    const elapsedTime = Date.now() - startTime
-    // We break because CRON job will run every minute, next time it will pick up the remaining messages
-    if (elapsedTime >= 60000) {
-      console.info('Hard limit reached in sendBroadcastSecondMessage. Exiting loop.')
-      break
-    }
-    // Wait for 1s, considering the time spent in API call and other operations
-    const remainingTime = MISSIVE_API_RATE_LIMIT - (Date.now() - loopStartTime)
-    if (remainingTime > 0) {
-      await sleep(remainingTime)
-    }
-  }
-  if (processedIds.length > 0) {
+  const message = results[0].message
+  const response = await MissiveUtils.sendMessage(message.message, message.recipient_phone_number)
+  if (response.ok) {
+    await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+    const responseBody = await response.json()
+    const { id, conversation } = responseBody.drafts
     await supabase
-      .delete(outgoingMessages)
-      .where(inArray(outgoingMessages.id, processedIds))
-    await supabase
-      .update(outgoingMessages)
-      .set({ processed: false })
-      .where(inArray(outgoingMessages.id, idsToMarkAsProcessed))
-  }
-}
-
-const sendBroadcastFirstMessages = async (broadcastID: number) => {
-  const result = await supabase.execute(sql`
-    SELECT pgmq.send(
-      'foo',
-      ${JSON.stringify({ hello: 'world' })}::jsonb,
-      ${30}
-    )
-  `)
-  const startTime = Date.now()
-  const results = await supabase
-    .select()
-    .from(outgoingMessages)
-    .where(
-      and(
-        eq(outgoingMessages.broadcastId, broadcastID),
-        eq(outgoingMessages.isSecond, false),
-        eq(outgoingMessages.processed, false),
-      ),
-    )
-    .orderBy(outgoingMessages.id)
-    .limit(40) // API limit of 1 request per second
-
-  if (results.length === 0) {
-    // No messages found, finished sending first messages
-    await supabase.execute(sql.raw(sendSecondMessagesCron(startTime, broadcastID, 1)))
-    // TODO: There may be some messages that were not processed in the last batch
-    await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.SEND_FIRST_MESSAGES))
-    return
-  }
-  const idsToMarkAsProcessed = results.map((outgoing: OutgoingMessage) => outgoing.id!)
-  // Temporarily mark these messages as processed, so later requests don't pick them up
-  await supabase.update(outgoingMessages).set({ processed: true }).where(
-    inArray(outgoingMessages.id, idsToMarkAsProcessed),
-  )
-  const processedIds = []
-  for (const outgoing of results) {
-    const loopStartTime = Date.now()
-    const response = await MissiveUtils.sendMessage(outgoing.message, outgoing.recipientPhoneNumber)
-    if (response.ok) {
-      const responseBody = await response.json()
-      const { id, conversation } = responseBody.drafts
-      // Can not bulk insert because the webhook service run in parallel to update the status
-      // Need await to ensure 1 request per second
-      await supabase
-        .insert(broadcastSentMessageStatus)
-        .values(convertToBroadcastMessagesStatus(outgoing, id, conversation))
-    } else {
-      const errorMessage =
-        `Failed to send broadcast first message. Broadcast id: ${broadcastID}}, Missive's respond = ${
-          JSON.stringify(await response.json())
-        }`
-      console.error(errorMessage)
-      Sentry.captureException(errorMessage)
+      .insert(broadcastSentMessageStatus)
+      .values({
+        recipientPhoneNumber: message.recipient_phone_number,
+        message: message.message,
+        isSecond: true,
+        broadcastId: message.broadcast_id,
+        missiveId: id,
+        missiveConversationId: conversation,
+        audienceSegmentId: message.segment_id,
+      })
+  } else {
+    let errorMessage = `
+        Failed to send broadcast message.
+        Message: ${JSON.stringify(results[0])},
+        isSecond: ${isSecond},
+        broadcast: ${broadcastId}
+        Missive's response = ${JSON.stringify(await response.json())}
+      `;
+    if (results[0].read_ct > 2) {
+      await supabase.execute(pgmq_delete(queueName, results[0].msg_id));
+      errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`;
     }
-    processedIds.push(outgoing.id)
-    const elapsedTime = Date.now() - startTime
-    // We break because CRON job will run every minute, next time it will pick up the remaining messages
-    if (elapsedTime >= 60000) {
-      console.info('Hard limit reached in sendBroadcastFirstMessages. Exiting loop.')
-      break
-    }
-    // Wait for 1s, considering the time spent in API call and other operations
-    const remainingTime = 1000 - (Date.now() - loopStartTime)
-    if (remainingTime > 0) {
-      await sleep(remainingTime)
-    }
-  }
-
-  if (processedIds.length > 0) {
-    await supabase
-      .delete(outgoingMessages)
-      .where(inArray(outgoingMessages.id, processedIds))
-    await supabase
-      .update(outgoingMessages)
-      .set({ processed: false })
-      .where(inArray(outgoingMessages.id, idsToMarkAsProcessed))
+    Sentry.captureException(errorMessage);
+    console.error(errorMessage);
   }
 }
 
@@ -293,8 +185,8 @@ const reconcileTwilioStatus = async (broadcastId: number) => {
       .limit(CHUNK_SIZE)
       .execute()
     if (failedStatusConversations.length === 0) {
-      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO))
-      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO))
+      await supabase.execute(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO)
+      await supabase.execute(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO)
       await supabase.execute(sql.raw(handleFailedDeliveriesCron()))
       return
     }
@@ -357,7 +249,7 @@ const handleFailedDeliveries = async () => {
   const failedDelivers = await supabase.execute(sql.raw(FAILED_DELIVERED_QUERY))
   if (!failedDelivers || failedDelivers.length === 0) {
     try {
-      await supabase.execute(sql.raw(UNSCHEDULE_COMMANDS.HANDLE_FAILED_DELIVERIES))
+      await supabase.execute(UNSCHEDULE_COMMANDS.HANDLE_FAILED_DELIVERIES)
     } catch (e) {
       console.error(`Failed to unschedule handleFailedDeliveries: ${e}`)
     }
@@ -439,8 +331,7 @@ const handleFailedDeliveries = async () => {
 
 export default {
   makeBroadcast,
-  sendBroadcastFirstMessages,
-  sendBroadcastSecondMessages,
+  sendBroadcastMessage,
   sendNow,
   reconcileTwilioStatus,
   handleFailedDeliveries,

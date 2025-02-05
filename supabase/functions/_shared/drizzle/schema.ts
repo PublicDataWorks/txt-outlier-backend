@@ -337,7 +337,7 @@ export const broadcasts = pgTable('broadcasts', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   runAt: timestamp('run_at', { withTimezone: true, mode: 'date' }).notNull(),
-  delay: interval('delay').default('00:10:00').notNull(),
+  delay: integer('delay').default(600).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   editable: boolean('editable').default(true).notNull(),
   noUsers: integer('no_users').default(0).notNull(),
