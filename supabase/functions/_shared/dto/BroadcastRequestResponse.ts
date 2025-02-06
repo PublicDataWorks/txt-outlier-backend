@@ -1,5 +1,4 @@
-import { Broadcast, BroadcastMessageStatus, OutgoingMessage } from '../drizzle/schema.ts'
-import { intervalToString } from '../misc/utils.ts'
+import { Broadcast } from '../drizzle/schema.ts'
 import { BroadcastDashBoardQueryReturn } from '../scheduledcron/queries.ts'
 import DateUtils from '../misc/DateUtils.ts'
 
@@ -20,7 +19,7 @@ interface UpcomingBroadcastResponse {
   firstMessage: string
   secondMessage: string
   runAt: number
-  delay: string
+  delay: number
   noRecipients: number
 }
 
@@ -28,7 +27,7 @@ interface BroadcastUpdate {
   firstMessage?: string
   secondMessage?: string
   runAt?: number
-  delay?: string
+  delay?: number
 }
 
 const convertToPastBroadcast = (
@@ -53,7 +52,7 @@ const convertToUpcomingBroadcast = (broadcast: Broadcast): UpcomingBroadcastResp
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
     runAt: Math.floor(broadcast.runAt.getTime() / 1000),
-    delay: intervalToString(broadcast.delay!),
+    delay: broadcast.delay!,
     noRecipients: broadcast.noUsers!,
   }
 }
@@ -69,33 +68,6 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
   }
 }
 
-const cloneBroadcast = (broadcast: Broadcast): Broadcast => {
-  return {
-    firstMessage: broadcast.firstMessage,
-    secondMessage: broadcast.secondMessage,
-    runAt: broadcast.runAt,
-    delay: broadcast.delay,
-    editable: broadcast.editable,
-    noUsers: broadcast.noUsers,
-  }
-}
-
-const convertToBroadcastMessagesStatus = (
-  outgoing: OutgoingMessage,
-  missiveID: string,
-  convoID: string,
-): BroadcastMessageStatus => {
-  return {
-    recipientPhoneNumber: outgoing.recipientPhoneNumber,
-    message: outgoing.message,
-    isSecond: outgoing.isSecond!,
-    broadcastId: outgoing.broadcastId,
-    missiveId: missiveID,
-    missiveConversationId: convoID,
-    audienceSegmentId: outgoing.segmentId,
-  }
-}
-
 class BroadcastResponse {
   upcoming: UpcomingBroadcastResponse
   past: PastBroadcastResponse[]
@@ -107,7 +79,7 @@ class BroadcastResponse {
       firstMessage: '',
       secondMessage: '',
       runAt: -1,
-      delay: '',
+      delay: 0,
       noRecipients: -1,
     }
     this.past = []
@@ -118,11 +90,8 @@ class BroadcastResponse {
 export {
   BroadcastResponse,
   type BroadcastUpdate,
-  cloneBroadcast,
-  convertToBroadcastMessagesStatus,
   convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
-  type PastBroadcastResponse,
   type UpcomingBroadcastResponse,
 }

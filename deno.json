@@ -64,6 +64,9 @@
     "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
-    "hono": "jsr:@hono/hono@4.6.20"
+    "hono": "jsr:@hono/hono@4.6.20",
+    "node-mocks-http": "npm:node-mocks-http",
+    "mock-fetch": "https://deno.land/x/mock_fetch@0.3.0/mod.ts",
+    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts"
   }
 }

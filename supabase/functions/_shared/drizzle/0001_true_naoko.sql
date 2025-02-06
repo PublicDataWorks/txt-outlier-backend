@@ -1,8 +1,6 @@
-CREATE EXTENSION IF NOT EXISTS cron;
---> statement-breakpoint
 CREATE EXTENSION IF NOT EXISTS pgmq;
 --> statement-breakpoint
-CREATE OR REPLACE FUNCTION queue_broadcast_messages(
+CREATE OR REPLACE FUNCTION public.queue_broadcast_messages(
     p_broadcast_id int
 ) RETURNS void
 SET search_path = ''
@@ -99,7 +97,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
-ALTER TABLE broadcasts
+ALTER TABLE public.broadcasts
 ALTER COLUMN delay DROP DEFAULT,
 ALTER COLUMN delay TYPE integer USING EXTRACT(EPOCH FROM delay)::integer,
 ALTER COLUMN delay SET DEFAULT 600;
+-- CREATE EXTENSION IF NOT EXISTS cron;
+-- --> statement-breakpoint

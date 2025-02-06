@@ -1,27 +1,3 @@
-const escapeLiteral = (val: boolean | string | null): string => {
-  if (val == null) {
-    return 'NULL'
-  }
-  if (typeof val === 'number') {
-    return `'${val}'`
-  }
-  if (typeof val === 'boolean') {
-    return `'${val.toString()}'`
-  }
-
-  if (Array.isArray(val)) {
-    const vals = val.map(escapeLiteral)
-    return '(' + vals.join(', ') + ')'
-  }
-
-  const backslash = val.indexOf('\\') !== -1
-  const prefix = backslash ? 'E' : ''
-  val = val.replace(/'/g, "''")
-  val = val.replace(/\\/g, '\\\\')
-
-  return prefix + "'" + val + "'"
-}
-
 const dateToCron = (date: Date) => {
   const minutes = date.getMinutes()
   const hours = date.getHours()
@@ -32,12 +8,4 @@ const dateToCron = (date: Date) => {
   return `${minutes} ${hours} ${days} ${months} ${dayOfWeek}`
 }
 
-const buildQueueMessage = (recipientPhoneNumber: string, broadcastId: number, segmentId: number, message: string) => {
-  return {
-    'recipient_phone_number': recipientPhoneNumber,
-    'broadcast_id': broadcastId,
-    'segment_id': segmentId,
-    'message': message,
-  }
-}
-export { dateToCron, escapeLiteral, buildQueueMessage }
+export { dateToCron }

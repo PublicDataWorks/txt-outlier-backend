@@ -4,7 +4,7 @@ import * as schema from '../drizzle/schema.ts'
 import * as relationSchema from '../drizzle/relations.ts'
 
 const postgresClient = postgres(
-  Deno.env.get('DB_POOL_URL')!,
+  Deno.env.get('SUPABASE_DB_URL')!,
   { prepare: false },
 )
 const supabase: PostgresJsDatabase = drizzle(postgresClient, {

@@ -19,7 +19,6 @@ app.patch('/broadcast-sidebar/', async (c) => {
   if (!id || isNaN(Number(id)) || (!firstMessage && !secondMessage && !runAt && !delay)) {
     return AppResponse.badRequest()
   }
-
   try {
     const result = await BroadcastSidebar.patch(Number(id), { firstMessage, secondMessage, runAt, delay })
     return AppResponse.ok(result)
@@ -30,17 +29,8 @@ app.patch('/broadcast-sidebar/', async (c) => {
   }
 })
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'http://localhost:8000',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add allowed methods
-}
-
-app.options('/broadcast-sidebar/', async (c) => {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders,
-  })
+app.options('/broadcast-sidebar/', async () => {
+  return AppResponse.ok()
 })
 
 Deno.serve(app.fetch)

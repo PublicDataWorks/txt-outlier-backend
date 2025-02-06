@@ -1,4 +1,5 @@
 import { dateToCron } from './helpers.ts'
+import { sql } from 'drizzle-orm'
 
 const invokeBroadcastCron = (runAt: number | Date): string => {
   const runTime = dateToCron(new Date(runAt))
@@ -26,10 +27,10 @@ const invokeBroadcastCron = (runAt: number | Date): string => {
 /**
  * delay: number of seconds to wait before scheduling the cron
  */
-const reconcileTwilioStatusCron = (broadcastId: number, delay: number): string => {
+const reconcileTwilioStatusCron = (broadcastId: number, delay: number) => {
   const now = Date.now()
   const runAt = dateToCron(new Date(now + delay * 1000))
-  return `
+  return sql.raw(`
     SELECT cron.schedule(
       'delay-reconcile-twilio-status',
       '${runAt}',
@@ -48,11 +49,11 @@ const reconcileTwilioStatusCron = (broadcastId: number, delay: number): string =
         );
       $$
     );
-  `
+  `)
 }
 
-const handleFailedDeliveriesCron = (): string => {
-  return `
+const handleFailedDeliveriesCron = () => {
+  return sql.raw(`
     SELECT cron.schedule(
       'handle-failed-deliveries',
       '*/6 * * * *',
@@ -66,7 +67,7 @@ const handleFailedDeliveriesCron = (): string => {
         ) as request_id;
       $$
     );
-  `
+  `)
 }
 
 export { handleFailedDeliveriesCron, invokeBroadcastCron, reconcileTwilioStatusCron }

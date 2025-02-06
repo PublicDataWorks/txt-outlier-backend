@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, or, sql } from 'drizzle-orm'
 
 import supabase from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
@@ -11,13 +11,10 @@ import {
   lookupTemplate,
 } from '../drizzle/schema.ts'
 import { handleFailedDeliveriesCron, reconcileTwilioStatusCron } from '../scheduledcron/cron.ts'
-import { cloneBroadcast } from '../dto/BroadcastRequestResponse.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
-import { sleep } from '../misc/utils.ts'
 import {
   FAILED_DELIVERED_QUERY,
-  insertOutgoingMessagesFallbackQuery,
   pgmq_delete,
   pgmq_read,
   pgmq_send,
@@ -27,22 +24,20 @@ import {
 import NotFoundError from '../exception/NotFoundError.ts'
 import BadRequestError from '../exception/BadRequestError.ts'
 import Sentry from '../lib/Sentry.ts'
-import {
-  insertBroadcastSegmentRecipients,
-  isBroadcastRunning,
-  makeNextBroadcastSchedule,
-} from './BroadcastServiceUtils.ts'
+import { isBroadcastRunning, makeNextBroadcastSchedule } from './BroadcastServiceUtils.ts'
 import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
+import { cloneBroadcast } from '../misc/utils.ts'
 
 const makeBroadcast = async (): Promise<void> => {
   const isRunning = await isBroadcastRunning()
   if (isRunning) {
     throw new BadRequestError('Unable to make broadcast: another broadcast is running')
   }
+  // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(
       eq(broadcasts.editable, true),
-      // lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
+      lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
     ),
     with: {
       broadcastToSegments: {
@@ -55,12 +50,9 @@ const makeBroadcast = async (): Promise<void> => {
   if (!broadcast) {
     throw new NotFoundError('Broadcast not found')
   }
-
   await supabase.transaction(async (tx) => {
-    await tx.execute(sql.raw(queueBroadcastMessages(broadcast.id)))
-    await tx.execute(
-      sql.raw(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300)),
-    )
+    await tx.execute(queueBroadcastMessages(broadcast.id))
+    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300))
     await makeNextBroadcastSchedule(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, broadcast.id))
   })
@@ -68,7 +60,12 @@ const makeBroadcast = async (): Promise<void> => {
 }
 
 const sendNow = async (): Promise<void> => {
-  const nextBroadcast = await supabase.query.broadcasts.findFirst({
+  const isRunning = await isBroadcastRunning()
+  if (isRunning) {
+    throw new BadRequestError('Unable to send now: another broadcast is running')
+  }
+  // @ts-ignore: Property broadcasts exists at runtime
+  const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(eq(broadcasts.editable, true)),
     with: {
       broadcastToSegments: {
@@ -79,40 +76,29 @@ const sendNow = async (): Promise<void> => {
     },
   })
 
-  if (!nextBroadcast) {
+  if (!broadcast) {
     throw new Error('Unable to retrieve next broadcast.')
   }
-  if (nextBroadcast.broadcastToSegments.length === 0) {
-    console.error(`SendNow: Broadcast has no associated segment. Data: ${JSON.stringify(nextBroadcast)}`)
-    throw new Error('Broadcast has no associated segment.')
-  }
-  const diffInMinutes = DateUtils.diffInMinutes(nextBroadcast.runAt)
-  if (0 <= diffInMinutes && diffInMinutes <= 30) {
+  const diffInMinutes = DateUtils.diffInMinutes(broadcast.runAt)
+  if (0 <= diffInMinutes && diffInMinutes <= 90) {
     throw new NotFoundError('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
   }
-
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to send now: another broadcast is running')
-  }
-
   await supabase.transaction(async (tx) => {
-    const newId: { id: number }[] = await tx.insert(broadcasts).values(cloneBroadcast(nextBroadcast))
+    await tx.execute(queueBroadcastMessages(broadcast.id))
+    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300))
+    const newBroadcastId: { id: number }[] = await tx
+      .insert(broadcasts)
+      .values(cloneBroadcast(broadcast))
       .returning({ id: broadcasts.id })
     const newBroadcastSegments: BroadcastSegment[] = []
-    for (const broadcastSegment of nextBroadcast.broadcastToSegments) {
-      await insertBroadcastSegmentRecipients(tx, broadcastSegment, nextBroadcast)
+    for (const broadcastSegment of broadcast.broadcastToSegments) {
       newBroadcastSegments.push({
-        broadcastId: newId[0].id!,
+        broadcastId: newBroadcastId[0].id!,
         segmentId: broadcastSegment.segment.id!,
         ratio: broadcastSegment.ratio,
       })
     }
-    const fallbackStatement = await insertOutgoingMessagesFallbackQuery(tx, nextBroadcast)
-    if (fallbackStatement) {
-      await tx.execute(sql.raw(fallbackStatement))
-    }
-    await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, nextBroadcast.id))
+    await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
     await tx.insert(broadcastsSegments).values(newBroadcastSegments)
   })
 }
@@ -127,7 +113,6 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
   const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
   if (response.ok) {
-    console.log(pgmq_delete(queueName, results[0].msg_id))
     if (!isSecond) {
       await Promise.all([
         supabase.execute(pgmq_delete(queueName, results[0].msg_id)),
@@ -138,7 +123,6 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     }
     const responseBody = await response.json()
     const { id, conversation } = responseBody.drafts
-    console.log(JSON.stringify(responseBody))
     await supabase
       .insert(broadcastSentMessageStatus)
       .values({
@@ -204,6 +188,7 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
       await Promise.all([
         await supabase.execute(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO),
         await supabase.execute(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO),
+        await supabase.execute(handleFailedDeliveriesCron()),
       ])
     } else {
       await supabase

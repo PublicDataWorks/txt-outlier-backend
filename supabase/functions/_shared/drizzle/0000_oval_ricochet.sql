@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
 	"broadcast_id" bigint NOT NULL,
 	"is_second" boolean NOT NULL,
 	"updated_at" timestamp with time zone,
-	"twilio_sent_status" "twilio_status" DEFAULT 'delivered' NOT NULL,
+	"twilio_sent_status" "twilio_status" DEFAULT 'delivered',
 	"twilio_id" text,
 	"message" text NOT NULL,
 	"audience_segment_id" bigint,
