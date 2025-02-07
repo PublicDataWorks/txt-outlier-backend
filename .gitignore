@@ -1,22 +1,14 @@
-# dotenv environment variable files
-supabase/functions/.env
-.env.sample
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+ Supabase
+.branches
+.temp
 
-# Fresh build directory
-_fresh/
-# npm dependencies
-node_modules/
-.idea/
-/.vscode/
-/supabase/functions/.vscode/extensions.json
-/supabase/functions/.vscode/
-cov_profile/
-scheduledcron.iml
-**/.branch
-supabase/.branches/_current_branch
-/.env.sample
-**/*.log
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+.env
+
+node_modules
+.idea
+.vscode
+cov_profile

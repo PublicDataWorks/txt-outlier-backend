@@ -1,70 +1,43 @@
 version: 2.1
 
-orbs:
-  aws-cli: circleci/aws-cli@4.1.3
-
 jobs:
-  build-and-test:
+  test:
     machine:
-      image: ubuntu-2204:current # more specific than 'default'
-    environment:
-      DENO_DIR: ~/.deno # cache Deno dependencies
+      image: default
     steps:
       - checkout
+      - run: curl -fsSL https://deno.land/x/install@v0.1.9/install.sh?source | sh
+      - run: /home/circleci/.deno/bin/deno upgrade --version 1.41.3
+      - run:
+          name: Run lint
+          command: /home/circleci/.deno/bin/deno task lint
+      - run:
+          name: Run fmt
+          command: /home/circleci/.deno/bin/deno task fmt --check
 
-      # Install and setup Deno
-      - restore_cache:
-          keys:
-            - deno-cache-{{ checksum "deno.lock" }} # if you have deno.lock
+      - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
       - run:
-          name: Install Deno
-          command: |
-            curl -fsSL https://deno.land/x/install@v0.1.9/install.sh | sh
-            echo 'export DENO_INSTALL="/home/circleci/.deno"' >> $BASH_ENV
-            echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> $BASH_ENV
+          name: Setup Supabase
+          command: npx supabase start
       - run:
-          name: Upgrade Deno
-          command: deno upgrade --version 1.41.3
-      - save_cache:
-          key: deno-cache-{{ checksum "deno.lock" }}
-          paths:
-            - ~/.deno
-
-      # Code quality checks
+          name: Start Functions Server
+          command: npx supabase functions serve --env-file supabase/functions/tests/.env.testing
+          background: true
       - run:
-          name: Code formatting check
-          command: deno task fmt --check
-      - run:
-          name: Lint check
-          command: deno task lint
-
-      # Setup and run tests
-      - run:
-          name: Install Node.js
-          command: |
-            curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-      - run:
-          name: Setup test environment
-          command: deno task test:setup
-          background: true # Run in background since it's a server
-      - run:
-          name: Wait for test setup
-          command: sleep 10 # Give test:setup time to start
+          name: Wait for services
+          command: sleep 30
       - run:
           name: Run tests with coverage
-          command: deno task test:coverage
+          command: /home/circleci/.deno/bin/deno task test:coverage
       - run:
           name: Generate coverage report
-          command: deno coverage --include="^file:" --exclude="/tests/" supabase/functions/tests/cov_profile
-
-      # Cleanup
+          command: /home/circleci/.deno/bin/deno task coverage
       - run:
-          name: Cleanup test environment
-          command: cd supabase && npx supabase stop
-          when: always # Run even if tests fail
+          name: Clean up after test
+          command: npx supabase stop
+          when: always
 
 workflows:
-  test_and_deploy:
+  test:
     jobs:
-      - build-and-test
+      - test
