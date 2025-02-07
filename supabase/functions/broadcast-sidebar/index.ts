@@ -21,6 +21,9 @@ app.patch('/broadcast-sidebar/', async (c) => {
   }
   try {
     const result = await BroadcastSidebar.patch(Number(id), { firstMessage, secondMessage, runAt, delay })
+    console.log(
+      `Updated broadcast with id ${id}. First message: ${firstMessage}, second message: ${secondMessage}, run at: ${runAt}, delay: ${delay}`,
+    )
     return AppResponse.ok(result)
   } catch (error) {
     console.error(`Error: ${error.message}`)
@@ -29,7 +32,7 @@ app.patch('/broadcast-sidebar/', async (c) => {
   }
 })
 
-app.options('/broadcast-sidebar/', async () => {
+app.options('/broadcast-sidebar/', () => {
   return AppResponse.ok()
 })
 

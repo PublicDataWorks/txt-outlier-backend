@@ -17,7 +17,9 @@ const pgmq_delete = (queueName: string, messageId: string) => {
 }
 
 const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: number): string => {
-  let WHERE_CLAUSE = (cursor && typeof cursor === 'number') ? `WHERE b.run_at < to_timestamp($$${cursor}$$)` : 'WHERE TRUE'
+  let WHERE_CLAUSE = (cursor && typeof cursor === 'number')
+    ? `WHERE b.run_at < to_timestamp($$${cursor}$$)`
+    : 'WHERE TRUE'
   if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND b.id = $$${broadcastId}$$`)
   return `
     SELECT b.id,

@@ -4,7 +4,7 @@ import 'https://deno.land/x/dotenv@v3.2.2/load.ts'
 
 // Set up the configuration for the Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+const supabaseKey = Deno.env.get('LOCAL_SERVICE_KEY') ?? ''
 const options = {
   auth: {
     autoRefreshToken: false,

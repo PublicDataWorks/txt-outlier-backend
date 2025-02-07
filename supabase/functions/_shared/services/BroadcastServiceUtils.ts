@@ -5,7 +5,7 @@ import { AudienceSegment, Broadcast, broadcasts, broadcastsSegments } from '../d
 import { convertToFutureBroadcast } from '../dto/BroadcastRequestResponse.ts'
 import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
 import { BROADCAST_RUNNING_INDICATORS, SELECT_JOB_NAMES } from '../scheduledcron/queries.ts'
-import supabase from "../lib/supabase.ts";
+import supabase from '../lib/supabase.ts'
 
 const makeNextBroadcastSchedule = async (
   // deno-lint-ignore no-explicit-any
@@ -30,4 +30,4 @@ const isBroadcastRunning = async (): Promise<boolean> => {
   return jobs.some((job: { jobname: string }) => BROADCAST_RUNNING_INDICATORS.includes(job.jobname))
 }
 
-export { makeNextBroadcastSchedule, isBroadcastRunning }
+export { isBroadcastRunning, makeNextBroadcastSchedule }

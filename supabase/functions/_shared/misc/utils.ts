@@ -1,4 +1,4 @@
-import { Broadcast } from "../drizzle/schema.ts";
+import { Broadcast } from '../drizzle/schema.ts'
 
 const cloneBroadcast = (broadcast: Broadcast): Broadcast => {
   return {

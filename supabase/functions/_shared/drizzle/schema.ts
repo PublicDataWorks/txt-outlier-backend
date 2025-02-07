@@ -3,7 +3,6 @@ import {
   boolean,
   index,
   integer,
-  interval,
   jsonb,
   pgEnum,
   pgSchema,
@@ -17,15 +16,14 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-export const aalLevel = pgEnum('aal_level', ['aal1', 'aal2', 'aal3'])
-export const codeChallengeMethod = pgEnum('code_challenge_method', ['s256', 'plain'])
-export const factorStatus = pgEnum('factor_status', ['unverified', 'verified'])
-export const factorType = pgEnum('factor_type', ['totp', 'webauthn'])
-export const twilioStatus = pgEnum('twilio_status', ['delivered', 'undelivered', 'failed', 'received', 'sent'])
-export const keyStatus = pgEnum('key_status', ['default', 'valid', 'invalid', 'expired'])
-export const equalityOp = pgEnum('equality_op', ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in'])
-export const action = pgEnum('action', ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR'])
-export const requestStatus = pgEnum('request_status', ['PENDING', 'SUCCESS', 'ERROR'])
+export const twilioStatus = pgEnum('twilio_status', [
+  'delivery_unknown',
+  'delivered',
+  'undelivered',
+  'failed',
+  'received',
+  'sent',
+])
 export const cronSchema = pgSchema('cron')
 
 export const broadcastsSegments = pgTable('broadcasts_segments', {
@@ -354,7 +352,7 @@ export const organizations = pgTable('organizations', {
 })
 
 export const outgoingMessages = pgTable('outgoing_messages', {
-  id: serial('id').primaryKey().notNull(),
+  id: integer('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   recipientPhoneNumber: text('recipient_phone_number').notNull().references(() => authors.phoneNumber, {
     onUpdate: 'cascade',

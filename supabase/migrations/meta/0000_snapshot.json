@@ -1,6 +1,6 @@
 {
-  "id": "61f64d76-b537-4b98-afb7-421023044107",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "prevId": "",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -41,77 +41,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "authors": {
-      "name": "authors",
-      "schema": "",
-      "columns": {
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "phone_number": {
-          "name": "phone_number",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "unsubscribed": {
-          "name": "unsubscribed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "zipcode": {
-          "name": "zipcode",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "exclude": {
-          "name": "exclude",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false,
-          "default": false
-        }
-      },
-      "indexes": {
-        "idx_authors_phone_unsub_exclude": {
-          "name": "idx_authors_phone_unsub_exclude",
-          "columns": [
-            "phone_number",
-            "unsubscribed",
-            "exclude"
-          ],
-          "isUnique": false
-        }
-      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
@@ -229,7 +158,7 @@
           "name": "twilio_sent_status",
           "type": "twilio_status",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "'delivered'"
         },
         "twilio_id": {
@@ -266,26 +195,49 @@
             "recipient_phone_number"
           ],
           "isUnique": false
+        },
+        "broadcast_sent_message_status_audience_segment_id_idx": {
+          "name": "broadcast_sent_message_status_audience_segment_id_idx",
+          "columns": [
+            "audience_segment_id"
+          ],
+          "isUnique": false
+        },
+        "broadcast_sent_message_status_broadcast_id_idx": {
+          "name": "broadcast_sent_message_status_broadcast_id_idx",
+          "columns": [
+            "broadcast_id"
+          ],
+          "isUnique": false
+        },
+        "broadcast_sent_message_status_recipient_phone_number_idx": {
+          "name": "broadcast_sent_message_status_recipient_phone_number_idx",
+          "columns": [
+            "recipient_phone_number"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
-        "broadcast_sent_message_status_recipient_phone_number_authors_phone_number_fk": {
-          "name": "broadcast_sent_message_status_recipient_phone_number_authors_phone_number_fk",
+        "broadcast_sent_message_status_audience_segment_id_fkey": {
+          "name": "broadcast_sent_message_status_audience_segment_id_fkey",
           "tableFrom": "broadcast_sent_message_status",
-          "tableTo": "authors",
+          "tableTo": "audience_segments",
+          "schemaTo": "public",
           "columnsFrom": [
-            "recipient_phone_number"
+            "audience_segment_id"
           ],
           "columnsTo": [
-            "phone_number"
+            "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "broadcast_sent_message_status_broadcast_id_broadcasts_id_fk": {
-          "name": "broadcast_sent_message_status_broadcast_id_broadcasts_id_fk",
+        "broadcast_sent_message_status_broadcast_id_fkey": {
+          "name": "broadcast_sent_message_status_broadcast_id_fkey",
           "tableFrom": "broadcast_sent_message_status",
           "tableTo": "broadcasts",
+          "schemaTo": "public",
           "columnsFrom": [
             "broadcast_id"
           ],
@@ -295,104 +247,31 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "broadcast_sent_message_status_audience_segment_id_audience_segments_id_fk": {
-          "name": "broadcast_sent_message_status_audience_segment_id_audience_segments_id_fk",
+        "broadcast_sent_message_status_recipient_phone_number_fkey": {
+          "name": "broadcast_sent_message_status_recipient_phone_number_fkey",
           "tableFrom": "broadcast_sent_message_status",
-          "tableTo": "audience_segments",
+          "tableTo": "authors",
+          "schemaTo": "public",
           "columnsFrom": [
-            "audience_segment_id"
+            "recipient_phone_number"
           ],
           "columnsTo": [
-            "id"
+            "phone_number"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "broadcast_sent_message_status_missive_id_key": {
-          "name": "broadcast_sent_message_status_missive_id_key",
-          "nullsNotDistinct": false,
           "columns": [
             "missive_id"
-          ]
+          ],
+          "nullsNotDistinct": false,
+          "name": "broadcast_sent_message_status_missive_id_key"
         }
       }
-    },
-    "broadcasts": {
-      "name": "broadcasts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "run_at": {
-          "name": "run_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "delay": {
-          "name": "delay",
-          "type": "interval",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'00:10:00'"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "editable": {
-          "name": "editable",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "no_users": {
-          "name": "no_users",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "first_message": {
-          "name": "first_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "second_message": {
-          "name": "second_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "twilio_paging": {
-          "name": "twilio_paging",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
     },
     "broadcasts_segments": {
       "name": "broadcasts_segments",
@@ -450,13 +329,21 @@
             "segment_id"
           ],
           "isUnique": false
+        },
+        "broadcasts_segments_segment_id_idx": {
+          "name": "broadcasts_segments_segment_id_idx",
+          "columns": [
+            "segment_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
-        "broadcasts_segments_broadcast_id_broadcasts_id_fk": {
-          "name": "broadcasts_segments_broadcast_id_broadcasts_id_fk",
+        "broadcasts_segments_broadcast_id_fkey": {
+          "name": "broadcasts_segments_broadcast_id_fkey",
           "tableFrom": "broadcasts_segments",
           "tableTo": "broadcasts",
+          "schemaTo": "public",
           "columnsFrom": [
             "broadcast_id"
           ],
@@ -466,10 +353,11 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "broadcasts_segments_segment_id_audience_segments_id_fk": {
-          "name": "broadcasts_segments_segment_id_audience_segments_id_fk",
+        "broadcasts_segments_segment_id_fkey": {
+          "name": "broadcasts_segments_segment_id_fkey",
           "tableFrom": "broadcasts_segments",
           "tableTo": "audience_segments",
+          "schemaTo": "public",
           "columnsFrom": [
             "segment_id"
           ],
@@ -483,12 +371,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "broadcast_id_segment_id_unique": {
-          "name": "broadcast_id_segment_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "broadcast_id",
             "segment_id"
-          ]
+          ],
+          "nullsNotDistinct": false,
+          "name": "broadcast_id_segment_id_unique"
         }
       }
     },
@@ -548,14 +436,30 @@
           "notNull": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "comments_user_id_users_id_fk": {
-          "name": "comments_user_id_users_id_fk",
-          "tableFrom": "comments",
-          "tableTo": "users",
-          "columnsFrom": [
+      "indexes": {
+        "comments_conversation_id_idx": {
+          "name": "comments_conversation_id_idx",
+          "columns": [
+            "conversation_id"
+          ],
+          "isUnique": false
+        },
+        "comments_user_id_idx": {
+          "name": "comments_user_id_idx",
+          "columns": [
             "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "comments_conversation_id_fkey": {
+          "name": "comments_conversation_id_fkey",
+          "tableFrom": "comments",
+          "tableTo": "conversations",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -563,12 +467,13 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "comments_conversation_id_conversations_id_fk": {
-          "name": "comments_conversation_id_conversations_id_fk",
+        "comments_user_id_fkey": {
+          "name": "comments_user_id_fkey",
           "tableFrom": "comments",
-          "tableTo": "conversations",
+          "tableTo": "users",
+          "schemaTo": "public",
           "columnsFrom": [
-            "conversation_id"
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -622,12 +527,35 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "comments_mentions_comment_id_idx": {
+          "name": "comments_mentions_comment_id_idx",
+          "columns": [
+            "comment_id"
+          ],
+          "isUnique": false
+        },
+        "comments_mentions_user_id_idx": {
+          "name": "comments_mentions_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        },
+        "comments_mentions_team_id_idx": {
+          "name": "comments_mentions_team_id_idx",
+          "columns": [
+            "team_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
-        "comments_mentions_comment_id_comments_id_fk": {
-          "name": "comments_mentions_comment_id_comments_id_fk",
+        "comments_mentions_comment_id_fkey": {
+          "name": "comments_mentions_comment_id_fkey",
           "tableFrom": "comments_mentions",
           "tableTo": "comments",
+          "schemaTo": "public",
           "columnsFrom": [
             "comment_id"
           ],
@@ -637,12 +565,13 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "comments_mentions_user_id_users_id_fk": {
-          "name": "comments_mentions_user_id_users_id_fk",
+        "comments_mentions_team_id_fkey": {
+          "name": "comments_mentions_team_id_fkey",
           "tableFrom": "comments_mentions",
-          "tableTo": "users",
+          "tableTo": "teams",
+          "schemaTo": "public",
           "columnsFrom": [
-            "user_id"
+            "team_id"
           ],
           "columnsTo": [
             "id"
@@ -650,12 +579,13 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "comments_mentions_team_id_teams_id_fk": {
-          "name": "comments_mentions_team_id_teams_id_fk",
+        "comments_mentions_user_id_fkey": {
+          "name": "comments_mentions_user_id_fkey",
           "tableFrom": "comments_mentions",
-          "tableTo": "teams",
+          "tableTo": "users",
+          "schemaTo": "public",
           "columnsFrom": [
-            "team_id"
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -703,12 +633,28 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "conversation_history_conversation_id_idx": {
+          "name": "conversation_history_conversation_id_idx",
+          "columns": [
+            "conversation_id"
+          ],
+          "isUnique": false
+        },
+        "conversation_history_team_id_idx": {
+          "name": "conversation_history_team_id_idx",
+          "columns": [
+            "team_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
-        "conversation_history_conversation_id_conversations_id_fk": {
-          "name": "conversation_history_conversation_id_conversations_id_fk",
+        "conversation_history_conversation_id_fkey": {
+          "name": "conversation_history_conversation_id_fkey",
           "tableFrom": "conversation_history",
           "tableTo": "conversations",
+          "schemaTo": "public",
           "columnsFrom": [
             "conversation_id"
           ],
@@ -718,12 +664,154 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "conversation_history_team_id_teams_id_fk": {
-          "name": "conversation_history_team_id_teams_id_fk",
+        "conversation_history_team_id_fkey": {
+          "name": "conversation_history_team_id_fkey",
           "tableFrom": "conversation_history",
           "tableTo": "teams",
+          "schemaTo": "public",
           "columnsFrom": [
             "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "conversations_assignees": {
+      "name": "conversations_assignees",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "unassigned": {
+          "name": "unassigned",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "closed": {
+          "name": "closed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "archived": {
+          "name": "archived",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "trashed": {
+          "name": "trashed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "junked": {
+          "name": "junked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "assigned": {
+          "name": "assigned",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "flagged": {
+          "name": "flagged",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "snoozed": {
+          "name": "snoozed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "conversations_assignees_conversation_id_idx": {
+          "name": "conversations_assignees_conversation_id_idx",
+          "columns": [
+            "conversation_id"
+          ],
+          "isUnique": false
+        },
+        "conversations_assignees_user_id_idx": {
+          "name": "conversations_assignees_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "conversations_assignees_conversation_id_fkey": {
+          "name": "conversations_assignees_conversation_id_fkey",
+          "tableFrom": "conversations_assignees",
+          "tableTo": "conversations",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "conversations_assignees_user_id_fkey": {
+          "name": "conversations_assignees_user_id_fkey",
+          "tableFrom": "conversations_assignees",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -862,12 +950,28 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "conversations_organization_id_idx": {
+          "name": "conversations_organization_id_idx",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        },
+        "conversations_team_id_idx": {
+          "name": "conversations_team_id_idx",
+          "columns": [
+            "team_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
-        "conversations_organization_id_organizations_id_fk": {
-          "name": "conversations_organization_id_organizations_id_fk",
+        "conversations_organization_id_fkey": {
+          "name": "conversations_organization_id_fkey",
           "tableFrom": "conversations",
           "tableTo": "organizations",
+          "schemaTo": "public",
           "columnsFrom": [
             "organization_id"
           ],
@@ -877,136 +981,13 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "conversations_team_id_teams_id_fk": {
-          "name": "conversations_team_id_teams_id_fk",
+        "conversations_team_id_fkey": {
+          "name": "conversations_team_id_fkey",
           "tableFrom": "conversations",
           "tableTo": "teams",
+          "schemaTo": "public",
           "columnsFrom": [
             "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "conversations_assignees": {
-      "name": "conversations_assignees",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "unassigned": {
-          "name": "unassigned",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "closed": {
-          "name": "closed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "archived": {
-          "name": "archived",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "trashed": {
-          "name": "trashed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "junked": {
-          "name": "junked",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "assigned": {
-          "name": "assigned",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "flagged": {
-          "name": "flagged",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "snoozed": {
-          "name": "snoozed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "conversations_assignees_conversation_id_conversations_id_fk": {
-          "name": "conversations_assignees_conversation_id_conversations_id_fk",
-          "tableFrom": "conversations_assignees",
-          "tableTo": "conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "conversations_assignees_user_id_users_id_fk": {
-          "name": "conversations_assignees_user_id_users_id_fk",
-          "tableFrom": "conversations_assignees",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -1098,12 +1079,21 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "conversations_assignees_history_conversation_history_id_idx": {
+          "name": "conversations_assignees_history_conversation_history_id_idx",
+          "columns": [
+            "conversation_history_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
-        "conversations_assignees_history_conversation_history_id_conversation_history_id_fk": {
-          "name": "conversations_assignees_history_conversation_history_id_conversation_history_id_fk",
+        "conversations_assignees_history_conversation_history_id_fkey": {
+          "name": "conversations_assignees_history_conversation_history_id_fkey",
           "tableFrom": "conversations_assignees_history",
           "tableTo": "conversation_history",
+          "schemaTo": "public",
           "columnsFrom": [
             "conversation_history_id"
           ],
@@ -1116,80 +1106,6 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
-    },
-    "conversations_authors": {
-      "name": "conversations_authors",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "author_phone_number": {
-          "name": "author_phone_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_conversations_authors_conv_phone": {
-          "name": "idx_conversations_authors_conv_phone",
-          "columns": [
-            "conversation_id",
-            "author_phone_number"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "conversations_authors_author_phone_number_authors_phone_number_fk": {
-          "name": "conversations_authors_author_phone_number_authors_phone_number_fk",
-          "tableFrom": "conversations_authors",
-          "tableTo": "authors",
-          "columnsFrom": [
-            "author_phone_number"
-          ],
-          "columnsTo": [
-            "phone_number"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "conversations_authors_id_key": {
-          "name": "conversations_authors_id_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "id"
-          ]
-        },
-        "conversations_authors_conversation_id_author_phone_number_key": {
-          "name": "conversations_authors_conversation_id_author_phone_number_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "conversation_id",
-            "author_phone_number"
-          ]
-        }
-      }
     },
     "conversations_labels": {
       "name": "conversations_labels",
@@ -1253,10 +1169,11 @@
         }
       },
       "foreignKeys": {
-        "conversations_labels_conversation_id_conversations_id_fk": {
-          "name": "conversations_labels_conversation_id_conversations_id_fk",
+        "conversations_labels_conversation_id_fkey": {
+          "name": "conversations_labels_conversation_id_fkey",
           "tableFrom": "conversations_labels",
           "tableTo": "conversations",
+          "schemaTo": "public",
           "columnsFrom": [
             "conversation_id"
           ],
@@ -1266,10 +1183,11 @@
           "onDelete": "no action",
           "onUpdate": "cascade"
         },
-        "conversations_labels_label_id_labels_id_fk": {
-          "name": "conversations_labels_label_id_labels_id_fk",
+        "conversations_labels_label_id_fkey": {
+          "name": "conversations_labels_label_id_fkey",
           "tableFrom": "conversations_labels",
           "tableTo": "labels",
+          "schemaTo": "public",
           "columnsFrom": [
             "label_id"
           ],
@@ -1282,6 +1200,81 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
+    },
+    "conversations_authors": {
+      "name": "conversations_authors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_phone_number": {
+          "name": "author_phone_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_conversations_authors_conv_phone": {
+          "name": "idx_conversations_authors_conv_phone",
+          "columns": [
+            "conversation_id",
+            "author_phone_number"
+          ],
+          "isUnique": false
+        },
+        "conversations_authors_author_phone_number_idx": {
+          "name": "conversations_authors_author_phone_number_idx",
+          "columns": [
+            "author_phone_number"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "conversations_authors_author_phone_number_fkey": {
+          "name": "conversations_authors_author_phone_number_fkey",
+          "tableFrom": "conversations_authors",
+          "tableTo": "authors",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "author_phone_number"
+          ],
+          "columnsTo": [
+            "phone_number"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "conversations_authors_conversation_id_author_phone_number_key": {
+          "columns": [
+            "conversation_id",
+            "author_phone_number"
+          ],
+          "nullsNotDistinct": false,
+          "name": "conversations_authors_conversation_id_author_phone_number_key"
+        }
+      }
     },
     "conversations_users": {
       "name": "conversations_users",
@@ -1375,12 +1368,21 @@
           "default": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "conversations_users_user_id_idx": {
+          "name": "conversations_users_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
-        "conversations_users_conversation_id_conversations_id_fk": {
-          "name": "conversations_users_conversation_id_conversations_id_fk",
+        "conversations_users_conversation_id_fkey": {
+          "name": "conversations_users_conversation_id_fkey",
           "tableFrom": "conversations_users",
           "tableTo": "conversations",
+          "schemaTo": "public",
           "columnsFrom": [
             "conversation_id"
           ],
@@ -1390,10 +1392,11 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "conversations_users_user_id_users_id_fk": {
-          "name": "conversations_users_user_id_users_id_fk",
+        "conversations_users_user_id_fkey": {
+          "name": "conversations_users_user_id_fkey",
           "tableFrom": "conversations_users",
           "tableTo": "users",
+          "schemaTo": "public",
           "columnsFrom": [
             "user_id"
           ],
@@ -1407,14 +1410,65 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "conversations_users_unique_key": {
-          "name": "conversations_users_unique_key",
-          "nullsNotDistinct": false,
           "columns": [
             "conversation_id",
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false,
+          "name": "conversations_users_unique_key"
         }
       }
+    },
+    "lookup_history": {
+      "name": "lookup_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "''"
+        },
+        "tax_status": {
+          "name": "tax_status",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "''"
+        },
+        "rental_status": {
+          "name": "rental_status",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "''"
+        },
+        "zip_code": {
+          "name": "zip_code",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "''"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
     },
     "errors": {
       "name": "errors",
@@ -1469,45 +1523,106 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "invoke_history": {
-      "name": "invoke_history",
+    "geography_columns": {
+      "name": "geography_columns",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "uuid",
+        "f_table_catalog": {
+          "name": "f_table_catalog",
+          "type": "name",
           "primaryKey": false,
           "notNull": false
         },
-        "request_body": {
-          "name": "request_body",
-          "type": "jsonb",
+        "f_table_schema": {
+          "name": "f_table_schema",
+          "type": "name",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "f_table_name": {
+          "name": "f_table_name",
+          "type": "name",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "f_geography_column": {
+          "name": "f_geography_column",
+          "type": "name",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coord_dimension": {
+          "name": "coord_dimension",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "srid": {
+          "name": "srid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
       },
-      "indexes": {
-        "invoke_history_request_body_idx": {
-          "name": "invoke_history_request_body_idx",
-          "columns": [
-            "request_body"
-          ],
-          "isUnique": false
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "geometry_columns": {
+      "name": "geometry_columns",
+      "schema": "",
+      "columns": {
+        "f_table_catalog": {
+          "name": "f_table_catalog",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "f_table_schema": {
+          "name": "f_table_schema",
+          "type": "name",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "f_table_name": {
+          "name": "f_table_name",
+          "type": "name",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "f_geometry_column": {
+          "name": "f_geometry_column",
+          "type": "name",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coord_dimension": {
+          "name": "coord_dimension",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "srid": {
+          "name": "srid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
@@ -1581,187 +1696,6 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "lookup_history": {
-      "name": "lookup_history",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "address": {
-          "name": "address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "''"
-        },
-        "tax_status": {
-          "name": "tax_status",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "''"
-        },
-        "rental_status": {
-          "name": "rental_status",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "''"
-        },
-        "zip_code": {
-          "name": "zip_code",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "''"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "lookup_template": {
-      "name": "lookup_template",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "content": {
-          "name": "content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "lookup_template_staging_for_retool": {
-      "name": "lookup_template_staging_for_retool",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "content": {
-          "name": "content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "organizations": {
-      "name": "organizations",
-      "schema": "",
-      "columns": {
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
     "outgoing_messages": {
       "name": "outgoing_messages",
       "schema": "",
@@ -1818,25 +1752,28 @@
           "default": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "outgoing_messages_recipient_phone_number_authors_phone_number_fk": {
-          "name": "outgoing_messages_recipient_phone_number_authors_phone_number_fk",
-          "tableFrom": "outgoing_messages",
-          "tableTo": "authors",
-          "columnsFrom": [
-            "recipient_phone_number"
+      "indexes": {
+        "outgoing_messages_broadcast_id_idx": {
+          "name": "outgoing_messages_broadcast_id_idx",
+          "columns": [
+            "broadcast_id"
           ],
-          "columnsTo": [
-            "phone_number"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "isUnique": false
         },
-        "outgoing_messages_broadcast_id_broadcasts_id_fk": {
-          "name": "outgoing_messages_broadcast_id_broadcasts_id_fk",
+        "outgoing_messages_segment_id_idx": {
+          "name": "outgoing_messages_segment_id_idx",
+          "columns": [
+            "segment_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "outgoing_messages_broadcast_id_fkey": {
+          "name": "outgoing_messages_broadcast_id_fkey",
           "tableFrom": "outgoing_messages",
           "tableTo": "broadcasts",
+          "schemaTo": "public",
           "columnsFrom": [
             "broadcast_id"
           ],
@@ -1846,10 +1783,11 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "outgoing_messages_segment_id_audience_segments_id_fk": {
-          "name": "outgoing_messages_segment_id_audience_segments_id_fk",
+        "outgoing_messages_segment_id_fkey": {
+          "name": "outgoing_messages_segment_id_fkey",
           "tableFrom": "outgoing_messages",
           "tableTo": "audience_segments",
+          "schemaTo": "public",
           "columnsFrom": [
             "segment_id"
           ],
@@ -1858,20 +1796,70 @@
           ],
           "onDelete": "no action",
           "onUpdate": "cascade"
+        },
+        "public_outgoing_messages_recipient_phone_number_fkey": {
+          "name": "public_outgoing_messages_recipient_phone_number_fkey",
+          "tableFrom": "outgoing_messages",
+          "tableTo": "authors",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "recipient_phone_number"
+          ],
+          "columnsTo": [
+            "phone_number"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "unique_phone_number_broadcast_id_is_second": {
-          "name": "unique_phone_number_broadcast_id_is_second",
-          "nullsNotDistinct": false,
           "columns": [
             "recipient_phone_number",
             "broadcast_id",
             "is_second"
-          ]
+          ],
+          "nullsNotDistinct": false,
+          "name": "unique_phone_number_broadcast_id_is_second"
         }
       }
+    },
+    "organizations": {
+      "name": "organizations",
+      "schema": "",
+      "columns": {
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
     },
     "rules": {
       "name": "rules",
@@ -1915,6 +1903,91 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
+    "tasks_assignees": {
+      "name": "tasks_assignees",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comment_id": {
+          "name": "comment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "tasks_assignees_comment_id_idx": {
+          "name": "tasks_assignees_comment_id_idx",
+          "columns": [
+            "comment_id"
+          ],
+          "isUnique": false
+        },
+        "tasks_assignees_user_id_idx": {
+          "name": "tasks_assignees_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "tasks_assignees_comment_id_fkey": {
+          "name": "tasks_assignees_comment_id_fkey",
+          "tableFrom": "tasks_assignees",
+          "tableTo": "comments",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "comment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tasks_assignees_user_id_fkey": {
+          "name": "tasks_assignees_user_id_fkey",
+          "tableFrom": "tasks_assignees",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "spatial_ref_sys": {
       "name": "spatial_ref_sys",
       "schema": "",
@@ -1955,74 +2028,6 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "tasks_assignees": {
-      "name": "tasks_assignees",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "comment_id": {
-          "name": "comment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "tasks_assignees_comment_id_comments_id_fk": {
-          "name": "tasks_assignees_comment_id_comments_id_fk",
-          "tableFrom": "tasks_assignees",
-          "tableTo": "comments",
-          "columnsFrom": [
-            "comment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "tasks_assignees_user_id_users_id_fk": {
-          "name": "tasks_assignees_user_id_users_id_fk",
-          "tableFrom": "tasks_assignees",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
     "teams": {
       "name": "teams",
       "schema": "",
@@ -2059,206 +2064,23 @@
           "notNull": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "teams_organization_id_organizations_id_fk": {
-          "name": "teams_organization_id_organizations_id_fk",
-          "tableFrom": "teams",
-          "tableTo": "organizations",
-          "columnsFrom": [
+      "indexes": {
+        "teams_organization_id_idx": {
+          "name": "teams_organization_id_idx",
+          "columns": [
             "organization_id"
           ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
-    },
-    "twilio_messages": {
-      "name": "twilio_messages",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "preview": {
-          "name": "preview",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "delivered_at": {
-          "name": "delivered_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "references": {
-          "name": "references",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "external_id": {
-          "name": "external_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attachments": {
-          "name": "attachments",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "from_field": {
-          "name": "from_field",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_field": {
-          "name": "to_field",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "is_broadcast_reply": {
-          "name": "is_broadcast_reply",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "reply_to_broadcast": {
-          "name": "reply_to_broadcast",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sender_id": {
-          "name": "sender_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_tm_from_created_broadcast": {
-          "name": "idx_tm_from_created_broadcast",
-          "columns": [
-            "created_at",
-            "from_field",
-            "is_broadcast_reply"
-          ],
-          "isUnique": false
-        },
-        "idx_twilio_messages_created_from_broadcast": {
-          "name": "idx_twilio_messages_created_from_broadcast",
-          "columns": [
-            "created_at",
-            "from_field",
-            "is_broadcast_reply"
-          ],
-          "isUnique": false
-        },
-        "idx_twilio_messages_delivered_from": {
-          "name": "idx_twilio_messages_delivered_from",
-          "columns": [
-            "delivered_at",
-            "from_field"
-          ],
-          "isUnique": false
-        },
-        "idx_twilio_messages_delivered_to": {
-          "name": "idx_twilio_messages_delivered_to",
-          "columns": [
-            "delivered_at",
-            "to_field"
-          ],
-          "isUnique": false
-        },
-        "twilio_messages_created_at_idx": {
-          "name": "twilio_messages_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "twilio_messages_from_field_authors_phone_number_fk": {
-          "name": "twilio_messages_from_field_authors_phone_number_fk",
-          "tableFrom": "twilio_messages",
-          "tableTo": "authors",
+        "teams_organization_id_fkey": {
+          "name": "teams_organization_id_fkey",
+          "tableFrom": "teams",
+          "tableTo": "organizations",
+          "schemaTo": "public",
           "columnsFrom": [
-            "from_field"
-          ],
-          "columnsTo": [
-            "phone_number"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "twilio_messages_to_field_authors_phone_number_fk": {
-          "name": "twilio_messages_to_field_authors_phone_number_fk",
-          "tableFrom": "twilio_messages",
-          "tableTo": "authors",
-          "columnsFrom": [
-            "to_field"
-          ],
-          "columnsTo": [
-            "phone_number"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "twilio_messages_reply_to_broadcast_broadcasts_id_fk": {
-          "name": "twilio_messages_reply_to_broadcast_broadcasts_id_fk",
-          "tableFrom": "twilio_messages",
-          "tableTo": "broadcasts",
-          "columnsFrom": [
-            "reply_to_broadcast"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "twilio_messages_sender_id_users_id_fk": {
-          "name": "twilio_messages_sender_id_users_id_fk",
-          "tableFrom": "twilio_messages",
-          "tableTo": "users",
-          "columnsFrom": [
-            "sender_id"
+            "organization_id"
           ],
           "columnsTo": [
             "id"
@@ -2374,10 +2196,11 @@
         }
       },
       "foreignKeys": {
-        "twilio_messages_old_from_field_authors_old_phone_number_fk": {
-          "name": "twilio_messages_old_from_field_authors_old_phone_number_fk",
+        "twilio_messages_from_field_fkey": {
+          "name": "twilio_messages_from_field_fkey",
           "tableFrom": "twilio_messages_old",
           "tableTo": "authors_old",
+          "schemaTo": "public",
           "columnsFrom": [
             "from_field"
           ],
@@ -2387,10 +2210,11 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "twilio_messages_old_to_field_authors_old_phone_number_fk": {
-          "name": "twilio_messages_old_to_field_authors_old_phone_number_fk",
+        "twilio_messages_to_field_fkey": {
+          "name": "twilio_messages_to_field_fkey",
           "tableFrom": "twilio_messages_old",
           "tableTo": "authors_old",
+          "schemaTo": "public",
           "columnsFrom": [
             "to_field"
           ],
@@ -2454,13 +2278,21 @@
             "twilio_message_id"
           ],
           "isUnique": false
+        },
+        "unsubscribed_messages_reply_to_idx": {
+          "name": "unsubscribed_messages_reply_to_idx",
+          "columns": [
+            "reply_to"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
-        "unsubscribed_messages_broadcast_id_broadcasts_id_fk": {
-          "name": "unsubscribed_messages_broadcast_id_broadcasts_id_fk",
+        "public_unsubscribe_messages_broadcast_id_fkey": {
+          "name": "public_unsubscribe_messages_broadcast_id_fkey",
           "tableFrom": "unsubscribed_messages",
           "tableTo": "broadcasts",
+          "schemaTo": "public",
           "columnsFrom": [
             "broadcast_id"
           ],
@@ -2470,23 +2302,11 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "unsubscribed_messages_twilio_message_id_twilio_messages_id_fk": {
-          "name": "unsubscribed_messages_twilio_message_id_twilio_messages_id_fk",
-          "tableFrom": "unsubscribed_messages",
-          "tableTo": "twilio_messages",
-          "columnsFrom": [
-            "twilio_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "unsubscribed_messages_reply_to_broadcast_sent_message_status_id_fk": {
-          "name": "unsubscribed_messages_reply_to_broadcast_sent_message_status_id_fk",
+        "public_unsubscribe_messages_reply_to_fkey": {
+          "name": "public_unsubscribe_messages_reply_to_fkey",
           "tableFrom": "unsubscribed_messages",
           "tableTo": "broadcast_sent_message_status",
+          "schemaTo": "public",
           "columnsFrom": [
             "reply_to"
           ],
@@ -2494,6 +2314,20 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "unsubscribed_messages_twilio_message_id_fkey": {
+          "name": "unsubscribed_messages_twilio_message_id_fkey",
+          "tableFrom": "unsubscribed_messages",
+          "tableTo": "twilio_messages",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "twilio_message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -2543,13 +2377,21 @@
             "id"
           ],
           "isUnique": false
+        },
+        "user_history_user_id_idx": {
+          "name": "user_history_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
-        "user_history_user_id_users_id_fk": {
-          "name": "user_history_user_id_users_id_fk",
+        "user_history_user_id_fkey": {
+          "name": "user_history_user_id_fkey",
           "tableFrom": "user_history",
           "tableTo": "users",
+          "schemaTo": "public",
           "columnsFrom": [
             "user_id"
           ],
@@ -2848,105 +2690,515 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
+    },
+    "authors": {
+      "name": "authors",
+      "schema": "",
+      "columns": {
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_number": {
+          "name": "phone_number",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "unsubscribed": {
+          "name": "unsubscribed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "zipcode": {
+          "name": "zipcode",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exclude": {
+          "name": "exclude",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "idx_authors_phone_unsub_exclude": {
+          "name": "idx_authors_phone_unsub_exclude",
+          "columns": [
+            "phone_number",
+            "unsubscribed",
+            "exclude"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "lookup_template_staging_for_retool": {
+      "name": "lookup_template_staging_for_retool",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "broadcasts": {
+      "name": "broadcasts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "run_at": {
+          "name": "run_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delay": {
+          "name": "delay",
+          "type": "interval",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'00:10:00'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "editable": {
+          "name": "editable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "no_users": {
+          "name": "no_users",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "first_message": {
+          "name": "first_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "second_message": {
+          "name": "second_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "twilio_paging": {
+          "name": "twilio_paging",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "invoke_history": {
+      "name": "invoke_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_body": {
+          "name": "request_body",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "invoke_history_request_body_idx": {
+          "name": "invoke_history_request_body_idx",
+          "columns": [
+            "request_body"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "lookup_template": {
+      "name": "lookup_template",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "twilio_messages": {
+      "name": "twilio_messages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "preview": {
+          "name": "preview",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "references": {
+          "name": "references",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attachments": {
+          "name": "attachments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_field": {
+          "name": "from_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_field": {
+          "name": "to_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_broadcast_reply": {
+          "name": "is_broadcast_reply",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reply_to_broadcast": {
+          "name": "reply_to_broadcast",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sender_id": {
+          "name": "sender_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_tm_from_created_broadcast": {
+          "name": "idx_tm_from_created_broadcast",
+          "columns": [
+            "created_at",
+            "from_field",
+            "is_broadcast_reply"
+          ],
+          "isUnique": false
+        },
+        "idx_twilio_messages_created_from_broadcast": {
+          "name": "idx_twilio_messages_created_from_broadcast",
+          "columns": [
+            "created_at",
+            "from_field",
+            "is_broadcast_reply"
+          ],
+          "isUnique": false
+        },
+        "idx_twilio_messages_delivered_from": {
+          "name": "idx_twilio_messages_delivered_from",
+          "columns": [
+            "delivered_at",
+            "from_field"
+          ],
+          "isUnique": false
+        },
+        "idx_twilio_messages_delivered_to": {
+          "name": "idx_twilio_messages_delivered_to",
+          "columns": [
+            "delivered_at",
+            "to_field"
+          ],
+          "isUnique": false
+        },
+        "twilio_messages_created_at_idx": {
+          "name": "twilio_messages_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "twilio_messages_new_from_field_idx": {
+          "name": "twilio_messages_new_from_field_idx",
+          "columns": [
+            "from_field"
+          ],
+          "isUnique": false
+        },
+        "twilio_messages_new_to_field_idx": {
+          "name": "twilio_messages_new_to_field_idx",
+          "columns": [
+            "to_field"
+          ],
+          "isUnique": false
+        },
+        "twilio_messages_reply_to_broadcast_idx": {
+          "name": "twilio_messages_reply_to_broadcast_idx",
+          "columns": [
+            "reply_to_broadcast"
+          ],
+          "isUnique": false
+        },
+        "twilio_messages_sender_id_idx": {
+          "name": "twilio_messages_sender_id_idx",
+          "columns": [
+            "sender_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "public_twilio_messages_duplicate_from_field_fkey": {
+          "name": "public_twilio_messages_duplicate_from_field_fkey",
+          "tableFrom": "twilio_messages",
+          "tableTo": "authors",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "from_field"
+          ],
+          "columnsTo": [
+            "phone_number"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "public_twilio_messages_duplicate_to_field_fkey": {
+          "name": "public_twilio_messages_duplicate_to_field_fkey",
+          "tableFrom": "twilio_messages",
+          "tableTo": "authors",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "to_field"
+          ],
+          "columnsTo": [
+            "phone_number"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "twilio_messages_reply_to_broadcast_fkey": {
+          "name": "twilio_messages_reply_to_broadcast_fkey",
+          "tableFrom": "twilio_messages",
+          "tableTo": "broadcasts",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "reply_to_broadcast"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "twilio_messages_sender_id_fkey": {
+          "name": "twilio_messages_sender_id_fkey",
+          "tableFrom": "twilio_messages",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "sender_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
     }
   },
   "enums": {
-    "aal_level": {
-      "name": "aal_level",
-      "values": {
-        "aal1": "aal1",
-        "aal2": "aal2",
-        "aal3": "aal3"
-      }
-    },
-    "action": {
-      "name": "action",
-      "values": {
-        "INSERT": "INSERT",
-        "UPDATE": "UPDATE",
-        "DELETE": "DELETE",
-        "TRUNCATE": "TRUNCATE",
-        "ERROR": "ERROR"
-      }
-    },
-    "code_challenge_method": {
-      "name": "code_challenge_method",
-      "values": {
-        "s256": "s256",
-        "plain": "plain"
-      }
-    },
-    "equality_op": {
-      "name": "equality_op",
-      "values": {
-        "eq": "eq",
-        "neq": "neq",
-        "lt": "lt",
-        "lte": "lte",
-        "gt": "gt",
-        "gte": "gte",
-        "in": "in"
-      }
-    },
-    "factor_status": {
-      "name": "factor_status",
-      "values": {
-        "unverified": "unverified",
-        "verified": "verified"
-      }
-    },
-    "factor_type": {
-      "name": "factor_type",
-      "values": {
-        "totp": "totp",
-        "webauthn": "webauthn",
-        "phone": "phone"
-      }
-    },
-    "key_status": {
-      "name": "key_status",
-      "values": {
-        "default": "default",
-        "valid": "valid",
-        "invalid": "invalid",
-        "expired": "expired"
-      }
-    },
-    "key_type": {
-      "name": "key_type",
-      "values": {
-        "aead-ietf": "aead-ietf",
-        "aead-det": "aead-det",
-        "hmacsha512": "hmacsha512",
-        "hmacsha256": "hmacsha256",
-        "auth": "auth",
-        "shorthash": "shorthash",
-        "generichash": "generichash",
-        "kdf": "kdf",
-        "secretbox": "secretbox",
-        "secretstream": "secretstream",
-        "stream_xchacha20": "stream_xchacha20"
-      }
-    },
-    "one_time_token_type": {
-      "name": "one_time_token_type",
-      "values": {
-        "confirmation_token": "confirmation_token",
-        "reauthentication_token": "reauthentication_token",
-        "recovery_token": "recovery_token",
-        "email_change_token_new": "email_change_token_new",
-        "email_change_token_current": "email_change_token_current",
-        "phone_change_token": "phone_change_token"
-      }
-    },
-    "request_status": {
-      "name": "request_status",
-      "values": {
-        "PENDING": "PENDING",
-        "SUCCESS": "SUCCESS",
-        "ERROR": "ERROR"
-      }
-    },
     "twilio_status": {
       "name": "twilio_status",
       "values": {
@@ -2954,7 +3206,8 @@
         "undelivered": "undelivered",
         "failed": "failed",
         "received": "received",
-        "sent": "sent"
+        "sent": "sent",
+        "delivery_unknown": "delivery_unknown"
       }
     }
   },

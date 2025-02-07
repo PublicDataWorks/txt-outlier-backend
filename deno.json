@@ -11,7 +11,8 @@
       "supabase/functions/"
     ],
     "exclude": [
-      "node_modules"
+      "node_modules",
+      "supabase/functions/tests/"
     ],
     "rules": {
       "tags": [
@@ -44,15 +45,13 @@
     ]
   },
   "tasks": {
-    "dev": "supabase start && supabase functions serve",
+    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../.env) && supabase functions serve",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "test:dbSetup": "cd backend/tests && supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer",
-    "test:dbTeardown": "cd backend/tests && supabase stop",
-    "test": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --quiet .",
-    "test:debug": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json .",
-    "test:coverage": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --coverage=cov_profile --quiet .",
-    "coverage": "deno coverage cov_profile --exclude=tests"
+    "test:setup": "supabase start && supabase functions serve --env-file supabase/.env",
+    "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=../../.env *.ts",
+    "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=../../.env --coverage=cov_profile *.ts",
+    "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
   },
   "imports": {
     "drizzle-orm": "npm:drizzle-orm@0.28.5",

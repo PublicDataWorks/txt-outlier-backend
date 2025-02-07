@@ -9,17 +9,13 @@ beforeEach(async () => {
   mf.install()
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const sqlScript1 = await Deno.readTextFile(
-    '../_shared/drizzle/0000_oval_ricochet.sql',
+    '../../migrations/0000_minor_magik.sql',
   )
   await supabase.execute(sql.raw(sqlScript1))
   const sqlScript2 = await Deno.readTextFile(
-    '../_shared/drizzle/0001_true_naoko.sql',
+    '../../migrations/0001_true_naoko.sql',
   )
   await supabase.execute(sql.raw(sqlScript2))
-  const initTestDB = await Deno.readTextFile(
-    'testDB.sql',
-  )
-  await supabase.execute(sql.raw(initTestDB))
 })
 
 afterEach(() => {
@@ -31,6 +27,9 @@ afterAll(async () => {
 })
 
 export const DROP_ALL_TABLES = `
+  DROP EXTENSION IF EXISTS pg_cron CASCADE;
+  DELETE from pgmq.q_broadcast_first_messages;
+  DELETE from pgmq.q_broadcast_second_messages;
   SET client_min_messages TO WARNING;
   DROP TABLE IF EXISTS "broadcasts_segments" CASCADE;
   DROP TABLE IF EXISTS "errors" CASCADE;
@@ -58,7 +57,6 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
-  DROP TABLE IF EXISTS cron.job CASCADE;
 `
 
 // Helper functions

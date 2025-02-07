@@ -1,4 +1,7 @@
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pgmq;
+SELECT pgmq.create('broadcast_first_messages');
+SELECT pgmq.create('broadcast_second_messages');
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.queue_broadcast_messages(
     p_broadcast_id int
@@ -101,5 +104,3 @@ ALTER TABLE public.broadcasts
 ALTER COLUMN delay DROP DEFAULT,
 ALTER COLUMN delay TYPE integer USING EXTRACT(EPOCH FROM delay)::integer,
 ALTER COLUMN delay SET DEFAULT 600;
--- CREATE EXTENSION IF NOT EXISTS cron;
--- --> statement-breakpoint

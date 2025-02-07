@@ -6,85 +6,65 @@ orbs:
 jobs:
   build-and-test:
     machine:
-      image: default
+      image: ubuntu-2204:current # more specific than 'default'
+    environment:
+      DENO_DIR: ~/.deno # cache Deno dependencies
     steps:
       - checkout
-      - run: curl -fsSL https://deno.land/x/install@v0.1.9/install.sh?source | sh
-      - run: /home/circleci/.deno/bin/deno upgrade --version 1.41.3
-      - run:
-          name: Run lint
-          command: /home/circleci/.deno/bin/deno task lint
-      - run:
-          name: Run fmt
-          command: /home/circleci/.deno/bin/deno task fmt --check
 
-      - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
+      # Install and setup Deno
+      - restore_cache:
+          keys:
+            - deno-cache-{{ checksum "deno.lock" }} # if you have deno.lock
       - run:
-          name: Setup for test
+          name: Install Deno
           command: |
-            cd backend/tests
-            npx supabase@1.159.1 start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer
+            curl -fsSL https://deno.land/x/install@v0.1.9/install.sh | sh
+            echo 'export DENO_INSTALL="/home/circleci/.deno"' >> $BASH_ENV
+            echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> $BASH_ENV
       - run:
-          name: Run the tests
-          command: /home/circleci/.deno/bin/deno task test:coverage
+          name: Upgrade Deno
+          command: deno upgrade --version 1.41.3
+      - save_cache:
+          key: deno-cache-{{ checksum "deno.lock" }}
+          paths:
+            - ~/.deno
+
+      # Code quality checks
       - run:
-          name: Coverage
-          command: /home/circleci/.deno/bin/deno coverage cov_profile --exclude=tests
+          name: Code formatting check
+          command: deno task fmt --check
       - run:
-          name: Clean up after test
+          name: Lint check
+          command: deno task lint
+
+      # Setup and run tests
+      - run:
+          name: Install Node.js
           command: |
-            cd backend/tests
-            npx supabase stop
-
-  deploy-production:
-    executor: aws-cli/default
-    steps:
-      - add_ssh_keys:
-          fingerprints:
-            - "SHA256:nellmY2hJL/tZt3X0j9w3qftzo2kQeb18M4+hhzTAXw"
-      - aws-cli/install
-
-      #This command will add the current CircleCI EC2 instance IP to the AWS security group specifically created for CircleCI.
+            curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash -
+            sudo apt-get install -y nodejs
       - run:
-          command: |
-            public_ip_address=$(wget -qO- http://checkip.amazonaws.com)
-            aws ec2 authorize-security-group-ingress --region $AWS_REGION --group-id $AWS_SECURITY_GROUP --ip-permissions "[{\"IpProtocol\": \"tcp\", \"FromPort\": $OPEN_PORT, \"ToPort\": $OPEN_PORT, \"IpRanges\": [{\"CidrIp\": \"${public_ip_address}/32\"}]}]"
-
+          name: Setup test environment
+          command: deno task test:setup
+          background: true # Run in background since it's a server
       - run:
-          command: sleep 5
-          name: Waiting of SSH Server to start at New EC2 Instance
-
-      # This command will run the deploy script
+          name: Wait for test setup
+          command: sleep 10 # Give test:setup time to start
       - run:
-          command: ssh -o StrictHostKeyChecking=no -t $SSH_USER@$SSH_HOST "export TERM=xterm; sh deploy.sh"
-          name: Run the script to deploy the project
-
-      # This command will delete all the IP addresses associated with the AWS security group specifically created for CircleCI.
+          name: Run tests with coverage
+          command: deno task test:coverage
       - run:
-          command: |
-            current_security_group=$(aws ec2 describe-security-groups --region $AWS_REGION --group-id $AWS_SECURITY_GROUP)
-            ip_count=$(echo ${current_security_group} | jq -r '.SecurityGroups[0].IpPermissions | length')
-            if [ ${ip_count} > 0 ]; then
-                for (( n=0; n < $ip_count; n++ ))
-                do
-              this_port=$(echo ${current_security_group} | jq -r ".SecurityGroups[0].IpPermissions[${n}].FromPort")
-              cidr_count=$(echo ${current_security_group} | jq -r ".SecurityGroups[0].IpPermissions[${n}].IpRanges | length")
-              for (( c=0; c < $cidr_count; c++ ))
-              do
-                  this_cidr=$(echo ${current_security_group} | jq -r ".SecurityGroups[0].IpPermissions[${n}].IpRanges[${c}].CidrIp")
-                  aws ec2 revoke-security-group-ingress --region $AWS_REGION --group-id $AWS_SECURITY_GROUP --protocol tcp --port ${this_port} --cidr ${this_cidr}
-              done
-                done
-            fi
+          name: Generate coverage report
+          command: deno coverage --include="^file:" --exclude="/tests/" supabase/functions/tests/cov_profile
+
+      # Cleanup
+      - run:
+          name: Cleanup test environment
+          command: cd supabase && npx supabase stop
+          when: always # Run even if tests fail
 
 workflows:
   test_and_deploy:
     jobs:
       - build-and-test
-      - deploy-production:
-          requires:
-            - build-and-test
-          filters:
-            branches:
-              only:
-                - main
