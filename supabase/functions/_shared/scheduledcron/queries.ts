@@ -90,7 +90,7 @@ const BROADCAST_RUNNING_INDICATORS: string[] = [
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
-  delay: string // 00:10:00
+  delay: number
   firstMessage: string
   secondMessage: string
   totalFirstSent: string

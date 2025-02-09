@@ -51,7 +51,7 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
     postData.posts.organization = MISSIVE_ORGANIZATION_ID
   }
 
-  const response = await fetch(CREATE_POST_URL, {
+  return await fetch(CREATE_POST_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -59,13 +59,6 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
     },
     body: JSON.stringify(postData),
   })
-
-  if (!response.ok) {
-    console.error(`HTTP error! detail: ${JSON.stringify(await response.json())}`)
-    throw new Error(`HTTP error! status: ${response.status}`)
-  }
-
-  return response.json()
 }
 
 export default {

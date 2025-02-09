@@ -32,7 +32,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Verify all required parameters are provided
-if [ -z "$SUPABASE_DB_URL" ] || [ -z "$EDGE_URL" ] || [ -z "$LOCAL_SERVICE_KEY" ]; then
+if [ -z "$SUPABASE_DB_URL" ] || [ -z "$EDGE_URL" ] || [ -z "$SERVICE_KEY" ]; then
     echo "Error: Missing required parameters"
     print_usage
 fi

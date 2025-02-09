@@ -24,7 +24,6 @@ export const twilioStatus = pgEnum('twilio_status', [
   'received',
   'sent',
 ])
-export const cronSchema = pgSchema('cron')
 
 export const broadcastsSegments = pgTable('broadcasts_segments', {
   id: serial('id').primaryKey().notNull(),
@@ -65,7 +64,7 @@ export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status
   }),
   isSecond: boolean('is_second').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
-  twilioSentStatus: twilioStatus('twilio_sent_status'),
+  twilioSentStatus: twilioStatus('twilio_sent_status').default('delivered'),
   twilioId: text('twilio_id'),
   message: text('message').notNull(),
   audienceSegmentId: bigint('audience_segment_id', { mode: 'number' }).notNull().references(() =>
@@ -352,7 +351,7 @@ export const organizations = pgTable('organizations', {
 })
 
 export const outgoingMessages = pgTable('outgoing_messages', {
-  id: integer('id').primaryKey().notNull(),
+  id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   recipientPhoneNumber: text('recipient_phone_number').notNull().references(() => authors.phoneNumber, {
     onUpdate: 'cascade',
@@ -368,12 +367,6 @@ export const outgoingMessages = pgTable('outgoing_messages', {
   }),
   isSecond: boolean('is_second').default(false).notNull(),
   processed: boolean('processed').default(false).notNull(),
-})
-
-export const cronJob = cronSchema.table('job', {
-  id: serial('id').primaryKey(),
-  jobname: text('jobname').notNull(),
-  schedule: text('schedule').notNull(),
 })
 
 export const lookupTemplate = pgTable('lookup_template', {

@@ -11,6 +11,7 @@ app.post('/reconcile-twilio-status/', async (c) => {
   if (!broadcastId || isNaN(Number(broadcastId))) {
     return AppResponse.badRequest('Invalid broadcastId')
   }
+  console.log(`Reconciling Twilio status for broadcastId: ${broadcastId}, broadcastRunAt: ${broadcastRunAt}`)
   try {
     await BroadcastService.reconcileTwilioStatus(Number(broadcastId), broadcastRunAt)
   } catch (error) {

@@ -136,7 +136,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
       })
   } else {
     let errorMessage = `
-        Failed to send broadcast message.
+        [sendBroadcastMessage] Failed to send broadcast message.
         Message: ${JSON.stringify(results[0])},
         isSecond: ${isSecond},
         broadcast: ${messageMetadata.broadcast_id}
@@ -249,13 +249,14 @@ const handleFailedDeliveries = async () => {
   let conversationsToUpdate = []
   let phonesToUpdate = []
   for (const conversation of failedDelivers) {
-    try {
-      await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    const response = await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    if (response.ok) {
       console.info(`Successfully unsubscribe ${conversation.phone_number}.`)
-    } catch (error) {
-      console.error(`Failed to create post when handleFailedDeliveries: ${error}`)
+    } else {
+      console.error(`[handleFailedDeliveries] Failed to create post. conversationId: ${conversation.missive_conversation_id}, postMessage: ${postErrorMessages}`)
       continue
     }
+
     conversationsToUpdate.push(conversation.missive_conversation_id)
     phonesToUpdate.push(conversation.phone_number)
     if (conversationsToUpdate.length > 4) {

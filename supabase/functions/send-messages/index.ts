@@ -8,6 +8,7 @@ const app = new Hono()
 
 app.post('/send-messages/', async (c) => {
   const { isSecond } = await c.req.json()
+  console.log(`Sending broadcast messages. isSecond: ${isSecond}`)
   try {
     await BroadcastService.sendBroadcastMessage(isSecond)
   } catch (error) {
