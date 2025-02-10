@@ -113,11 +113,13 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
   const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
   if (response.ok) {
+    let secondMessageQueueId = undefined
     if (!isSecond) {
-      await Promise.all([
+      const [_, sendResult] = await Promise.all([
         supabase.execute(pgmq_delete(queueName, results[0].msg_id)),
         supabase.execute(pgmq_send(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
       ])
+      secondMessageQueueId = sendResult[0].send
     } else {
       await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
     }
@@ -133,6 +135,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         missiveId: id,
         missiveConversationId: conversation,
         audienceSegmentId: messageMetadata.segment_id,
+        secondMessageQueueId: secondMessageQueueId
       })
   } else {
     let errorMessage = `

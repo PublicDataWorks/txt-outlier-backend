@@ -72,6 +72,7 @@ export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status
     onDelete: 'cascade',
   }),
   closed: boolean('closed').default(false),
+  secondMessageQueueId: bigint('second_message_queue_id', { mode: 'number' }),
 }, (table) => {
   return {
     broadcastSentMessageStatusMissiveIdKey: unique('broadcast_sent_message_status_missive_id_key').on(table.missiveId),
