@@ -4,4 +4,4 @@ class ValidationError extends Error {
   }
 }
 
-export default ValidationError;
+export default ValidationError

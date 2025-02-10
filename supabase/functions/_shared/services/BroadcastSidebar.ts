@@ -78,9 +78,13 @@ const updateSubscriptionStatus = async (
 
   const response = await MissiveUtils.createPost(conversationId, postMessage)
   if (response.ok) {
-    console.log(`[updateSubscriptionStatus] Successfully created post. conversationId: ${conversationId}, postMessage: ${postMessage}`)
+    console.log(
+      `[updateSubscriptionStatus] Successfully created post. conversationId: ${conversationId}, postMessage: ${postMessage}`,
+    )
   } else {
-    console.error(`[updateSubscriptionStatus] Failed to create post. conversationId: ${conversationId}, postMessage: ${postMessage}`)
+    console.error(
+      `[updateSubscriptionStatus] Failed to create post. conversationId: ${conversationId}, postMessage: ${postMessage}`,
+    )
     throw new Error('Failed to update subscription status and create post.')
   }
 }

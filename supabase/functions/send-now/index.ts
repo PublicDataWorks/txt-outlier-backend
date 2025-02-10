@@ -4,7 +4,11 @@ import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return AppResponse.ok()
+  }
+
   try {
     await BroadcastService.sendNow()
   } catch (error) {

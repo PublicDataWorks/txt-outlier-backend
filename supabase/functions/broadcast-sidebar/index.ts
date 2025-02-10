@@ -26,7 +26,9 @@ app.patch('/broadcast-sidebar/', async (c) => {
   if (!id || isNaN(Number(id)) || (!firstMessage && !secondMessage && !runAt && !delay)) {
     return AppResponse.badRequest()
   }
-    console.log(`Updating broadcast with id ${id}. First message: ${firstMessage}, second message: ${secondMessage}, run at: ${runAt}, delay: ${delay}`)
+  console.log(
+    `Updating broadcast with id ${id}. First message: ${firstMessage}, second message: ${secondMessage}, run at: ${runAt}, delay: ${delay}`,
+  )
   try {
     const result = await BroadcastSidebar.patch(Number(id), { firstMessage, secondMessage, runAt, delay })
     return AppResponse.ok(result)

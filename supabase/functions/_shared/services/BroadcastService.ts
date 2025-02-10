@@ -249,11 +249,17 @@ const handleFailedDeliveries = async () => {
   let conversationsToUpdate = []
   let phonesToUpdate = []
   for (const conversation of failedDelivers) {
-    const response = await MissiveUtils.createPost(conversation.missive_conversation_id, postErrorMessages, closingLabelId)
+    const response = await MissiveUtils.createPost(
+      conversation.missive_conversation_id,
+      postErrorMessages,
+      closingLabelId,
+    )
     if (response.ok) {
       console.info(`Successfully unsubscribe ${conversation.phone_number}.`)
     } else {
-      console.error(`[handleFailedDeliveries] Failed to create post. conversationId: ${conversation.missive_conversation_id}, postMessage: ${postErrorMessages}`)
+      console.error(
+        `[handleFailedDeliveries] Failed to create post. conversationId: ${conversation.missive_conversation_id}, postMessage: ${postErrorMessages}`,
+      )
       continue
     }
 

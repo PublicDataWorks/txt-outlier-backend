@@ -7,25 +7,25 @@ import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import ValidationError from '../_shared/exception/ValidationError.ts'
 
 type ConversationData = {
-  id: string;
-  external_authors: Array<{ phone_number: string }>;
+  id: string
+  external_authors: Array<{ phone_number: string }>
 }
 
 type RequestBody = {
-  conversation: ConversationData;
+  conversation: ConversationData
   comment?: {
     author?: {
-      name?: string;
-    };
-  };
+      name?: string
+    }
+  }
 }
 
 const ALLOWED_ACTIONS = ['resubscribe', 'unsubscribe'] as const
 type Action = typeof ALLOWED_ACTIONS[number]
 
 function validateRequest(action: string | null, body: unknown): {
-  body: RequestBody;
-  action: Action;
+  body: RequestBody
+  action: Action
 } {
   if (!action || !ALLOWED_ACTIONS.includes(action as Action)) {
     throw new BadRequestError(`Invalid action parameter: ${action}`)
@@ -87,7 +87,6 @@ Deno.serve(async (req) => {
 
     const validated = validateRequest(action, body)
     await handleSubscriptionUpdate(validated.body, validated.action)
-
   } catch (error) {
     console.error(`Error processing request: ${error.message}, stack: ${error.stack}`)
     Sentry.captureException(error)
