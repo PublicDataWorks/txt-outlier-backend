@@ -21,7 +21,7 @@ jobs:
           command: npx supabase start
       - run:
           name: Start Functions Server
-          command: npx supabase functions serve --env-file supabase/functions/tests/.env.testing
+          command: npx supabase functions serve --env-file supabase/functions/tests/.env.edge_testing
           background: true
       - run:
           name: Wait for services
