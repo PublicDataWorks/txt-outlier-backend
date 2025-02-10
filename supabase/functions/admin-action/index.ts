@@ -1,10 +1,10 @@
 import Sentry from '../_shared/lib/Sentry.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import BroadcastSidebar from '../_shared/services/BroadcastSidebar.ts'
-import { verifySignature } from './webhookAuth.ts'
 import UnauthorizedError from '../_shared/exception/UnauthorizedError.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import ValidationError from '../_shared/exception/ValidationError.ts'
+import Missive from '../_shared/lib/Missive.ts'
 
 type ConversationData = {
   id: string
@@ -20,14 +20,10 @@ type RequestBody = {
   }
 }
 
-const ALLOWED_ACTIONS = ['resubscribe', 'unsubscribe'] as const
-type Action = typeof ALLOWED_ACTIONS[number]
+const ALLOWED_ACTIONS: string[] = ['resubscribe', 'unsubscribe']
 
-function validateRequest(action: string | null, body: unknown): {
-  body: RequestBody
-  action: Action
-} {
-  if (!action || !ALLOWED_ACTIONS.includes(action as Action)) {
+function validateRequest(action: string | null, body: unknown) {
+  if (!action || !ALLOWED_ACTIONS.includes(action)) {
     throw new BadRequestError(`Invalid action parameter: ${action}`)
   }
 
@@ -43,25 +39,6 @@ function validateRequest(action: string | null, body: unknown): {
   if (!typedBody.conversation.external_authors[0]?.phone_number) {
     throw new ValidationError('Phone number not found')
   }
-
-  return {
-    body: typedBody,
-    action: action as Action,
-  }
-}
-
-async function handleSubscriptionUpdate(body: RequestBody, action: Action) {
-  const phoneNumber = body.conversation.external_authors[0].phone_number
-  const conversationId = body.conversation.id
-  const isUnsubscribe = action === 'unsubscribe'
-  const authorName = body.comment?.author?.name
-
-  await BroadcastSidebar.updateSubscriptionStatus(
-    conversationId,
-    phoneNumber,
-    isUnsubscribe,
-    authorName,
-  )
 }
 
 Deno.serve(async (req) => {
@@ -69,24 +46,23 @@ Deno.serve(async (req) => {
     if (req.method !== 'POST') {
       throw new BadRequestError('Method not allowed')
     }
-
-    const headerSig = req.headers.get('x-hook-signature')
-    if (!headerSig) {
-      throw new UnauthorizedError('Missing signature header')
-    }
-
     const body = await req.json()
-    console.log(`Received request with body: ${JSON.stringify(body)}`)
-    const isVerified = await verifySignature(headerSig, body)
+    const isVerified = await Missive.verifySignature(req, body)
     if (!isVerified) {
       throw new UnauthorizedError('Invalid signature')
     }
 
     const url = new URL(req.url)
     const action = url.searchParams.get('action')
+    validateRequest(action, body)
 
-    const validated = validateRequest(action, body)
-    await handleSubscriptionUpdate(validated.body, validated.action)
+    console.info(`Start handling ${action}: ${body.rule.id}, ${body.rule.type}`)
+    await BroadcastSidebar.updateSubscriptionStatus(
+      body.conversation.id,
+      body.conversation.external_authors[0].phone_number,
+      action === 'unsubscribe',
+      body.comment?.author?.name,
+    )
   } catch (error) {
     console.error(`Error processing request: ${error.message}, stack: ${error.stack}`)
     Sentry.captureException(error)

@@ -16,6 +16,10 @@ beforeEach(async () => {
     '../../migrations/0001_true_naoko.sql',
   )
   await supabase.execute(sql.raw(sqlScript2))
+  const sqlScript3 = await Deno.readTextFile(
+    '../../migrations/20250210085456_add_second_message_queue_id.sql',
+  )
+  await supabase.execute(sql.raw(sqlScript3))
 })
 
 afterEach(() => {
@@ -57,6 +61,7 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
+  DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
 `
 
 // Helper functions

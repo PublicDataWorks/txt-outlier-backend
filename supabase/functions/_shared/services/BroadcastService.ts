@@ -135,7 +135,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         missiveId: id,
         missiveConversationId: conversation,
         audienceSegmentId: messageMetadata.segment_id,
-        secondMessageQueueId: secondMessageQueueId
+        secondMessageQueueId: secondMessageQueueId,
       })
   } else {
     let errorMessage = `
