@@ -1,0 +1,5 @@
+const MISSIVE_API_RATE_LIMIT = 1000
+const FIRST_MESSAGES_QUEUE = 'broadcast_first_messages'
+const SECOND_MESSAGES_QUEUE_NAME = 'broadcast_second_messages'
+
+export { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME }

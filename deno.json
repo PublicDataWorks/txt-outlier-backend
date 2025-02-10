@@ -8,11 +8,11 @@
   },
   "lint": {
     "include": [
-      "backend/"
+      "supabase/functions/"
     ],
     "exclude": [
-      "backend/drizzle/node_modules",
-      "node_modules"
+      "node_modules",
+      "supabase/functions/tests/"
     ],
     "rules": {
       "tags": [
@@ -28,11 +28,11 @@
     "singleQuote": true,
     "proseWrap": "preserve",
     "include": [
-      "backend/"
+      "supabase/functions/"
     ],
     "exclude": [
-      "backend/drizzle/node_modules",
-      "node_modules"
+      "node_modules",
+      "**/*.json"
     ]
   },
   "test": {
@@ -45,15 +45,27 @@
     ]
   },
   "tasks": {
-    "run": "deno run --watch --allow-all --env=.env --unsafely-ignore-certificate-errors backend/index.ts",
-    "fmt": "deno fmt **/*.ts",
-    "lint": "deno lint **/*.ts",
-    "test:dbSetup": "cd backend/tests && supabase start -x gotrue,realtime,storage-api,imgproxy,inbucket,postgrest,pgadmin-schema-diff,migra,postgres-meta,studio,edge-runtime,logflare,vector, pgbouncer",
-    "test:dbTeardown": "cd backend/tests && supabase stop",
-    "test": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --quiet .",
-    "test:debug": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json .",
-    "test:coverage": "TZ=UTC deno test --no-check --no-lock --allow-all --env=backend/tests/.env.test --import-map=backend/tests/import_map.json --coverage=cov_profile --quiet .",
-    "coverage": "deno coverage cov_profile --exclude=tests"
+    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../../.env) && supabase functions serve",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
+    "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing *.ts",
+    "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile *.ts",
+    "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
   },
-  "importMap": "./import_map.json"
+  "imports": {
+    "drizzle-orm": "npm:drizzle-orm@0.28.5",
+    "drizzle-orm/postgres-js": "npm:drizzle-orm@0.28.5/postgres-js",
+    "drizzle-orm/pg-core": "npm:drizzle-orm@0.28.5/pg-core",
+    "date-fns": "https://esm.sh/date-fns@3.6.0",
+    "encoding/": "https://deno.land/std@0.210.0/encoding/",
+    "twilio": "npm:twilio@^5.4.3",
+    "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
+    "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
+    "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
+    "hono": "jsr:@hono/hono@4.6.20",
+    "node-mocks-http": "npm:node-mocks-http",
+    "mock-fetch": "https://deno.land/x/mock_fetch@0.3.0/mod.ts",
+    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts"
+  }
 }
