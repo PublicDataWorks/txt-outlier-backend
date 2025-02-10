@@ -1,5 +1,5 @@
 import { RuleType } from './types.ts'
-import { insertHistory } from './handlers/utils.ts'
+import { handleError, insertHistory } from './handlers/utils.ts'
 import { handleNewComment } from './handlers/comment-handler.ts'
 import { handleTeamChange } from './handlers/team-handler.ts'
 import { handleLabelChange } from './handlers/label-handler.ts'
@@ -10,16 +10,16 @@ import LookupService from '../_shared/services/LookupService.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Missive from '../_shared/lib/Missive.ts'
 import UnauthorizedError from '../_shared/exception/UnauthorizedError.ts'
-import Sentry from '../_shared/lib/Sentry.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 
 Deno.serve(async (req: Request) => {
+  let requestBody
   try {
     if (req.method !== 'POST') {
       throw new BadRequestError('Method not allowed')
     }
 
-    const requestBody = await req.json()
+    requestBody = await req.json()
     const isVerified = await Missive.verifySignature(req, requestBody)
     if (!isVerified) {
       throw new UnauthorizedError('Invalid signature')
@@ -65,7 +65,10 @@ Deno.serve(async (req: Request) => {
     console.info(`Successfully handled rule: ${requestBody.rule.id}, ${requestBody.rule.type}`)
   } catch (error) {
     console.error(`Error processing request: ${error.message}, stack: ${error.stack}`)
-    Sentry.captureException(error)
+    if (requestBody) {
+      await handleError(requestBody, error)
+    }
+    // Sentry.captureException(error)
   }
   return AppResponse.ok()
 })

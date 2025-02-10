@@ -20,6 +20,7 @@ import {
   conversationsLabels,
   conversationsUsers,
   ConversationUser,
+  errors,
   invokeHistory,
   Label,
   labels,
@@ -284,3 +285,17 @@ export const insertHistory = async (requestBody: RequestBody) => {
 }
 
 export const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export const handleError = async (
+  requestBody: RequestBody,
+  appError: Error,
+) => {
+  const err = {
+    ruleId: requestBody.rule.id,
+    ruleDescription: requestBody.rule.description,
+    ruleType: requestBody.rule.type,
+    message: appError.message,
+    requestBody: JSON.stringify(requestBody),
+  }
+  await supabase.insert(errors).values(err)
+}
