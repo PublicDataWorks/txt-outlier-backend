@@ -69,8 +69,12 @@ BEGIN
         EXECUTE format(
             'INSERT INTO recipients_temp (phone_number, segment_id)
             SELECT DISTINCT phone_number, %s
-            FROM (%s LIMIT %s) AS sq
-            WHERE phone_number NOT IN (SELECT phone_number FROM recipients_temp)
+            FROM (
+                SELECT DISTINCT phone_number
+                FROM (%s) AS inner_sq
+                WHERE phone_number NOT IN (SELECT phone_number FROM recipients_temp)
+                LIMIT %s
+            ) AS sq
             ON CONFLICT (phone_number) DO NOTHING',
             v_inactive_segment_id,
             (SELECT query FROM public.audience_segments WHERE name = 'Inactive'),

@@ -5,7 +5,6 @@ import {
   integer,
   jsonb,
   pgEnum,
-  pgSchema,
   pgTable,
   serial,
   smallint,
