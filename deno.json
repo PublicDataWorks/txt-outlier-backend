@@ -48,7 +48,7 @@
     "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../../.env) && supabase functions serve",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.testing",
+    "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
     "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing *.ts",
     "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile *.ts",
     "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
