@@ -147,7 +147,7 @@ describe(
           method: 'PATCH',
           body: {
             id: broadcast.id,
-            noRecipients: 22
+            noRecipients: 22,
           },
         })
 
@@ -158,9 +158,9 @@ describe(
             secondMessage: 'Original second message',
             noRecipients: 22,
             delay: 600,
-            runAt: Math.floor((futureDate.getTime()) / 1000)
+            runAt: Math.floor((futureDate.getTime()) / 1000),
           },
-          error: null
+          error: null,
         })
       })
 
@@ -175,7 +175,7 @@ describe(
           noUsers: 100,
         })
 
-        const {data, error} = await client.functions.invoke(FUNCTION_NAME, {
+        const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
           method: 'PATCH',
           body: {
             id: 'asdf',
@@ -185,10 +185,9 @@ describe(
 
         assertEquals(data, null)
         let errorContext = await error.context.json()
-        assertEquals(errorContext.message, "Bad Request")
+        assertEquals(errorContext.message, 'Bad Request')
 
-
-        const {data: data_negative, error: error_negative } = await client.functions.invoke(FUNCTION_NAME, {
+        const { data: data_negative, error: error_negative } = await client.functions.invoke(FUNCTION_NAME, {
           method: 'PATCH',
           body: {
             id: broadcast.id,
@@ -199,7 +198,7 @@ describe(
         assertEquals(data_negative, null)
 
         errorContext = await error_negative.context.json()
-        assertEquals(errorContext.message, "Bad Request")
+        assertEquals(errorContext.message, 'Bad Request')
       })
     })
 
@@ -226,7 +225,7 @@ describe(
       assertEquals(data, null)
 
       const errorContext = await error.context.json()
-      assertEquals(errorContext.message, "Bad Request")
+      assertEquals(errorContext.message, 'Bad Request')
     })
 
     it('should update partial fields', async () => {
