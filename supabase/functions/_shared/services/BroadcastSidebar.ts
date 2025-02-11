@@ -47,6 +47,7 @@ const patch = async (
         secondMessage: broadcast.secondMessage,
         runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
         delay: broadcast.delay,
+        noUsers: broadcast.noRecipients,
       })
       .where(and(eq(broadcasts.id, id), eq(broadcasts.editable, true)))
       .returning()

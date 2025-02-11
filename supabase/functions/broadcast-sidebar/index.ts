@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { z } from "https://deno.land/x/zod@v3.24.1/mod.ts";
 
 import BroadcastSidebar from '../_shared/services/BroadcastSidebar.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
@@ -21,23 +22,43 @@ app.get('/broadcast-sidebar/', async (c) => {
   }
 })
 
+const PatchBroadcastDTOSchema = z.object({
+  id: z.number(),
+  firstMessage: z.string().optional(),
+  secondMessage: z.string().optional(),
+  runAt: z.number().optional(),
+  delay: z.number().optional(),
+  noRecipients: z.number().gt(0).optional()
+});
+
 app.patch('/broadcast-sidebar/', async (c) => {
-  const { id, firstMessage, secondMessage, runAt, delay } = await c.req.json()
-  if (!id || isNaN(Number(id)) || (!firstMessage && !secondMessage && !runAt && !delay)) {
-    return AppResponse.badRequest()
-  }
-  console.log(
-    `Updating broadcast with id ${id}. First message: ${firstMessage}, second message: ${secondMessage}, run at: ${runAt}, delay: ${delay}`,
-  )
   try {
-    const result = await BroadcastSidebar.patch(Number(id), { firstMessage, secondMessage, runAt, delay })
-    return AppResponse.ok(result)
+    const requestBody = await c.req.json()
+    const data = PatchBroadcastDTOSchema.parse(requestBody);
+
+    const { id, firstMessage, secondMessage, runAt, delay, noRecipients } = data;
+
+
+    if (!firstMessage && !secondMessage && runAt === undefined && delay === undefined && noRecipients === undefined) {
+      return AppResponse.badRequest();
+    }
+
+    console.log(
+      `Updating broadcast with id ${id}. First message: ${firstMessage}, second message: ${secondMessage}, run at: ${runAt}, delay: ${delay}, noRecipients: ${noRecipients}`,
+    );
+
+    const result = await BroadcastSidebar.patch(Number(id), { firstMessage, secondMessage, runAt, delay, noRecipients });
+    return AppResponse.ok(result);
   } catch (error) {
-    console.error(`Error: ${error.message}`)
-    Sentry.captureException(error)
-    return AppResponse.internalServerError()
+    if (error instanceof z.ZodError) {
+      console.error(`Validation error: ${error.errors.map(e => ` [${e.path}] - ${e.message}`)}`);
+      return AppResponse.badRequest();
+    }
+    console.error(`Error: ${error.message}`);
+    Sentry.captureException(error);
+    return AppResponse.internalServerError();
   }
-})
+});
 
 app.options('/broadcast-sidebar/', () => {
   return AppResponse.ok()
