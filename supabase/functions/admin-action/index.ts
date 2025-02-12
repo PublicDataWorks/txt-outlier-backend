@@ -57,10 +57,14 @@ Deno.serve(async (req) => {
     validateRequest(action, body)
 
     console.info(`Start handling ${action}: ${body.rule.id}, ${body.rule.type}`)
+    const isUnsubscribe = action === 'unsubscribe'
+    if (isUnsubscribe) {
+      await BroadcastSidebar.removeBroadcastSecondMessage(body.conversation.external_authors[0].phone_number)
+    }
     await BroadcastSidebar.updateSubscriptionStatus(
       body.conversation.id,
       body.conversation.external_authors[0].phone_number,
-      action === 'unsubscribe',
+      isUnsubscribe,
       body.comment?.author?.name,
     )
   } catch (error) {

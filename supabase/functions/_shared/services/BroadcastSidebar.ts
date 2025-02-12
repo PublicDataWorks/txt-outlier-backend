@@ -1,3 +1,5 @@
+import { and, eq, sql, desc } from 'drizzle-orm'
+
 import {
   BroadcastResponse,
   BroadcastUpdate,
@@ -6,11 +8,11 @@ import {
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import supabase from '../lib/supabase.ts'
-import { authors, Broadcast, broadcasts } from '../drizzle/schema.ts'
-import { and, eq, sql } from 'drizzle-orm'
+import { authors, Broadcast, broadcasts, broadcastSentMessageStatus } from '../drizzle/schema.ts'
 import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
-import { BroadcastDashBoardQueryReturn, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
+import { BroadcastDashBoardQueryReturn, pgmq_delete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
+import { SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts';
 
 const getAll = async (
   limit = 5, // Limit past batches
@@ -89,4 +91,22 @@ const updateSubscriptionStatus = async (
   }
 }
 
-export default { getAll, patch, updateSubscriptionStatus }
+const removeBroadcastSecondMessage = async (phoneNumber: string) => {
+  const sentMessage = await supabase
+    .select()
+    .from(broadcastSentMessageStatus)
+    .where(
+      and(
+        eq(broadcastSentMessageStatus.recipientPhoneNumber, phoneNumber),
+        eq(broadcastSentMessageStatus.isSecond, false),
+      ),
+    )
+    .orderBy(desc(broadcastSentMessageStatus.id))
+    .limit(1)
+  if (sentMessage.length > 0 && sentMessage[0].secondMessageQueueId) {
+    await supabase.execute(
+      pgmq_delete(SECOND_MESSAGES_QUEUE_NAME, String(sentMessage[0].secondMessageQueueId)),
+    )
+  }
+}
+export default { getAll, patch, updateSubscriptionStatus, removeBroadcastSecondMessage }

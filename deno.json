@@ -45,7 +45,7 @@
     ]
   },
   "tasks": {
-    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../../.env) && supabase functions serve",
+    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../.env) && supabase functions serve",
     "fmt": "deno fmt",
     "lint": "deno lint",
     "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
