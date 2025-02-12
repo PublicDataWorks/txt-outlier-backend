@@ -1,0 +1,2 @@
+ALTER TABLE broadcast_sent_message_status
+ADD COLUMN second_message_queue_id BIGINT;

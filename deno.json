@@ -45,12 +45,12 @@
     ]
   },
   "tasks": {
-    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../../.env) && supabase functions serve",
+    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../.env) && supabase functions serve",
     "fmt": "deno fmt",
     "lint": "deno lint",
     "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
-    "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing *.ts",
-    "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile *.ts",
+    "test": "cd supabase/functions/tests/ && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing **/*.ts",
+    "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile **/*.ts",
     "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
   },
   "imports": {
@@ -60,6 +60,7 @@
     "date-fns": "https://esm.sh/date-fns@3.6.0",
     "encoding/": "https://deno.land/std@0.210.0/encoding/",
     "twilio": "npm:twilio@^5.4.3",
+    "date-fns/": "https://deno.land/x/date_fns@v2.15.0/",
     "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
