@@ -1,5 +1,6 @@
 import { decodeHex } from 'encoding/hex.ts'
 import UnauthorizedError from '../exception/UnauthorizedError.ts'
+import Sentry from './Sentry.ts'
 
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
@@ -9,7 +10,8 @@ const MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES = Deno.env.get('MISSIVE_SECRET_BR
 const MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES')!
 const MISSIVE_SECRET_NON_BROADCAST = Deno.env.get('MISSIVE_SECRET_NON_BROADCAST')!
 
-const sendMessage = (message: string, toPhone: string, isSecond: boolean) => {
+const sendMessage = async (message: string, toPhone: string, isSecond: boolean) => {
+  const startTime = Date.now()
   const body = {
     drafts: {
       'body': message,
@@ -24,7 +26,7 @@ const sendMessage = (message: string, toPhone: string, isSecond: boolean) => {
     },
   }
   const apiToken = isSecond ? MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES : MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES
-  return fetch(CREATE_MESSAGE_URL, {
+  const response = await fetch(CREATE_MESSAGE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -32,6 +34,13 @@ const sendMessage = (message: string, toPhone: string, isSecond: boolean) => {
     },
     body: JSON.stringify(body),
   })
+  const elapsedTime = Date.now() - startTime
+  if (elapsedTime > 10000) {
+    Sentry.captureException(
+      `Missive DRAFT API call took too long. Elapsed time: ${elapsedTime}ms. Message: ${message}. Phone: ${toPhone}. Is second: ${isSecond}`,
+    )
+  }
+  return response
 }
 
 const createPost = async (conversationId: string, postBody: string, sharedLabelId?: string) => {

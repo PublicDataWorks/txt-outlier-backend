@@ -30,8 +30,8 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
            b.no_users                                                                                                                 AS "noUsers",
            count(bsms.id) FILTER (WHERE bsms.is_second = FALSE)                                                                       AS "totalFirstSent",
            count(bsms.id) FILTER (WHERE bsms.is_second = TRUE)                                                                        AS "totalSecondSent",
-           count(bsms.id) FILTER (WHERE bsms.twilio_sent_at IS NOT NULL AND bsms.twilio_sent_status IN ('delivered', 'received'))     AS "successfullyDelivered",
-           count(bsms.id) FILTER (WHERE bsms.twilio_sent_status = 'undelivered')                                                      AS "failedDelivered",
+           count(bsms.id) FILTER (WHERE bsms.twilio_id IS NOT NULL AND bsms.twilio_sent_status IN ('delivered', 'sent'))              AS "successfullyDelivered",
+           count(bsms.id) FILTER (WHERE bsms.twilio_sent_status IN ('undelivered', 'failed'))                                         AS "failedDelivered",
            count(distinct um.id)                                                                                                      AS "totalUnsubscribed"
     FROM broadcasts b
            LEFT JOIN broadcast_sent_message_status bsms ON b.id = bsms.broadcast_id
