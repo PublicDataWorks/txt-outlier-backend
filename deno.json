@@ -49,7 +49,7 @@
     "fmt": "deno fmt",
     "lint": "deno lint",
     "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
-    "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing *.ts",
+    "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing broadcast-schedules-tests.ts",
     "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile *.ts",
     "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
   },
@@ -64,8 +64,6 @@
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
     "hono": "jsr:@hono/hono@4.6.20",
-    "node-mocks-http": "npm:node-mocks-http",
-    "mock-fetch": "https://deno.land/x/mock_fetch@0.3.0/mod.ts",
     "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts"
   }
 }

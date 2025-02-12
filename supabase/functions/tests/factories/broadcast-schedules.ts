@@ -1,51 +1,61 @@
-import { z } from "https://deno.land/x/zod@v3.24.1/mod.ts"
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+// factories/broadcastSchedule.ts
+import { faker } from 'faker'
+import { broadcastSchedules } from '../../_shared/drizzle/schema.ts'
+import supabase from '../../_shared/lib/supabase.ts'
 
+type CreateBroadcastScheduleParams = {
+  mon?: string | null
+  tue?: string | null
+  wed?: string | null
+  thu?: string | null
+  fri?: string | null
+  sat?: string | null
+  sun?: string | null
+  active?: boolean
+}
 
-const createBroadcastParamsSchema = z.object({
-  mon: z.string().nullable(),
-  tue: z.string().nullable(),
-  wed: z.string().nullable(),
-  thu: z.string().nullable(),
-  fri: z.string().nullable(),
-  sat: z.string().nullable(),
-  sun: z.string().nullable(),
-  active: z.boolean().default(true),
-})
+const generateRandomTime = (): string => {
+  const hours = faker.datatype.number({ min: 0, max: 23 })
+  const minutes = faker.datatype.number({ min: 0, max: 59 })
+  const seconds = faker.datatype.number({ min: 0, max: 59 })
 
-type CreateBroadcastParams = z.infer<typeof createBroadcastParamsSchema>
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
 
-export const createBroadcastSchedule = async (
-  input: CreateBroadcastParams
-) => {
-  try {
-    const supabase = createClient(
-      "http://localhost:54321",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
-    )
-
-    // Validate input against schema
-    const validatedData = createBroadcastParamsSchema.parse(input)
-
-    // Insert into broadcast_schedules table
-    const { data, error } = await supabase
-      .from('broadcast_schedules')
-      .insert([validatedData])
-      .select()
-      .single()
-
-    console.log(data)
-    console.log("error",error)
-    if (error) {
-      console.error(error)
-      throw new Error(`Failed to create broadcast schedule: ${error.message}`)
-    }
-
-    return data
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      throw new Error(`Validation error: ${error.message}`)
-    }
-    throw error
+export const createBroadcastSchedule = async (params: CreateBroadcastScheduleParams = {}) => {
+  const broadcastSchedule = {
+    mon: params.mon ?? generateRandomTime(),
+    tue: params.tue ?? generateRandomTime(),
+    wed: params.wed ?? generateRandomTime(),
+    thu: params.thu ?? generateRandomTime(),
+    fri: params.fri ?? generateRandomTime(),
+    sat: params.sat ?? generateRandomTime(),
+    sun: params.sun ?? generateRandomTime(),
+    active: params.active ?? true,
   }
+
+  const [result] = await supabase
+    .insert(broadcastSchedules)
+    .values(broadcastSchedule)
+    .returning()
+
+  return result
+}
+
+export const createBroadcastSchedules = async (times = 1) => {
+  const newSchedules = Array.from({ length: times }, () => ({
+    mon: generateRandomTime(),
+    tue: generateRandomTime(),
+    wed: generateRandomTime(),
+    thu: generateRandomTime(),
+    fri: generateRandomTime(),
+    sat: generateRandomTime(),
+    sun: generateRandomTime(),
+    active: true,
+  }))
+
+  return supabase
+    .insert(broadcastSchedules)
+    .values(newSchedules)
+    .returning()
 }

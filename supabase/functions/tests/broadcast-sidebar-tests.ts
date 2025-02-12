@@ -120,7 +120,7 @@ describe(
         noUsers: 50,
       })
 
-      const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'PATCH',
         body: {
           id: broadcast.id,
@@ -164,7 +164,7 @@ describe(
         })
       })
 
-      it('shoud return bad request when the noRecipients is less than or equal to 0', async () => {
+      it('should return bad request when the noRecipients is less than or equal to 0', async () => {
         const futureDate = new Date()
         futureDate.setDate(futureDate.getDate() + 1)
         const broadcast: Broadcast = await createBroadcast({
@@ -217,8 +217,8 @@ describe(
         method: 'PATCH',
         body: {
           id: broadcast.id,
-          noRecipients: 'asdfasfdv',
-          firstMessage: 'coreect msg',
+          noRecipients: 'incorrect',
+          firstMessage: 'correct msg',
         },
       })
 
