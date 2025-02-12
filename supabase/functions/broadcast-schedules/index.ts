@@ -26,7 +26,6 @@ app.get('/broadcast-schedules/', async () => {
     .where(eq(broadcastSchedules.active, true))
     .orderBy(desc(broadcastSchedules.id))
     .limit(1)
-  console.log('schedule', schedule)
   return AppResponse.ok(schedule)
 })
 

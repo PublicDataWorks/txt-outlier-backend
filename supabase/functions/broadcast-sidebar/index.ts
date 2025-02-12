@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { z } from 'https://deno.land/x/zod@v3.24.1/mod.ts'
+import { z } from 'zod'
 
 import BroadcastSidebar from '../_shared/services/BroadcastSidebar.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
