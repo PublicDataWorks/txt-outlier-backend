@@ -105,7 +105,7 @@ const sendNow = async (): Promise<void> => {
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  const results = await supabase.execute(pgmq_read(queueName, 10))
+  const results = await supabase.execute(pgmq_read(queueName, 60))
   if (results.length === 0) {
     return
   }
@@ -138,19 +138,22 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         secondMessageQueueId: secondMessageQueueId,
       })
   } else {
-    let errorMessage = `
+    const errorMessage = `
         [sendBroadcastMessage] Failed to send broadcast message.
         Message: ${JSON.stringify(results[0])},
         isSecond: ${isSecond},
         broadcast: ${messageMetadata.broadcast_id}
         Missive's response = ${JSON.stringify(await response.json())}
       `
-    if (results[0].read_ct > 2) {
-      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
-      errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`
-    }
     console.error(errorMessage)
     Sentry.captureException(errorMessage)
+    if (results[0].read_ct > 2 && response?.status !== 429) {
+      // TODO: Insert somewhere to handle failed deliveries
+      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+      Sentry.captureException(
+        `Message deleted from ${queueName}. Status code: ${response?.status}. ${JSON.stringify(messageMetadata)}`,
+      )
+    }
   }
 }
 
