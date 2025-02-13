@@ -1,5 +1,5 @@
 import { faker } from 'faker'
-import { BroadcastMessageStatus, broadcastSentMessageStatus } from '../../_shared/drizzle/schema.ts'
+import { BroadcastMessageStatus, broadcasts, broadcastSentMessageStatus } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { createBroadcast } from './broadcast.ts'
 import { createSegment } from './segment.ts'
@@ -13,29 +13,34 @@ type CreateBroadcastSentMessageParams = {
   twilioSentStatus?: string
   secondMessageQueueId?: number
   createdAt?: string
+  twilioId?: string
 }
 
 export const createBroadcastSentMessageStatus = async ({
   isSecond = false,
+  broadcastId,
   recipient,
   secondMessageQueueId,
   createdAt,
+  twilioId,
+  twilioSentStatus,
 }: CreateBroadcastSentMessageParams) => {
-  const broadcast = await createBroadcast()
-  const segment = await createSegment(broadcast.id)
+  const id = broadcastId || (await createBroadcast()).id
+  const segment = await createSegment(id)
   await createAuthors(1, recipient)
 
   const sentMessage = {
     recipientPhoneNumber: recipient,
     missiveId: faker.random.uuid(),
     missiveConversationId: faker.random.uuid(),
-    broadcastId: broadcast.id,
+    broadcastId: id,
     isSecond,
-    twilioSentStatus: faker.random.arrayElement(['delivered', 'sent', 'undelivered']),
+    twilioSentStatus: twilioSentStatus || faker.random.arrayElement(['delivered', 'sent', 'undelivered']),
     message: isSecond ? `Second message ${faker.lorem.sentence()}` : `First message ${faker.lorem.sentence()}`,
     audienceSegmentId: segment.id,
     secondMessageQueueId,
     createdAt,
+    twilioId,
   }
 
   const [result] = await supabase
@@ -44,10 +49,4 @@ export const createBroadcastSentMessageStatus = async ({
     .values(sentMessage)
     .returning()
   return result
-}
-
-export const createBothBroadcastSentMessageStatus = async (broadcastId = 1) => {
-  const first = await createBroadcastSentMessageStatus({ broadcastId, isSecond: false })
-  const second = await createBroadcastSentMessageStatus({ broadcastId, isSecond: true })
-  return { first, second }
 }
