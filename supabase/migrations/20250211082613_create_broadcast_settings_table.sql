@@ -1,4 +1,4 @@
-create table broadcast_schedules
+create table broadcast_settings
 (
   id         bigint primary key generated always as identity not null,
   mon        time null,
@@ -8,113 +8,16 @@ create table broadcast_schedules
   fri        time null,
   sat        time null,
   sun        time null,
+  batch_size integer not null,
   active     boolean     default true not null,
   created_at timestamptz default now() null,
   updated_at timestamptz default now() not null
 );
--------
+------------------------------------------
 CREATE OR REPLACE FUNCTION schedule_cron_for_next_broadcast()
 RETURNS void AS $$
 DECLARE
-    schedule_record RECORD;
-    current_time TIME;
-    next_run_time TIMESTAMP;
-    day_time TIME;
-    i INTEGER;
-    service_key TEXT;
-    edge_url TEXT;
-BEGIN
-    -- Check if job already exists
-    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'delay-invoke-broadcast') THEN
-        RETURN;
-    END IF;
-
-    -- Get the first active schedule
-    SELECT * INTO schedule_record
-    FROM broadcast_schedules
-    WHERE active = true
-    ORDER BY id DESC
-    LIMIT 1;
-
-    IF NOT FOUND THEN
-        RETURN;
-    END IF;
-
-    -- Get secrets from vault
-    SELECT decrypted_secret INTO service_key
-    FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
-
-    SELECT decrypted_secret INTO edge_url
-    FROM vault.decrypted_secrets
-    WHERE name = 'edge_function_url';
-
-    -- Get current time and day
-    current_time := CURRENT_TIME;
-
-    -- Find the next run time
-    next_run_time := NULL;
-
-    -- Start from current day and loop through next 7 days
-    FOR i IN 0..6 LOOP
-        -- Calculate the date we're checking
-        SELECT CURRENT_DATE + i * INTERVAL '1 day' INTO next_run_time;
-
-        -- Get the day name (mon, tue, etc.)
-        current_day := LOWER(TO_CHAR(next_run_time, 'Dy'));
-
-        -- Get the time for this day from our schedule
-        EXECUTE format('SELECT ($1).%I::time', current_day)
-        USING schedule_record
-        INTO day_time;
-
-        -- If we have a time for this day
-        IF day_time IS NOT NULL THEN
-            -- If it's today, check if the time hasn't passed yet
-            IF i = 0 THEN
-                IF day_time > current_time THEN
-                    next_run_time := next_run_time + day_time;
-                    EXIT;
-                END IF;
-            ELSE
-                next_run_time := next_run_time + day_time;
-                EXIT;
-            END IF;
-        END IF;
-    END LOOP;
-
-    -- If we found a next run time, schedule the job
-    IF next_run_time IS NOT NULL THEN
-        EXECUTE format(
-            'SELECT cron.schedule(
-                ''delay-invoke-broadcast'',
-                ''%s'',
-                $$
-                    SELECT cron.schedule(
-                        ''invoke-broadcast'',
-                        ''* * * * *'',
-                        ''SELECT net.http_get(
-                            url:=''''%s/make'''',
-                            headers:=''''{
-                                "Content-Type": "application/json",
-                                "Authorization": "Bearer %s"
-                            }''''::jsonb
-                        ) as request_id;''
-                    );
-                $$
-            )',
-            next_run_time,
-            edge_url,
-            service_key
-        );
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
--------------------------
-CREATE OR REPLACE FUNCTION schedule_cron_for_next_broadcast()
-RETURNS void AS $$
-DECLARE
-    schedule_record broadcast_schedules%ROWTYPE;
+    setting_record broadcast_settings%ROWTYPE;
     next_run_time TIMESTAMP;
     today_name TEXT;
     day_time TIME;
@@ -129,8 +32,8 @@ BEGIN
     END IF;
 
     -- Get the first active schedule
-    SELECT * INTO schedule_record
-    FROM broadcast_schedules
+    SELECT * INTO setting_record
+    FROM broadcast_settings
     WHERE active = true
     ORDER BY id DESC
     LIMIT 1;
@@ -158,7 +61,7 @@ BEGIN
 
         -- Get the scheduled time for this day
         EXECUTE format('SELECT $1.%I', today_name)
-        USING schedule_record
+        USING setting_record
         INTO day_time;
 
         -- If we have a time for this day (not null)
@@ -192,8 +95,9 @@ BEGIN
         'SELECT cron.schedule(
             ''invoke-broadcast'',
             ''* * * * *'',
-            ''SELECT net.http_get(
+            ''SELECT net.http_post(
                 url:=''''%smake/'''',
+                body:=''''{"batchSize": %s}''''::jsonb,
                 headers:=''''{
                     "Content-Type": "application/json",
                     "Authorization": "Bearer %s"
@@ -201,6 +105,7 @@ BEGIN
             ) as request_id;''
         );',
         edge_url,
+        setting_record.batch_size,
         service_key
     );
 
@@ -214,3 +119,9 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
+-------------------------------
+ SELECT cron.schedule(
+  'schedule-next-broadcast',
+  '0 0 * * *',
+  'SELECT schedule_cron_for_next_broadcast();'
+);

@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 
 import supabase from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
@@ -24,21 +24,17 @@ import {
 import NotFoundError from '../exception/NotFoundError.ts'
 import BadRequestError from '../exception/BadRequestError.ts'
 import Sentry from '../lib/Sentry.ts'
-import { isBroadcastRunning, makeNextBroadcastSchedule } from './BroadcastServiceUtils.ts'
+import { insertNewBroadcast, isBroadcastRunning } from './BroadcastServiceUtils.ts'
 import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
 import { cloneBroadcast } from '../misc/utils.ts'
 
-const makeBroadcast = async (): Promise<void> => {
+const makeBroadcast = async (batchSize: number): Promise<void> => {
   const isRunning = await isBroadcastRunning()
   if (isRunning) {
     throw new BadRequestError('Unable to make broadcast: another broadcast is running')
   }
   // @ts-ignore: Property broadcasts exists at runtime
-  const broadcast = await supabase.query.broadcasts.findFirst({
-    where: and(
-      eq(broadcasts.editable, true),
-      lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
-    ),
+  const lastBroadcast = await supabase.query.broadcasts.findFirst({
     with: {
       broadcastToSegments: {
         with: {
@@ -46,17 +42,20 @@ const makeBroadcast = async (): Promise<void> => {
         },
       },
     },
+    orderBy: [desc(broadcasts.id)],
   })
-  if (!broadcast) {
-    throw new NotFoundError('Broadcast not found')
+  if (!lastBroadcast) {
+    throw new NotFoundError('Last broadcast not found')
   }
   await supabase.transaction(async (tx) => {
-    await tx.execute(queueBroadcastMessages(broadcast.id))
-    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300))
-    await makeNextBroadcastSchedule(tx, broadcast)
-    await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, broadcast.id))
+    const newBroadcast = await insertNewBroadcast(tx, lastBroadcast, batchSize)
+    await tx.execute(queueBroadcastMessages(newBroadcast.id!))
+    await tx.execute(reconcileTwilioStatusCron(newBroadcast.id!, newBroadcast.noUsers! + newBroadcast.delay! + 300))
   })
-  await supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST)
+  await Promise.allSettled([
+    supabase.execute(UNSCHEDULE_COMMANDS.DELAY_INVOKE_BROADCAST),
+    supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST),
+  ])
 }
 
 const sendNow = async (): Promise<void> => {

@@ -62,7 +62,7 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
   return {
     firstMessage: broadcast.firstMessage,
     secondMessage: broadcast.secondMessage,
-    runAt: DateUtils.getNextTimestamp(broadcast.runAt),
+    runAt: new Date(),
     delay: broadcast.delay,
     editable: broadcast.editable,
     noUsers: broadcast.noUsers,
