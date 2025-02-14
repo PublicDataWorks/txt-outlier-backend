@@ -4,7 +4,20 @@ import { sql } from 'drizzle-orm'
 
 export const TimeSchema = z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).nullable()
 
-export const CreateScheduleDTOSchema = z.object({
+export const CreateSettingSchema = z.object({
+  schedule: z.object({
+    mon: TimeSchema,
+    tue: TimeSchema,
+    wed: TimeSchema,
+    thu: TimeSchema,
+    fri: TimeSchema,
+    sat: TimeSchema,
+    sun: TimeSchema,
+  }).partial().optional(),
+  batchSize: z.number().int().gt(0).max(100000),
+})
+
+export const SettingResponseSchema = z.object({
   schedule: z.object({
     mon: TimeSchema,
     tue: TimeSchema,
@@ -14,10 +27,9 @@ export const CreateScheduleDTOSchema = z.object({
     sat: TimeSchema,
     sun: TimeSchema,
   }).optional(),
-  batchSize: z.number().int().gt(0).max(100000),
-})
-
-export type ScheduleResponse = z.infer<typeof CreateScheduleDTOSchema>
+  batchSize: z.number().nullable().optional(),
+}).partial()
+export type SettingResponse = z.infer<typeof SettingResponseSchema>
 
 export const formatScheduleSelect = {
   mon: sql<string | null>`to_char(${broadcastSettings.mon}, 'HH24:MI')`,
@@ -30,15 +42,20 @@ export const formatScheduleSelect = {
   batchSize: broadcastSettings.batchSize,
 }
 
-export const formatScheduleResponse = (rawSchedule: Record<string, any>): ScheduleResponse => ({
-  schedule: {
-    mon: rawSchedule?.mon,
-    tue: rawSchedule?.tue,
-    wed: rawSchedule?.wed,
-    thu: rawSchedule?.thu,
-    fri: rawSchedule?.fri,
-    sat: rawSchedule?.sat,
-    sun: rawSchedule?.sun,
-  },
-  batchSize: rawSchedule.batchSize,
-})
+export const formatScheduleResponse = (rawSchedule?: Record<string, any>): SettingResponse => {
+  if (!rawSchedule) {
+    return {}
+  }
+  return {
+    schedule: {
+      mon: rawSchedule.mon,
+      tue: rawSchedule.tue,
+      wed: rawSchedule.wed,
+      thu: rawSchedule.thu,
+      fri: rawSchedule.fri,
+      sat: rawSchedule.sat,
+      sun: rawSchedule.sun,
+    },
+    batchSize: rawSchedule.batchSize,
+  }
+}

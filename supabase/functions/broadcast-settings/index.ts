@@ -1,13 +1,12 @@
 import { Hono } from 'hono'
-import { desc, eq, sql } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { z } from 'zod'
 import { broadcastSettings } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { CreateScheduleDTOSchema, formatScheduleResponse, formatScheduleSelect, ScheduleResponse } from './dto.ts'
-import { rescheduleNextBroadcast } from './helper.ts'
+import { CreateSettingSchema, formatScheduleResponse, formatScheduleSelect } from './dto.ts'
 
 const app = new Hono()
 
@@ -28,9 +27,8 @@ app.get('/broadcast-settings/', async () => {
 app.post('/broadcast-settings/', async (c) => {
   try {
     const body = await c.req.json()
-    const { schedule, batchSize } = CreateScheduleDTOSchema.parse(body)
+    const { schedule, batchSize } = CreateSettingSchema.parse(body)
     console.log('Creating new schedule:', schedule, batchSize)
-    const hasScheduleFields = schedule && Object.values(schedule).some((value) => value !== null)
     const [currentSchedule] = await supabase
       .select()
       .from(broadcastSettings)
@@ -38,6 +36,7 @@ app.post('/broadcast-settings/', async (c) => {
       .where(eq(broadcastSettings.active, true))
       .orderBy(desc(broadcastSettings.id))
       .limit(1)
+    const hasScheduleFields = schedule && Object.values(schedule).some((value) => value !== null)
     // If no schedule fields provided, we need a current active record to copy from
     if (!hasScheduleFields && !currentSchedule) {
       console.error(
@@ -68,22 +67,23 @@ app.post('/broadcast-settings/', async (c) => {
           active: true,
         })
         .returning(formatScheduleSelect)
-      await rescheduleNextBroadcast(tx)
+      // await rescheduleNextBroadcast(tx)
       console.log('New schedule created:', newSchedule)
       return newSchedule
     })
 
     return AppResponse.ok(formatScheduleResponse(result))
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      console.error(
-        `Validation error in broadcast-schedules: ${error.errors.map((e) => ` [${e.path}] - ${e.message}`)}`,
-      )
-      return AppResponse.badRequest()
-    }
     console.error('Error in broadcast schedule creation:', error.message)
     console.error('Stack trace:', error.stack)
     Sentry.captureException(error)
+    if (error instanceof z.ZodError) {
+      const errorMessage = `Validation error in broadcast-schedules: ${
+        error.errors.map((e) => ` [${e.path}] - ${e.message}`)
+      }`
+      console.error(errorMessage)
+      return AppResponse.badRequest(errorMessage)
+    }
     return AppResponse.internalServerError()
   }
 })

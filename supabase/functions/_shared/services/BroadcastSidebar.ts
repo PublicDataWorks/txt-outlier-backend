@@ -9,7 +9,6 @@ const getAll = async (
   cursor?: number,
 ): Promise<BroadcastDashBoardQueryReturn[]> => {
   const selectQuery = getBroadcastDetails(limit, cursor)
-  supabase.
   return await supabase.execute(sql.raw(selectQuery))
 }
 

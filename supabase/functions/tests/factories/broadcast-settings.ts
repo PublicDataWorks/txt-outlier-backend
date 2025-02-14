@@ -15,23 +15,15 @@ type CreateBroadcastSettingParams = {
   batchSize?: number
 }
 
-const generateRandomTime = (): string => {
-  const hours = faker.datatype.number({ min: 0, max: 23 })
-  const minutes = faker.datatype.number({ min: 0, max: 59 })
-  const seconds = faker.datatype.number({ min: 0, max: 59 })
-
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-}
-
 export const createBroadcastSetting = async (params: CreateBroadcastSettingParams = {}) => {
   const broadcastSetting = {
-    mon: params.mon ?? generateRandomTime(),
-    tue: params.tue ?? generateRandomTime(),
-    wed: params.wed ?? generateRandomTime(),
-    thu: params.thu ?? generateRandomTime(),
-    fri: params.fri ?? generateRandomTime(),
-    sat: params.sat ?? generateRandomTime(),
-    sun: params.sun ?? generateRandomTime(),
+    mon: params.mon,
+    tue: params.tue,
+    wed: params.wed,
+    thu: params.thu,
+    fri: params.fri,
+    sat: params.sat,
+    sun: params.sun,
     active: params.active ?? true,
     batchSize: params?.batchSize || 100,
   }
