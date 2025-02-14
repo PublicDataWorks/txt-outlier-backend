@@ -15,9 +15,9 @@ import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
 import {
   FAILED_DELIVERED_QUERY,
-  pgmq_delete,
-  pgmq_read,
-  pgmq_send,
+  pgmqDelete,
+  pgmqRead,
+  pgmqSend,
   queueBroadcastMessages,
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
@@ -51,6 +51,7 @@ const makeBroadcast = async (batchSize: number): Promise<void> => {
     const newBroadcast = await insertNewBroadcast(tx, lastBroadcast, batchSize)
     await tx.execute(queueBroadcastMessages(newBroadcast.id!))
     await tx.execute(reconcileTwilioStatusCron(newBroadcast.id!, newBroadcast.noUsers! + newBroadcast.delay! + 300))
+    console.log("asd")
   })
   await Promise.allSettled([
     supabase.execute(UNSCHEDULE_COMMANDS.DELAY_INVOKE_BROADCAST),
@@ -104,7 +105,7 @@ const sendNow = async (): Promise<void> => {
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  const results = await supabase.execute(pgmq_read(queueName, 10))
+  const results = await supabase.execute(pgmqRead(queueName, 10))
   if (results.length === 0) {
     return
   }
@@ -114,11 +115,11 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   if (response.ok) {
     if (!isSecond) {
       await Promise.all([
-        supabase.execute(pgmq_delete(queueName, results[0].msg_id)),
-        supabase.execute(pgmq_send(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
+        supabase.execute(pgmqDelete(queueName, results[0].msg_id)),
+        supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
       ])
     } else {
-      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
     }
     const responseBody = await response.json()
     const { id, conversation } = responseBody.drafts
@@ -142,7 +143,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         Missive's response = ${JSON.stringify(await response.json())}
       `
     if (results[0].read_ct > 2) {
-      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
       errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`
     }
     console.error(errorMessage)

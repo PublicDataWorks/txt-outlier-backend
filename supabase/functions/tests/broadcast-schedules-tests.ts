@@ -3,7 +3,7 @@ import { describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
-import { createBroadcastSchedule } from './factories/broadcast-schedules.ts'
+import { createBroadcastSetting } from './factories/broadcast-settings.ts'
 
 const FUNCTION_NAME = 'broadcast-schedules/'
 
@@ -13,7 +13,7 @@ describe(
   () => {
     it('should return only time fields for the most recent active schedule', async () => {
       // Create multiple schedules with different states
-      await createBroadcastSchedule({
+      await createBroadcastSetting({
         mon: '09:00:00',
         tue: '10:00:00',
         wed: '11:00:00',
@@ -25,7 +25,7 @@ describe(
       })
 
       // Create another schedule that should be returned (most recent and active)
-      const expectedSchedule = await createBroadcastSchedule({
+      const expectedSchedule = await createBroadcastSetting({
         mon: '08:00:00',
         tue: '09:00:00',
         wed: '10:00:00',
@@ -60,7 +60,7 @@ describe(
 
     it('should handle empty results when no active schedules exist', async () => {
       // Create only inactive schedules
-      await createBroadcastSchedule({
+      await createBroadcastSetting({
         mon: '09:00:00',
         tue: '10:00:00',
         wed: '11:00:00',

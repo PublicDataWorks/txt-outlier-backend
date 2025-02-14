@@ -8,7 +8,7 @@ import Sentry from '../_shared/lib/Sentry.ts'
 const app = new Hono()
 
 const MakeBroadcastDTOSchema = z.object({
-  batchSize: z.number().int().positive(),
+  batchSize: z.number().int().gt(0),
 })
 
 app.post('/make/', async (c) => {

@@ -5,19 +5,18 @@ import supabase from '../../_shared/lib/supabase.ts'
 import type { CreateBroadcastParams } from './types.ts'
 
 export const createBroadcast = async ({
-  noUsers = 10,
+  noUsers,
   runAt,
   firstMessage,
   secondMessage,
-  editable,
 }: CreateBroadcastParams = {}): Promise<Broadcast> => {
   const broadcast: Broadcast = {
     runAt: runAt || new Date(),
     delay: 600,
-    noUsers,
+    noUsers: noUsers || 10,
     firstMessage: firstMessage || faker.lorem.sentence(),
     secondMessage: secondMessage || faker.lorem.sentence(),
-    editable: editable ?? !runAt,
+    editable: false,
   }
 
   const [result] = await supabase

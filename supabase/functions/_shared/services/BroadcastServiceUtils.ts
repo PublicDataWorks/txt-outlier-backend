@@ -1,5 +1,4 @@
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
-import { sql } from 'drizzle-orm'
 
 import { AudienceSegment, Broadcast, broadcasts, broadcastsSegments } from '../drizzle/schema.ts'
 import { BROADCAST_RUNNING_INDICATORS, SELECT_JOB_NAMES } from '../scheduledcron/queries.ts'

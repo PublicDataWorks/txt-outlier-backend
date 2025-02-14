@@ -4,19 +4,19 @@ const queueBroadcastMessages = (broadcastId: number) => {
   return sql.raw(`SELECT queue_broadcast_messages($$${broadcastId}$$)`)
 }
 
-const pgmq_read = (queueName: string, sleepSeconds: number, n: number = 1) => {
+const pgmqRead = (queueName: string, sleepSeconds: number, n: number = 1) => {
   return sql.raw(`SELECT * FROM pgmq.read($$${queueName}$$, $$${sleepSeconds}$$, $$${n}$$);`)
 }
 
-const pgmq_send = (queueName: string, message: string, sleepSeconds: number) => {
+const pgmqSend = (queueName: string, message: string, sleepSeconds: number) => {
   return sql.raw(`SELECT pgmq.send($$${queueName}$$, $$${message}$$, $$${sleepSeconds}$$)`)
 }
 
-const pgmq_delete = (queueName: string, messageId: string) => {
+const pgmqDelete = (queueName: string, messageId: string) => {
   return sql.raw(`SELECT pgmq.delete($$${queueName}$$, msg_id := $$${messageId}$$);`)
 }
 
-const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: number): string => {
+const getBroadcastDetails = (limit: number, cursor?: number, broadcastId?: number): string => {
   let WHERE_CLAUSE = (cursor && typeof cursor === 'number')
     ? `WHERE b.run_at < to_timestamp($$${cursor}$$)`
     : 'WHERE TRUE'
@@ -106,12 +106,12 @@ export {
   BROADCAST_RUNNING_INDICATORS,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
-  pgmq_delete,
-  pgmq_read,
-  pgmq_send,
+  pgmqDelete,
+  pgmqRead,
+  pgmqSend,
   queueBroadcastMessages,
   SCHEDULE_NEXT_BROADCAST,
   SELECT_JOB_NAMES,
-  selectBroadcastDashboard,
+  getBroadcastDetails,
   UNSCHEDULE_COMMANDS,
 }

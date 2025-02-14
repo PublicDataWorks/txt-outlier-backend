@@ -28,7 +28,6 @@ interface BroadcastUpdate {
   secondMessage?: string
   runAt?: number
   delay?: number
-  noRecipients?: number
 }
 
 const convertToPastBroadcast = (
@@ -70,21 +69,21 @@ const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
 }
 
 class BroadcastResponse {
-  upcoming: UpcomingBroadcastResponse
   past: PastBroadcastResponse[]
   currentCursor: number | null
 
-  constructor() {
-    this.upcoming = {
-      id: -1,
-      firstMessage: '',
-      secondMessage: '',
-      runAt: -1,
-      delay: 0,
-      noRecipients: -1,
+  constructor(broadcasts: Broadcast[]) {
+    // "runAt" value should be a date, but it appears as a string when used in Supabase.
+    this.past = broadcasts.map((broadcast) => convertToPastBroadcast({
+      ...broadcast,
+      runAt: new Date(broadcast.runAt),
+    }))
+    if (broadcasts.length > 0) {
+      const lastRunAtTimestamp = broadcasts[broadcasts.length - 1].runAt.getTime() / 1000
+      this.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0)
+    } else {
+      this.currentCursor = null
     }
-    this.past = []
-    this.currentCursor = null
   }
 }
 

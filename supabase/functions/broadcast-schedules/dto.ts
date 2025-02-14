@@ -12,5 +12,5 @@ export const CreateScheduleDTOSchema = z.object({
     sat: TimeSchema,
     sun: TimeSchema,
   }).optional(),
-  batchSize: z.number().int().positive().max(100000),
+  batchSize: z.number().int().gt(0).max(100000),
 })
