@@ -51,7 +51,6 @@ const makeBroadcast = async (batchSize: number): Promise<void> => {
     const newBroadcast = await insertNewBroadcast(tx, lastBroadcast, batchSize)
     await tx.execute(queueBroadcastMessages(newBroadcast.id!))
     await tx.execute(reconcileTwilioStatusCron(newBroadcast.id!, newBroadcast.noUsers! + newBroadcast.delay! + 300))
-    console.log("asd")
   })
   await Promise.allSettled([
     supabase.execute(UNSCHEDULE_COMMANDS.DELAY_INVOKE_BROADCAST),

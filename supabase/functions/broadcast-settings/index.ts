@@ -1,60 +1,52 @@
 import { Hono } from 'hono'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { z } from 'zod'
 import { broadcastSettings } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { CreateScheduleDTOSchema } from './dto.ts'
+import { CreateScheduleDTOSchema, formatScheduleResponse, formatScheduleSelect, ScheduleResponse } from './dto.ts'
 import { rescheduleNextBroadcast } from './helper.ts'
 
 const app = new Hono()
 
-app.options('/broadcast-schedules/', () => {
+app.options('/broadcast-settings/', () => {
   return AppResponse.ok()
 })
 
-app.get('/broadcast-schedules/', async () => {
-  const [schedule] = await supabase
-    .select({
-      mon: broadcastSettings.mon,
-      tue: broadcastSettings.tue,
-      wed: broadcastSettings.wed,
-      thu: broadcastSettings.thu,
-      fri: broadcastSettings.fri,
-      sat: broadcastSettings.sat,
-      sun: broadcastSettings.sun,
-    })
+app.get('/broadcast-settings/', async () => {
+  const [rawSchedule] = await supabase
+    .select(formatScheduleSelect)
     .from(broadcastSettings)
     .where(eq(broadcastSettings.active, true))
     .orderBy(desc(broadcastSettings.id))
     .limit(1)
-  return AppResponse.ok(schedule)
+  return AppResponse.ok(formatScheduleResponse(rawSchedule))
 })
 
-app.post('/broadcast-schedules/', async (c) => {
+app.post('/broadcast-settings/', async (c) => {
   try {
     const body = await c.req.json()
     const { schedule, batchSize } = CreateScheduleDTOSchema.parse(body)
+    console.log('Creating new schedule:', schedule, batchSize)
     const hasScheduleFields = schedule && Object.values(schedule).some((value) => value !== null)
+    const [currentSchedule] = await supabase
+      .select()
+      .from(broadcastSettings)
+      .for('update', { skipLocked: true })
+      .where(eq(broadcastSettings.active, true))
+      .orderBy(desc(broadcastSettings.id))
+      .limit(1)
+    // If no schedule fields provided, we need a current active record to copy from
+    if (!hasScheduleFields && !currentSchedule) {
+      console.error(
+        `Invalid request: No schedule fields and no current active schedule. Request: ${JSON.stringify(body)}`,
+      )
+      return AppResponse.badRequest()
+    }
 
     const result = await supabase.transaction(async (tx) => {
-      const [currentSchedule] = await tx
-        .select()
-        .from(broadcastSettings)
-        .for('update', { skipLocked: true })
-        .where(eq(broadcastSettings.active, true))
-        .orderBy(desc(broadcastSettings.id))
-        .limit(1)
-
-      // If no schedule fields provided, we need a current active record to copy from
-      if (!hasScheduleFields && !currentSchedule) {
-        console.error(
-          `Invalid request: No schedule fields and no current active schedule. Request: ${JSON.stringify(body)}`,
-        )
-        return AppResponse.badRequest()
-      }
       if (currentSchedule) {
         await tx
           .update(broadcastSettings)
@@ -75,20 +67,13 @@ app.post('/broadcast-schedules/', async (c) => {
           batchSize: batchSize,
           active: true,
         })
-        .returning({
-          mon: broadcastSettings.mon,
-          tue: broadcastSettings.tue,
-          wed: broadcastSettings.wed,
-          thu: broadcastSettings.thu,
-          fri: broadcastSettings.fri,
-          sat: broadcastSettings.sat,
-          sun: broadcastSettings.sun,
-        })
+        .returning(formatScheduleSelect)
       await rescheduleNextBroadcast(tx)
       console.log('New schedule created:', newSchedule)
       return newSchedule
     })
-    return AppResponse.ok(result)
+
+    return AppResponse.ok(formatScheduleResponse(result))
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error(
