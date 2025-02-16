@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 
 const invokeBroadcastCron = (runAt: number | Date): string => {
   const runTime = dateToCron(new Date(runAt))
-  return `
+  return sql.raw(`
     SELECT cron.schedule(
       'delay-invoke-broadcast',
       '${runTime}',
@@ -21,7 +21,7 @@ const invokeBroadcastCron = (runAt: number | Date): string => {
         );
       $$
     );
-  `
+  `)
 }
 
 /**

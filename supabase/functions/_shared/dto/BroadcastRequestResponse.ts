@@ -1,6 +1,5 @@
 import { Broadcast } from '../drizzle/schema.ts'
 import { BroadcastDashBoardQueryReturn } from '../scheduledcron/queries.ts'
-import DateUtils from '../misc/DateUtils.ts'
 
 interface PastBroadcastResponse {
   id: number
@@ -58,17 +57,6 @@ const convertToUpcomingBroadcast = (broadcast: Broadcast): UpcomingBroadcastResp
   }
 }
 
-const convertToFutureBroadcast = (broadcast: Broadcast): Broadcast => {
-  return {
-    firstMessage: broadcast.firstMessage,
-    secondMessage: broadcast.secondMessage,
-    runAt: DateUtils.getNextTimestamp(broadcast.runAt),
-    delay: broadcast.delay,
-    editable: broadcast.editable,
-    noUsers: broadcast.noUsers,
-  }
-}
-
 class BroadcastResponse {
   upcoming: UpcomingBroadcastResponse
   past: PastBroadcastResponse[]
@@ -91,7 +79,6 @@ class BroadcastResponse {
 export {
   BroadcastResponse,
   type BroadcastUpdate,
-  convertToFutureBroadcast,
   convertToPastBroadcast,
   convertToUpcomingBroadcast,
   type UpcomingBroadcastResponse,

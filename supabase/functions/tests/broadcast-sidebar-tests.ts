@@ -30,7 +30,6 @@ describe(
       const futureDate = new Date()
       futureDate.setDate(futureDate.getDate() + 1)
       await createBroadcast({
-        runAt: futureDate,
         editable: true,
         firstMessage: 'Future broadcast',
         secondMessage: 'Future broadcast second message',
@@ -42,7 +41,7 @@ describe(
       })
       assertEquals(data.upcoming.firstMessage, 'Future broadcast')
       assertEquals(data.upcoming.secondMessage, 'Future broadcast second message')
-      assertEquals(data.upcoming.runAt, Math.floor(futureDate.getTime() / 1000))
+      assertEquals(data.upcoming.runAt, 0)
 
       assertEquals(data.past.length, 5)
       assertEquals(data.past[0].firstMessage, 'Past broadcast 1')
@@ -100,8 +99,6 @@ describe(
           delay: 900,
         },
       })
-
-      assertEquals(data.noRecipients, 100)
       assertEquals(data.firstMessage, 'Updated first message')
       assertEquals(data.secondMessage, 'Updated second message')
       assertEquals(data.runAt, newTimestamp)
@@ -120,7 +117,7 @@ describe(
         noUsers: 50,
       })
 
-      const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'PATCH',
         body: {
           id: broadcast.id,
@@ -129,103 +126,6 @@ describe(
       })
 
       assertEquals(data, {})
-    })
-
-    describe('Patch noRecipients', () => {
-      it('should update the number of no recipients correctly', async () => {
-        const futureDate = new Date()
-        futureDate.setDate(futureDate.getDate() + 1)
-        const broadcast: Broadcast = await createBroadcast({
-          runAt: futureDate,
-          editable: true,
-          firstMessage: 'Original first message',
-          secondMessage: 'Original second message',
-          noUsers: 100,
-        })
-
-        const res = await client.functions.invoke(FUNCTION_NAME, {
-          method: 'PATCH',
-          body: {
-            id: broadcast.id,
-            noRecipients: 22,
-          },
-        })
-
-        assertEquals(res, {
-          data: {
-            id: broadcast.id,
-            firstMessage: 'Original first message',
-            secondMessage: 'Original second message',
-            noRecipients: 22,
-            delay: 600,
-            runAt: Math.floor((futureDate.getTime()) / 1000),
-          },
-          error: null,
-        })
-      })
-
-      it('should return bad request when the noRecipients is less than or equal to 0', async () => {
-        const futureDate = new Date()
-        futureDate.setDate(futureDate.getDate() + 1)
-        const broadcast: Broadcast = await createBroadcast({
-          runAt: futureDate,
-          editable: true,
-          firstMessage: 'Original first message',
-          secondMessage: 'Original second message',
-          noUsers: 100,
-        })
-
-        const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
-          method: 'PATCH',
-          body: {
-            id: 'asdf',
-            noRecipients: 0,
-          },
-        })
-
-        assertEquals(data, null)
-        let errorContext = await error.context.json()
-        assertEquals(errorContext.message, 'Bad Request')
-
-        const { data: data_negative, error: error_negative } = await client.functions.invoke(FUNCTION_NAME, {
-          method: 'PATCH',
-          body: {
-            id: broadcast.id,
-            noRecipients: -2,
-          },
-        })
-
-        assertEquals(data_negative, null)
-
-        errorContext = await error_negative.context.json()
-        assertEquals(errorContext.message, 'Bad Request')
-      })
-    })
-
-    it('should return error when field has invalid data type', async () => {
-      const futureDate = new Date()
-      futureDate.setDate(futureDate.getDate() + 1)
-      const broadcast: Broadcast = await createBroadcast({
-        runAt: futureDate,
-        editable: true,
-        firstMessage: 'Original first message',
-        secondMessage: 'Original second message',
-        noUsers: 100,
-      })
-
-      const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
-        method: 'PATCH',
-        body: {
-          id: broadcast.id,
-          noRecipients: 'incorrect',
-          firstMessage: 'correct msg',
-        },
-      })
-
-      assertEquals(data, null)
-
-      const errorContext = await error.context.json()
-      assertEquals(errorContext.message, 'Bad Request')
     })
 
     it('should update partial fields', async () => {

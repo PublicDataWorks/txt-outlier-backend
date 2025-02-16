@@ -2,22 +2,30 @@
 import { faker } from 'faker'
 import { type Broadcast, broadcasts } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
-import type { CreateBroadcastParams } from './types.ts'
+
+export type CreateBroadcastParams = {
+  noUsers?: number
+  runAt?: Date
+  firstMessage?: string
+  secondMessage?: string
+  editable?: boolean
+  delay?: number
+}
 
 export const createBroadcast = async ({
-  noUsers = 10,
+  noUsers,
   runAt,
   firstMessage,
   secondMessage,
   editable,
 }: CreateBroadcastParams = {}): Promise<Broadcast> => {
   const broadcast: Broadcast = {
-    runAt: runAt || new Date(),
+    runAt: runAt,
     delay: 600,
-    noUsers,
+    noUsers: noUsers || 10,
     firstMessage: firstMessage || faker.lorem.sentence(),
     secondMessage: secondMessage || faker.lorem.sentence(),
-    editable: editable ?? !runAt,
+    editable: editable || false,
   }
 
   const [result] = await supabase

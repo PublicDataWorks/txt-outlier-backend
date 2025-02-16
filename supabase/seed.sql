@@ -14,11 +14,7 @@ INSERT INTO "public"."authors" ("created_at", "updated_at", "name", "phone_numbe
 VALUES ('2024-03-12 08:47:53.568392+00', null, 'People 2', '+14156694691', 'false');
 INSERT INTO "public"."broadcasts_segments" ("broadcast_id", "segment_id", "ratio", "first_message", "second_message")
 VALUES ('473', '1', '100', null, null);
-INSERT INTO broadcast_schedules (mon, tue, wed, thu, fri, sat, sun, active)
+INSERT INTO broadcast_settings (mon, tue, wed, thu, fri, sat, sun, active)
 VALUES ('09:00:00', '09:00:00', '09:00:00', '09:00:00', null, null, null, true),
-       (null, '12:30:00', '12:30:00', null, '12:30:00', null, null, false),
-       ('15:00:00', null, '15:00:00', null, '15:00:00', '14:00:00', null, false),
-       (null, null, '18:00:00', '18:00:00', '18:00:00', null, '16:00:00', false),
-       (null, null, null, null, null, '20:00:00', '20:00:00', false),
-       ('07:30:00', '07:30:00', null, '07:30:00', null, null, null, false),
-       ('22:00:00', null, '22:00:00', null, '22:00:00', null, null, false);
+       (null, '12:30:00', '12:30:00', null, '12:30:00', null, null, false);
+

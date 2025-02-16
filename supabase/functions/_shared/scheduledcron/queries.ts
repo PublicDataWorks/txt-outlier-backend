@@ -4,15 +4,15 @@ const queueBroadcastMessages = (broadcastId: number) => {
   return sql.raw(`SELECT queue_broadcast_messages($$${broadcastId}$$)`)
 }
 
-const pgmq_read = (queueName: string, sleepSeconds: number, n: number = 1) => {
+const pgmqRead = (queueName: string, sleepSeconds: number, n: number = 1) => {
   return sql.raw(`SELECT * FROM pgmq.read($$${queueName}$$, $$${sleepSeconds}$$, $$${n}$$);`)
 }
 
-const pgmq_send = (queueName: string, message: string, sleepSeconds: number) => {
+const pgmqSend = (queueName: string, message: string, sleepSeconds: number) => {
   return sql.raw(`SELECT pgmq.send($$${queueName}$$, $$${message}$$, $$${sleepSeconds}$$)`)
 }
 
-const pgmq_delete = (queueName: string, messageId: string) => {
+const pgmqDelete = (queueName: string, messageId: string) => {
   return sql.raw(`SELECT pgmq.delete($$${queueName}$$, msg_id := $$${messageId}$$);`)
 }
 
@@ -73,12 +73,15 @@ const FAILED_DELIVERED_QUERY = `
 
 const UNSCHEDULE_COMMANDS = {
   INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('invoke-broadcast');`),
+  DELAY_INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('delay-invoke-broadcast');`),
   RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('reconcile-twilio-status');`),
   DELAY_RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('delay-reconcile-twilio-status');`),
   HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('handle-failed-deliveries');`),
 } as const
 
-const SELECT_JOB_NAMES = 'SELECT jobname from cron.job;'
+const SELECT_JOB_NAMES = sql.raw('SELECT jobname from cron.job;')
+const schedule_next_broadcast = (start_from_tomorrow = false, force_recreate = false) =>
+  sql.raw(`SELECT schedule_cron_for_next_broadcast(${start_from_tomorrow}, ${force_recreate});`)
 
 const BROADCAST_RUNNING_INDICATORS: string[] = [
   'send-first-messages',
@@ -104,10 +107,11 @@ export {
   BROADCAST_RUNNING_INDICATORS,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
-  pgmq_delete,
-  pgmq_read,
-  pgmq_send,
+  pgmqDelete,
+  pgmqRead,
+  pgmqSend,
   queueBroadcastMessages,
+  schedule_next_broadcast,
   SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,

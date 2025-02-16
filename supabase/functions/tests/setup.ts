@@ -8,7 +8,7 @@ beforeEach(async () => {
   const migrationFiles = [
     '../../migrations/0000_minor_magik.sql',
     '../../migrations/0001_true_naoko.sql',
-    '../../migrations/20250211082613_create_broadcast_schedules_table.sql',
+    '../../migrations/20250211082613_create_broadcast_settings_table.sql',
   ]
 
   for (const filePath of migrationFiles) {
@@ -52,5 +52,5 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
-  DROP TABLE IF EXISTS "broadcast_schedules" CASCADE;
+  DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
 `

@@ -32,56 +32,6 @@ describe('DateUtils', () => {
       assertEquals(Math.floor(result), -30, 'Should be approximately -30 minutes')
     })
   })
-
-  describe('getNextTimestamp', () => {
-    it('should get next Tuesday from Sunday', () => {
-      const sunday = new Date('2024-03-17T10:00:00') // A Sunday
-      const result = DateUtils.getNextTimestamp(sunday)
-      assertEquals(result.toISOString(), '2024-03-19T10:00:00.000Z', 'Should be next Tuesday')
-    })
-
-    it('should get next Wednesday from Monday', () => {
-      const monday = new Date('2024-03-18T10:00:00') // A Monday
-      const result = DateUtils.getNextTimestamp(monday)
-      assertEquals(result.toISOString(), '2024-03-19T10:00:00.000Z', 'Should be next Tuesday')
-    })
-
-    it('should get next Wednesday from Tuesday', () => {
-      const tuesday = new Date('2024-03-19T10:00:00') // A Tuesday
-      const result = DateUtils.getNextTimestamp(tuesday)
-      assertEquals(result.toISOString(), '2024-03-20T10:00:00.000Z', 'Should be next Wednesday')
-    })
-
-    it('should get next Thursday from Wednesday', () => {
-      const wednesday = new Date('2024-03-20T10:00:00') // A Wednesday
-      const result = DateUtils.getNextTimestamp(wednesday)
-      assertEquals(result.toISOString(), '2024-03-21T10:00:00.000Z', 'Should be next Thursday')
-    })
-
-    it('should get next Tuesday from Thursday', () => {
-      const thursday = new Date('2024-03-21T10:00:00') // A Thursday
-      const result = DateUtils.getNextTimestamp(thursday)
-      assertEquals(result.toISOString(), '2024-03-26T10:00:00.000Z', 'Should be next Tuesday')
-    })
-
-    it('should get next Tuesday from Friday', () => {
-      const friday = new Date('2024-03-22T10:00:00') // A Friday
-      const result = DateUtils.getNextTimestamp(friday)
-      assertEquals(result.toISOString(), '2024-03-26T10:00:00.000Z', 'Should be next Tuesday')
-    })
-
-    it('should get next Tuesday from Saturday', () => {
-      const saturday = new Date('2024-03-23T10:00:00') // A Saturday
-      const result = DateUtils.getNextTimestamp(saturday)
-      assertEquals(result.toISOString(), '2024-03-26T10:00:00.000Z', 'Should be next Tuesday')
-    })
-
-    it('should reset minutes to zero', () => {
-      const dateWithMinutes = new Date('2024-03-19T10:30:00') // Tuesday with 30 minutes
-      const result = DateUtils.getNextTimestamp(dateWithMinutes)
-      assertEquals(result.getMinutes(), 0, 'Minutes should be reset to 0')
-    })
-  })
 })
 
 describe('dateToCron', () => {

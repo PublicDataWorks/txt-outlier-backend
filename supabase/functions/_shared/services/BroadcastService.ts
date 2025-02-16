@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 
 import supabase from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
@@ -15,16 +15,17 @@ import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
 import {
   FAILED_DELIVERED_QUERY,
-  pgmq_delete,
-  pgmq_read,
-  pgmq_send,
+  pgmqDelete,
+  pgmqRead,
+  pgmqSend,
   queueBroadcastMessages,
+  schedule_next_broadcast,
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
 import BadRequestError from '../exception/BadRequestError.ts'
 import Sentry from '../lib/Sentry.ts'
-import { isBroadcastRunning, makeNextBroadcastSchedule } from './BroadcastServiceUtils.ts'
+import { createNextBroadcast, isBroadcastRunning } from './BroadcastServiceUtils.ts'
 import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
 import { cloneBroadcast } from '../misc/utils.ts'
 
@@ -35,10 +36,7 @@ const makeBroadcast = async (): Promise<void> => {
   }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
-    where: and(
-      eq(broadcasts.editable, true),
-      lt(broadcasts.runAt, DateUtils.advance(24 * 60 * 60 * 1000)), // TODO: Prevent making 2 broadcast in a day
-    ),
+    where: eq(broadcasts.editable, true),
     with: {
       broadcastToSegments: {
         with: {
@@ -52,11 +50,14 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300))
-    await makeNextBroadcastSchedule(tx, broadcast)
-    await tx.update(broadcasts).set({ editable: false }).where(eq(broadcasts.id, broadcast.id))
+    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers + broadcast.delay + 300))
+    await createNextBroadcast(tx, broadcast)
+    await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
   })
-  await supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST)
+  await Promise.allSettled([
+    supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST),
+    supabase.execute(schedule_next_broadcast(true, true)),
+  ])
 }
 
 const sendNow = async (): Promise<void> => {
@@ -105,7 +106,7 @@ const sendNow = async (): Promise<void> => {
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  const results = await supabase.execute(pgmq_read(queueName, 10))
+  const results = await supabase.execute(pgmqRead(queueName, 10))
   if (results.length === 0) {
     return
   }
@@ -115,11 +116,11 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   if (response.ok) {
     if (!isSecond) {
       await Promise.all([
-        supabase.execute(pgmq_delete(queueName, results[0].msg_id)),
-        supabase.execute(pgmq_send(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
+        supabase.execute(pgmqDelete(queueName, results[0].msg_id)),
+        supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
       ])
     } else {
-      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
     }
     const responseBody = await response.json()
     const { id, conversation } = responseBody.drafts
@@ -143,7 +144,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         Missive's response = ${JSON.stringify(await response.json())}
       `
     if (results[0].read_ct > 2) {
-      await supabase.execute(pgmq_delete(queueName, results[0].msg_id))
+      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
       errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`
     }
     console.error(errorMessage)

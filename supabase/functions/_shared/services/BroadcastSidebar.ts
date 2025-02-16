@@ -55,8 +55,7 @@ const patch = async (
       return
     }
     if (broadcast.runAt) {
-      const invokeNextBroadcast = invokeBroadcastCron(broadcast.runAt * 1000)
-      await tx.execute(sql.raw(invokeNextBroadcast))
+      await tx.execute(invokeBroadcastCron(broadcast.runAt * 1000))
     }
     return convertToUpcomingBroadcast(result[0])
   })
