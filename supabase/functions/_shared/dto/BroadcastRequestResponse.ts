@@ -28,6 +28,7 @@ interface BroadcastUpdate {
   secondMessage?: string
   runAt?: number
   delay?: number
+  noRecipients?: number
 }
 
 const convertToPastBroadcast = (
