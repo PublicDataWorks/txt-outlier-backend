@@ -118,7 +118,6 @@ describe(
         twilioSentStatus: 'failed',
       })
 
-      // Failed status
       await createBroadcastSentMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+3333333333',
@@ -127,7 +126,6 @@ describe(
         twilioSentStatus: 'failed',
       })
 
-      // Undelivered status
       await createBroadcastSentMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+4444444444',
