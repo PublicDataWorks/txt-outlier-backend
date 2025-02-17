@@ -3,6 +3,7 @@ import UnauthorizedError from '../exception/UnauthorizedError.ts'
 import Sentry from './Sentry.ts'
 
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
+const GET_MESSAGE_URL = 'https://public.missiveapp.com/v1/messages/'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
 const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')!
 const MISSIVE_ORGANIZATION_ID = Deno.env.get('MISSIVE_ORGANIZATION_ID')!
@@ -78,7 +79,7 @@ const getMissiveMessage = async (id: string) => {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`,
   }
-  const url = `${CREATE_MESSAGE_URL}${id}`
+  const url = `${GET_MESSAGE_URL}${id}`
   return await fetch(url, { method: 'GET', headers: headers })
 }
 
