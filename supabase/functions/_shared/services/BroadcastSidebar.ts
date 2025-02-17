@@ -1,3 +1,5 @@
+import { Cron } from 'croner'
+
 import {
   BroadcastResponse,
   BroadcastUpdate,
@@ -6,7 +8,7 @@ import {
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import supabase from '../lib/supabase.ts'
-import { authors, Broadcast, broadcasts } from '../drizzle/schema.ts'
+import { authors, Broadcast, broadcasts, cronJob } from '../drizzle/schema.ts'
 import { and, eq, sql } from 'drizzle-orm'
 import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
 import { BroadcastDashBoardQueryReturn, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
@@ -16,23 +18,42 @@ const getAll = async (
   limit = 5, // Limit past batches
   cursor?: number,
 ): Promise<BroadcastResponse> => {
+  // cursor exists mean we are fetching only past batches, otherwise we are also fetching upcoming batch
   const selectQuery = selectBroadcastDashboard(cursor ? limit : limit + 1, cursor)
   const results: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
-  // "runAt" value should be a date, but it appears as a string when used in Supabase.
-  results.forEach((broadcast) => broadcast.runAt = new Date(broadcast.runAt))
-  const response = new BroadcastResponse()
   if (results.length === 0) {
-    return response
+    return {}
   }
-  if (cursor && results[0].runAt < new Date()) {
-    response.past = results.map((broadcast) => convertToPastBroadcast(broadcast))
-  } else {
-    response.upcoming = convertToUpcomingBroadcast(results[0])
-    response.past = results.slice(1).map((broadcast) => convertToPastBroadcast(broadcast))
+  const response = {} as BroadcastResponse
+  for (const broadcast of results) {
+    if (broadcast.editable) {
+      response.upcoming = convertToUpcomingBroadcast(broadcast)
+    } else {
+      if (!response.past) {
+        response.past = []
+      }
+      response.past.push(convertToPastBroadcast(broadcast))
+    }
   }
-
-  const lastRunAtTimestamp = results[results.length - 1].runAt.getTime() / 1000
-  response.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0)
+  if (response.upcoming && !response.upcoming.runAt) {
+    // If upcoming broadcast is not paused, get runAt from cron job
+    const [delayJob] = await supabase
+      .select({ schedule: cronJob.schedule })
+      .from(cronJob)
+      .where(eq(cronJob.jobname, 'delay-invoke-broadcast'))
+      .limit(1)
+    if (delayJob?.schedule) {
+      const job = new Cron(delayJob.schedule)
+      const nextDate = job.nextRuns(1)
+      if (nextDate.length > 0) {
+        response.upcoming.runAt = Math.floor(nextDate[0].getTime() / 1000)
+      }
+    }
+  }
+  const lastRunAt = results[results.length - 1].runAt?.getTime()
+  if (lastRunAt) {
+    response.currentCursor = Math.max(Math.floor(lastRunAt / 1000) - 1, 0)
+  }
   return response
 }
 

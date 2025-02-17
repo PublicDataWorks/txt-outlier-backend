@@ -1,5 +1,5 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
-import { assert, assertEquals } from 'jsr:@std/assert'
+import { assert, assertEquals, assertInstanceOf } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
 import { createAuthors } from './factories/author.ts'
@@ -31,7 +31,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
       where: eq(broadcasts.id, broadcast.id!),
     })
     assertEquals(updatedBroadcast.editable, false, 'Original broadcast should not be editable')
-    assert(updatedBroadcast.runAt instanceof Date)
+    assertInstanceOf(updatedBroadcast.runAt, Date)
     // @ts-ignore: Property broadcasts exists at runtime
     const newBroadcast = await supabase.query.broadcasts.findFirst({
       where: and(

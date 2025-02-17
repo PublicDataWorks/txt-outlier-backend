@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   serial,
   smallint,
@@ -15,6 +16,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+
+export const cronSchema = pgSchema('cron')
 
 export const twilioStatus = pgEnum('twilio_status', [
   'delivery_unknown',
@@ -391,6 +394,13 @@ export const broadcastSettings = pgTable('broadcast_settings', {
   active: boolean('active').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+})
+
+export const cronJob = cronSchema.table('job', {
+  jobid: serial('jobid').primaryKey(),
+  schedule: text('schedule').notNull(),
+  command: text('command').notNull(),
+  jobname: text('jobname').notNull(),
 })
 
 export type Rule = typeof rules.$inferInsert

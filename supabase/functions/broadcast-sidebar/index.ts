@@ -15,7 +15,7 @@ app.get('/broadcast-sidebar/', async (c) => {
     const result = await BroadcastSidebar.getAll(limit, cursor)
     return AppResponse.ok(result)
   } catch (error) {
-    console.error(`Error in BroadcastService.handleFailedDeliveries: ${error.message}. Stack: ${error.stack}`)
+    console.error(`Error in BroadcastService.getAll: ${error.message}. Stack: ${error.stack}`)
     Sentry.captureException(error)
     return AppResponse.internalServerError()
   }

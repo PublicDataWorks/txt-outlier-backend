@@ -25,6 +25,7 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
     SELECT b.id,
            b.run_at                                                                                                                   AS "runAt",
            b.delay,
+           b.editable,
            b.first_message                                                                                                            AS "firstMessage",
            b.second_message                                                                                                           AS "secondMessage",
            b.no_users                                                                                                                 AS "noUsers",
@@ -94,6 +95,7 @@ interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
   delay: number
+  editable: boolean
   firstMessage: string
   secondMessage: string
   totalFirstSent: string

@@ -1,7 +1,7 @@
 import { dateToCron } from './helpers.ts'
 import { sql } from 'drizzle-orm'
 
-const invokeBroadcastCron = (runAt: number | Date): string => {
+const invokeBroadcastCron = (runAt: number | Date) => {
   const runTime = dateToCron(new Date(runAt))
   return sql.raw(`
     SELECT cron.schedule(

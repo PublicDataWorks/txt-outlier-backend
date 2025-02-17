@@ -45,7 +45,7 @@
     ]
   },
   "tasks": {
-    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash add_keys_to_vault.sh --env-file ../../.env) && supabase functions serve",
+    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash add_keys_to_vault.sh --env-file ../../../.env) && supabase functions serve",
     "fmt": "deno fmt",
     "lint": "deno lint",
     "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
@@ -65,6 +65,7 @@
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
     "hono": "jsr:@hono/hono@4.6.20",
     "zod": "https://deno.land/x/zod@v3.24.1/mod.ts",
-    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts"
+    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts",
+    "croner": "jsr:@hexagon/croner@8.1.2"
   }
 }

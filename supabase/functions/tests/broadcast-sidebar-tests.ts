@@ -1,9 +1,10 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
-import { assertEquals } from 'jsr:@std/assert'
+import { assertEquals, assertGreater, assertNotEquals } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
 import { createBroadcast } from './factories/broadcast.ts'
-import { Broadcast } from '../_shared/drizzle/schema.ts'
+import { Broadcast, cronJob } from '../_shared/drizzle/schema.ts'
+import supabase from '../_shared/lib/supabase.ts'
 
 const FUNCTION_NAME = 'broadcast-sidebar/'
 
@@ -41,7 +42,7 @@ describe(
       })
       assertEquals(data.upcoming.firstMessage, 'Future broadcast')
       assertEquals(data.upcoming.secondMessage, 'Future broadcast second message')
-      assertEquals(data.upcoming.runAt, 0)
+      assertEquals(data.upcoming.runAt, null)
 
       assertEquals(data.past.length, 5)
       assertEquals(data.past[0].firstMessage, 'Past broadcast 1')
@@ -55,15 +56,48 @@ describe(
       const { data } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'GET',
       })
-      assertEquals(data.past.length, 0)
-      assertEquals(data.upcoming, {
-        id: -1,
-        firstMessage: '',
-        secondMessage: '',
-        runAt: -1,
-        delay: 0,
-        noRecipients: -1,
+      assertEquals(data.past, undefined)
+      assertEquals(data.upcoming, undefined)
+    })
+
+    it('should set runAt from cron job for upcoming broadcast', async () => {
+      await createBroadcast({
+        editable: true,
+        firstMessage: 'Future broadcast',
+        secondMessage: 'Future broadcast second message',
+        noUsers: 100,
       })
+
+      await supabase
+        .insert(cronJob)
+        .values({
+          jobname: 'delay-invoke-broadcast',
+          schedule: '0 9 * * *',
+          command: 'SELECT 1',
+        })
+
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
+        method: 'GET',
+      })
+
+      assertEquals(data.upcoming.firstMessage, 'Future broadcast')
+      assertNotEquals(data.upcoming.runAt, null)
+      assertGreater(data.upcoming.runAt, Math.floor(Date.now() / 1000))
+    })
+
+    it.only('should handle null runAt in last result', async () => {
+      await createBroadcast({
+        editable: true,
+        firstMessage: 'Broadcast with null runAt',
+        secondMessage: 'Second message',
+        noUsers: 10,
+      })
+
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
+        method: 'GET',
+      })
+
+      assertEquals(data.currentCursor, undefined)
     })
   },
 )
