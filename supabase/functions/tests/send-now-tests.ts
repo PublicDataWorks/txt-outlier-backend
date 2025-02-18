@@ -85,7 +85,7 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
       delay: 300,
     })
 
-    await createSegment(broadcast.id!)
+    await createSegment({ broadcastId: broadcast.id! })
 
     // Act & Assert: Verify error response
     const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })

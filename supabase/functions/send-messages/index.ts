@@ -7,9 +7,9 @@ import Sentry from '../_shared/lib/Sentry.ts'
 const app = new Hono()
 
 app.post('/send-messages/', async (c) => {
-  const { isSecond } = await c.req.json()
-  console.log(`Sending broadcast messages. isSecond: ${isSecond}`)
   try {
+    const { isSecond } = await c.req.json()
+    console.log(`Sending broadcast messages. isSecond: ${isSecond}`)
     await BroadcastService.sendBroadcastMessage(isSecond)
   } catch (error) {
     console.error(`Error in BroadcastService.sendMessages: ${error.message}. Stack: ${error.stack}`)

@@ -73,7 +73,6 @@ const FAILED_DELIVERED_QUERY = `
 `
 
 const UNSCHEDULE_COMMANDS = {
-  INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('invoke-broadcast');`),
   DELAY_INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('delay-invoke-broadcast');`),
   RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('reconcile-twilio-status');`),
   DELAY_RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('delay-reconcile-twilio-status');`),
@@ -81,8 +80,6 @@ const UNSCHEDULE_COMMANDS = {
 } as const
 
 const SELECT_JOB_NAMES = sql.raw('SELECT jobname from cron.job;')
-const schedule_next_broadcast = (start_from_tomorrow = false, force_recreate = false) =>
-  sql.raw(`SELECT schedule_cron_for_next_broadcast(${start_from_tomorrow}, ${force_recreate});`)
 
 const BROADCAST_RUNNING_INDICATORS: string[] = [
   'send-first-messages',
@@ -113,7 +110,6 @@ export {
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  schedule_next_broadcast,
   SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,

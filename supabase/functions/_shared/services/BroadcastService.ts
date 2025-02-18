@@ -19,7 +19,6 @@ import {
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  schedule_next_broadcast,
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
@@ -54,10 +53,6 @@ const makeBroadcast = async (): Promise<void> => {
     await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
   })
-  await Promise.allSettled([
-    supabase.execute(UNSCHEDULE_COMMANDS.INVOKE_BROADCAST),
-    supabase.execute(schedule_next_broadcast(true, true)),
-  ])
 }
 
 const sendNow = async (): Promise<void> => {

@@ -85,7 +85,7 @@ describe(
       assertGreater(data.upcoming.runAt, Math.floor(Date.now() / 1000))
     })
 
-    it.only('should handle null runAt in last result', async () => {
+    it('should handle null runAt in last result', async () => {
       await createBroadcast({
         editable: true,
         firstMessage: 'Broadcast with null runAt',

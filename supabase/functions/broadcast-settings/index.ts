@@ -4,10 +4,9 @@ import { z } from 'zod'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { broadcasts, broadcastSettings } from '../_shared/drizzle/schema.ts'
+import { broadcastSettings } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import { CreateSettingSchema, formatScheduleResponse, formatScheduleSelect } from './dto.ts'
-import { schedule_next_broadcast } from '../_shared/scheduledcron/queries.ts'
 
 const app = new Hono()
 
@@ -30,6 +29,7 @@ app.post('/broadcast-settings/', async (c) => {
     const body = await c.req.json()
     const { schedule } = CreateSettingSchema.parse(body)
     console.log('Creating new schedule:', schedule)
+
     const result = await supabase.transaction(async (tx) => {
       const deactivated = await tx
         .update(broadcastSettings)
@@ -51,17 +51,6 @@ app.post('/broadcast-settings/', async (c) => {
           active: true,
         })
         .returning(formatScheduleSelect)
-
-      const [upcomingBroadcast] = await supabase
-        .select({ runAt: broadcasts.runAt })
-        .from(broadcasts)
-        .where(eq(broadcasts.editable, true))
-        .orderBy(desc(broadcasts.id))
-        .limit(1)
-      console.log('Upcoming broadcast:', upcomingBroadcast)
-      if (upcomingBroadcast && !upcomingBroadcast.runAt) {
-        tx.execute(schedule_next_broadcast(false, true))
-      }
       console.log('New schedule created:', newSchedule)
       return newSchedule
     })

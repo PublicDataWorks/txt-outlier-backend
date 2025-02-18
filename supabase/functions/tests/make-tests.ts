@@ -25,7 +25,10 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
     })
     await createSegment({ broadcastId: broadcast.id!, name: 'make-test', ratio: 10 })
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
     // @ts-ignore: Property broadcasts exists at runtime
     const updatedBroadcast = await supabase.query.broadcasts.findFirst({
       where: eq(broadcasts.id, broadcast.id!),
@@ -57,24 +60,24 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
     assertEquals(newBroadcast.broadcastToSegments[0].ratio, 10, 'Segment ratio should be 100')
 
     const delayInvokeBroadcastJobs = await supabase.execute(sql`
-      SELECT jobname, command, active, schedule
-      FROM cron.job
-      WHERE jobname = 'delay-invoke-broadcast'
-    `)
+        SELECT jobname, command, active, schedule
+        FROM cron.job
+        WHERE jobname = 'delay-invoke-broadcast'
+      `)
     assertEquals(delayInvokeBroadcastJobs.length, 0)
 
     const invokeBroadcastJobs = await supabase.execute(sql`
-      SELECT jobname, command, active, schedule
-      FROM cron.job
-      WHERE jobname = 'invoke-broadcast'
-    `)
+        SELECT jobname, command, active, schedule
+        FROM cron.job
+        WHERE jobname = 'invoke-broadcast'
+      `)
     assertEquals(invokeBroadcastJobs.length, 0)
 
     const reconcileJobs = await supabase.execute(sql`
-      SELECT jobname, command, active, schedule
-      FROM cron.job
-      WHERE jobname = 'delay-reconcile-twilio-status'
-    `)
+        SELECT jobname, command, active, schedule
+        FROM cron.job
+        WHERE jobname = 'delay-reconcile-twilio-status'
+      `)
     assertEquals(reconcileJobs.length, 1)
     const job = reconcileJobs[0]
     assertEquals(job.active, true)
@@ -98,7 +101,10 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await createSegment({ broadcastId: broadcast.id! })
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
 
     const queuedMessages = await supabase.execute(
       sql.raw('SELECT message FROM pgmq.q_broadcast_first_messages'),
@@ -147,13 +153,16 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await createSegment({ broadcastId: broadcast.id! })
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
 
     const cronJobs = await supabase.execute(sql`
-      SELECT jobname, command, active
-      FROM cron.job
-      WHERE jobname = 'delay-reconcile-twilio-status'
-    `)
+        SELECT jobname, command, active
+        FROM cron.job
+        WHERE jobname = 'delay-reconcile-twilio-status'
+      `)
 
     assertEquals(cronJobs.length, 1, 'Should have one reconcile status job')
     const job = cronJobs[0]
@@ -184,13 +193,16 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await createSegment({ broadcastId: broadcast.id! })
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
 
     const cronJobs = await supabase.execute(sql`
-      SELECT schedule
-      FROM cron.job
-      WHERE jobname = 'delay-reconcile-twilio-status'
-    `)
+        SELECT schedule
+        FROM cron.job
+        WHERE jobname = 'delay-reconcile-twilio-status'
+      `)
 
     const schedule = cronJobs[0].schedule
     const scheduleParts = schedule.split(' ')
@@ -215,7 +227,10 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await createSegment({ broadcastId: broadcast.id! })
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
 
     const secondBroadcast = await createBroadcast({
       runAt,
@@ -226,9 +241,12 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
       delay: 300,
     })
 
-    await createSegment(secondBroadcast.id!)
+    await createSegment({ broadcastId: secondBroadcast.id! })
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
 
     // @ts-ignore: Property broadcasts exists at runtime
     const allBroadcasts = await supabase.query.broadcasts.findMany({
@@ -236,5 +254,86 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
     })
 
     assertEquals(allBroadcasts.length, 0, 'Should not create new broadcast while another is running')
+  })
+
+  it('should fail when run_at_utc does not match current time', async () => {
+    await createAuthors(2)
+    await createSegment({ name: 'Inactive' })
+
+    const broadcast = await createBroadcast({
+      editable: true,
+      firstMessage: 'Test first message',
+      secondMessage: 'Test second message',
+      noUsers: 5000,
+      delay: 600,
+    })
+    await createSegment({ broadcastId: broadcast.id!, name: 'make-test', ratio: 10 })
+
+    // Set run_at_utc to 1 minute in the future
+    const futureDate = new Date()
+    futureDate.setMinutes(futureDate.getMinutes() + 1)
+    const future_run_at_utc = futureDate.toISOString().slice(0, 16).replace('T', ' ')
+
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: future_run_at_utc },
+    })
+
+    // Verify no changes were made to the broadcast
+    // @ts-ignore: Property broadcasts exists at runtime
+    const updatedBroadcast = await supabase.query.broadcasts.findFirst({
+      where: eq(broadcasts.id, broadcast.id!),
+    })
+    assertEquals(updatedBroadcast.editable, true, 'Broadcast should remain editable')
+    assertEquals(updatedBroadcast.runAt, null, 'runAt should not be set')
+
+    // Verify no new broadcast was created
+    // @ts-ignore: Property broadcasts exists at runtime
+    const newBroadcast = await supabase.query.broadcasts.findFirst({
+      where: gt(broadcasts.id, broadcast.id!),
+    })
+    assertEquals(newBroadcast, undefined, 'No new broadcast should be created')
+
+    // Verify no cron jobs were created
+    const cronJobs = await supabase.execute(sql`
+      SELECT COUNT(*) as count
+      FROM cron.job
+      WHERE jobname IN ('delay-invoke-broadcast', 'invoke-broadcast', 'delay-reconcile-twilio-status')
+    `)
+    assertEquals(cronJobs[0].count, '0', 'No cron jobs should be created')
+  })
+
+  it('should fail when run_at_utc is not provided', async () => {
+    await createAuthors(2)
+    await createSegment({ name: 'Inactive' })
+
+    const broadcast = await createBroadcast({
+      editable: true,
+      firstMessage: 'Test first message',
+      secondMessage: 'Test second message',
+      noUsers: 5000,
+      delay: 600,
+    })
+    await createSegment({ broadcastId: broadcast.id!, name: 'make-test', ratio: 10 })
+
+    // Test missing run_at_utc
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {},
+    })
+
+    // Test invalid run_at_utc format
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: 'invalid-date' },
+    })
+
+    // Verify no changes were made
+    // @ts-ignore: Property broadcasts exists at runtime
+    const updatedBroadcast = await supabase.query.broadcasts.findFirst({
+      where: eq(broadcasts.id, broadcast.id!),
+    })
+    assertEquals(updatedBroadcast.editable, true, 'Broadcast should remain editable')
+    assertEquals(updatedBroadcast.runAt, null, 'runAt should not be set')
   })
 })

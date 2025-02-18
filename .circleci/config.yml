@@ -30,6 +30,9 @@ jobs:
           name: Run tests with coverage
           command: /home/circleci/.deno/bin/deno task test:coverage
       - run:
+          name: Run DB tests
+          command: /home/circleci/.deno/bin/deno task test:db
+      - run:
           name: Generate coverage report
           command: /home/circleci/.deno/bin/deno task coverage
       - run:
