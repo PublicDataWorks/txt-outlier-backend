@@ -59,6 +59,7 @@
     "drizzle-orm/postgres-js": "npm:drizzle-orm@0.28.5/postgres-js",
     "drizzle-orm/pg-core": "npm:drizzle-orm@0.28.5/pg-core",
     "date-fns": "https://esm.sh/date-fns@3.6.0",
+    "date-fns-tz": "npm:date-fns-tz",
     "encoding/": "https://deno.land/std@0.210.0/encoding/",
     "twilio": "npm:twilio@^5.4.3",
     "date-fns/": "https://deno.land/x/date_fns@v2.15.0/",
