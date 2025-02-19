@@ -4,6 +4,14 @@ BEGIN;
 DELETE FROM broadcast_settings;
 DELETE FROM broadcasts;
 
+-- Create test secrets
+DO $$
+BEGIN
+    -- Create test secrets
+    PERFORM vault.create_secret('test_key', 'service_role_key');
+    PERFORM vault.create_secret('http://test.com/', 'edge_function_url');
+END $$;
+
 SELECT plan(7);
 
 -- Test: Recent non-editable broadcast exists
@@ -62,8 +70,8 @@ INSERT INTO broadcasts (editable, run_at, first_message, second_message)
 VALUES (true, CURRENT_TIMESTAMP + interval '1 hour', 'Hello', 'World');
 SELECT is(
     (SELECT check_and_trigger_broadcast()->>'status'),
-    'editable_schedule_not_match_current_time',
-    'Returns editable_schedule_not_match_current_time when run_at is in future'
+    'paused_schedule_not_match_current_time',
+    'Returns paused_schedule_not_match_current_time when run_at is in future'
 );
 DELETE FROM broadcasts;
 -- Test: Editable broadcast with matching run_at
@@ -95,8 +103,8 @@ END $$;
 
 SELECT is(
     (SELECT check_and_trigger_broadcast()->>'status'),
-    'editable_schedule_not_match_current_time',
-    'Returns editable_schedule_not_match_current_time even with matching schedule'
+    'paused_schedule_not_match_current_time',
+    'Returns paused_schedule_not_match_current_time even with matching schedule'
 );
 -- Clean up
 SELECT * FROM finish();

@@ -356,9 +356,9 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
         schedule: {
           mon: '09:00',
           wed: '11:00',
-          extraField: 'some value', // Additional field
-          anotherExtra: 123, // Another additional field
         },
+        extraField: 'some value', // Additional field
+        anotherExtra: 123, // Another additional field
       },
     })
 

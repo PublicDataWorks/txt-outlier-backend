@@ -45,7 +45,7 @@ describe(
 
     it('does nothing for already subscribed author', async () => {
       const phoneNumber = '+11234567892'
-      const conversationId = 'test-conversation-id'
+      const conversationId = 'b0fdedc9-ac8a-47c5-a11d-b48bcaf33a2e'
 
       await supabase.insert(authors).values({
         phoneNumber,
@@ -71,7 +71,7 @@ describe(
 
     it('ignores non-resubscribe terms', async () => {
       const phoneNumber = '+11234567893'
-      const conversationId = 'test-conversation-id'
+      const conversationId = 'b0fdedc9-ac8a-47c5-a11d-b48bcaf33a2e'
 
       await supabase.insert(authors).values({
         phoneNumber,
