@@ -20,7 +20,7 @@ export const CreateSettingSchema = z.object({
       (schedule) => Object.values(schedule).some((value) => value !== null),
       { message: 'At least one day must have a valid time value' },
     ),
-}).strict()
+})
 
 export const SettingResponseSchema = z.object({
   schedule: z.object({

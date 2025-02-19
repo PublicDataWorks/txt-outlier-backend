@@ -348,4 +348,45 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(newSetting.mon, '09:00:00')
     assertEquals(newSetting.active, true)
   })
+
+  it('should accept schedule with additional fields', async () => {
+    const { data: responseData } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        schedule: {
+          mon: '09:00',
+          wed: '11:00',
+          extraField: 'some value', // Additional field
+          anotherExtra: 123, // Another additional field
+        },
+      },
+    })
+
+    assertEquals(responseData, {
+      schedule: {
+        mon: '09:00',
+        wed: '11:00',
+        tue: null,
+        thu: null,
+        fri: null,
+        sat: null,
+        sun: null,
+      },
+    })
+
+    const [newSetting] = await supabase
+      .select()
+      .from(broadcastSettings)
+      .orderBy(desc(broadcastSettings.id))
+      .limit(1)
+
+    assertEquals(newSetting.mon, '09:00:00')
+    assertEquals(newSetting.wed, '11:00:00')
+    assertEquals(newSetting.tue, null)
+    assertEquals(newSetting.thu, null)
+    assertEquals(newSetting.fri, null)
+    assertEquals(newSetting.sat, null)
+    assertEquals(newSetting.sun, null)
+    assertEquals(newSetting.active, true)
+  })
 })

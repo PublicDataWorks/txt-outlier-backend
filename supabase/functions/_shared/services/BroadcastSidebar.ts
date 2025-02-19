@@ -1,6 +1,6 @@
-import { and, eq, sql, desc } from 'drizzle-orm'
-import { Cron } from 'croner'
+import { and, desc, eq, sql } from 'drizzle-orm'
 
+import DateUtils from '../misc/DateUtils.ts'
 import {
   BroadcastResponse,
   BroadcastUpdate,
@@ -9,7 +9,7 @@ import {
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import supabase from '../lib/supabase.ts'
-import { authors, Broadcast, broadcasts, broadcastSentMessageStatus, cronJob } from '../drizzle/schema.ts'
+import { authors, Broadcast, broadcasts, broadcastSentMessageStatus } from '../drizzle/schema.ts'
 import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
 import { BroadcastDashBoardQueryReturn, pgmqDelete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
@@ -37,23 +37,16 @@ const getAll = async (
     }
   }
   if (response.upcoming && !response.upcoming.runAt) {
-    // If upcoming broadcast is not paused, get runAt from cron job
-    const [delayJob] = await supabase
-      .select({ schedule: cronJob.schedule })
-      .from(cronJob)
-      .where(eq(cronJob.jobname, 'delay-invoke-broadcast'))
-      .limit(1)
-    if (delayJob?.schedule) {
-      const job = new Cron(delayJob.schedule)
-      const nextDate = job.nextRuns(1)
-      if (nextDate.length > 0) {
-        response.upcoming.runAt = Math.floor(nextDate[0].getTime() / 1000)
-      }
-    }
+    // If upcoming broadcast is not paused, get runAt from settings
+    response.upcoming.runAt = await DateUtils.calculateNextScheduledTime()
   }
   const lastRunAt = results[results.length - 1].runAt?.getTime()
   if (lastRunAt) {
     response.currentCursor = Math.max(Math.floor(lastRunAt / 1000) - 1, 0)
+  } else if (response?.upcoming?.runAt) {
+    // Handle case where there's only one upcoming broadcast that hasn't been paused (no run_at in database)
+    // In this case, runAt was calculated from broadcast_settings
+    response.currentCursor = response.upcoming.runAt - 1
   }
   return response
 }

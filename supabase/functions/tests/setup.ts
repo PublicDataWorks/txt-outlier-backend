@@ -8,6 +8,7 @@ beforeEach(async () => {
   const migrationFiles = [
     '../../migrations/0000_minor_magik.sql',
     '../../migrations/0001_true_naoko.sql',
+    '../../migrations/20250210085456_add_second_message_queue_id.sql',
     '../../migrations/20250211082613_create_broadcast_settings_table.sql',
   ]
 

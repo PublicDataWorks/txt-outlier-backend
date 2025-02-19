@@ -10,7 +10,7 @@ import { client } from '../utils.ts'
 import { createBroadcastSentMessageStatus } from '../factories/broadcast-sent-message-status.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
 import { sql } from 'drizzle-orm'
-import { pgmqSend } from "../../_shared/scheduledcron/queries.ts";
+import { pgmqSend } from '../../_shared/scheduledcron/queries.ts'
 
 const FUNCTION_NAME = 'user-actions/'
 

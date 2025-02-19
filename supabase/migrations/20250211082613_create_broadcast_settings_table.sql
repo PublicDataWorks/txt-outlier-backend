@@ -65,6 +65,8 @@ BEGIN
     LIMIT 1;
 
     IF FOUND THEN
+        RAISE WARNING '[check_and_trigger_broadcast] Broadcast ran within last 2 hours. ID: %, run_at: %',
+            broadcast_record.id, broadcast_record.run_at;
         RETURN jsonb_build_object('status', 'broadcast_ran_within_last_2_hours');
     END IF;
 
@@ -78,15 +80,21 @@ BEGIN
     IF FOUND THEN
         IF date_trunc('minute', CURRENT_TIMESTAMP) = date_trunc('minute', broadcast_record.run_at) THEN
             PERFORM trigger_broadcast_api();
+            RAISE WARNING '[check_and_trigger_broadcast] Triggerred paused broadcast. ID: %', broadcast_record.id;
             RETURN jsonb_build_object('status', 'triggered');
         END IF;
-        RETURN jsonb_build_object('status', 'editable_schedule_not_match_current_time');
+        RAISE WARNING '[check_and_trigger_broadcast] Paused broadcast time not matched. run_at: %',
+            broadcast_record.run_at;
+        RETURN jsonb_build_object('status', 'paused_schedule_not_match_current_time');
     END IF;
 
     -- If no editable record with matching run_at, proceed with normal schedule
     detroit_current_timestamp := CURRENT_TIMESTAMP AT TIME ZONE 'America/Detroit';
     detroit_current_time := detroit_current_timestamp::time;
     detroit_date_name := LOWER(TO_CHAR(detroit_current_timestamp, 'Dy'));
+
+    RAISE LOG '[check_and_trigger_broadcast] Checking regular schedule. Detroit time: %, day: %',
+        detroit_current_time, detroit_date_name;
 
     SELECT * INTO setting_record
     FROM broadcast_settings
@@ -95,6 +103,7 @@ BEGIN
     LIMIT 1;
 
     IF NOT FOUND THEN
+        RAISE WARNING '[check_and_trigger_broadcast] No active broadcast settings found';
         RETURN jsonb_build_object('status', 'no_active_schedule');
     END IF;
 
@@ -103,13 +112,18 @@ BEGIN
     USING setting_record
     INTO todays_scheduled_time;
 
+    RAISE LOG '[check_and_trigger_broadcast] Regular schedule check. Scheduled time: %, current time: %',
+        todays_scheduled_time, detroit_current_time;
+
     -- Check if current time matches scheduled time
     IF todays_scheduled_time IS NOT NULL AND
        date_trunc('minute', detroit_current_time::interval) = date_trunc('minute', todays_scheduled_time::interval) THEN
         PERFORM trigger_broadcast_api();
+        RAISE WARNING '[check_and_trigger_broadcast] Triggered regular schedule broadcast';
         RETURN jsonb_build_object('status', 'triggered');
     END IF;
 
+    RAISE WARNING '[check_and_trigger_broadcast] No schedule match found';
     RETURN jsonb_build_object('status', 'no_schedule_match');
 END;
 $$ LANGUAGE plpgsql;

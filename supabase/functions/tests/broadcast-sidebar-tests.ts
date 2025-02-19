@@ -3,8 +3,9 @@ import { assertEquals, assertGreater, assertNotEquals } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
 import { createBroadcast } from './factories/broadcast.ts'
-import { Broadcast } from '../_shared/drizzle/schema.ts'
+import { Broadcast, broadcastSettings, cronJob } from '../_shared/drizzle/schema.ts'
 import { createBroadcastSentMessageStatus } from './factories/broadcast-sent-message-status.ts'
+import supabase from '../_shared/lib/supabase.ts'
 
 const FUNCTION_NAME = 'broadcast-sidebar/'
 
@@ -60,21 +61,29 @@ describe(
       assertEquals(data.upcoming, undefined)
     })
 
-    it('should set runAt from cron job for upcoming broadcast', async () => {
+    it('should set runAt from broadcast_settings for upcoming broadcast', async () => {
+      // Get tomorrow's day name in Detroit time
+      const detroitTomorrow = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'America/Detroit' }),
+      )
+      detroitTomorrow.setDate(detroitTomorrow.getDate() + 1)
+      const tomorrowDay = detroitTomorrow.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase()
+
+      // Create broadcast settings for tomorrow at 10 AM
+      await supabase
+        .insert(broadcastSettings)
+        .values({
+          [tomorrowDay]: '10:00:00',
+          active: true,
+        })
+
+      // Create the upcoming broadcast
       await createBroadcast({
         editable: true,
         firstMessage: 'Future broadcast',
         secondMessage: 'Future broadcast second message',
         noUsers: 100,
       })
-
-      await supabase
-        .insert(cronJob)
-        .values({
-          jobname: 'delay-invoke-broadcast',
-          schedule: '0 9 * * *',
-          command: 'SELECT 1',
-        })
 
       const { data } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'GET',

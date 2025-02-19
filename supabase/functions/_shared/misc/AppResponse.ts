@@ -11,7 +11,7 @@ const corsHeaders = {
 const unauthorized = (errorMessage: string = USER_UNAUTHORIZED_ERR) => {
   return new Response(JSON.stringify({ message: errorMessage }), {
     status: 401,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
   })
 }
 
@@ -25,14 +25,14 @@ const ok = (body = {}) => {
 const badRequest = (errorMessage: string = BAD_REQUEST_ERR) => {
   return new Response(JSON.stringify({ message: errorMessage }), {
     status: 400,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
   })
 }
 
 const internalServerError = (errorMessage: string = INTERNAL_SERVER_ERR) => {
   return new Response(JSON.stringify({ message: errorMessage }), {
     status: 500,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
   })
 }
 
