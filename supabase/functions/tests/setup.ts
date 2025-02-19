@@ -53,4 +53,5 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
   DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
+  DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
 `

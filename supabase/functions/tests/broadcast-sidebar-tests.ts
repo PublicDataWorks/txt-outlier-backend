@@ -3,8 +3,8 @@ import { assertEquals, assertGreater, assertNotEquals } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
 import { createBroadcast } from './factories/broadcast.ts'
-import { Broadcast, cronJob } from '../_shared/drizzle/schema.ts'
-import supabase from '../_shared/lib/supabase.ts'
+import { Broadcast } from '../_shared/drizzle/schema.ts'
+import { createBroadcastSentMessageStatus } from './factories/broadcast-sent-message-status.ts'
 
 const FUNCTION_NAME = 'broadcast-sidebar/'
 
@@ -98,6 +98,92 @@ describe(
       })
 
       assertEquals(data.currentCursor, undefined)
+    })
+
+    it('should correctly count messages with different statuses', async () => {
+      await createBroadcast({
+        runAt: new Date(),
+        editable: true,
+        firstMessage: 'Test message',
+        secondMessage: 'Second message',
+        noUsers: 3,
+      })
+      const broadcast = await createBroadcast({
+        runAt: new Date(),
+        editable: false,
+        firstMessage: 'Test message',
+        secondMessage: 'Second message',
+        noUsers: 3,
+      })
+
+      // Delivered status
+      await createBroadcastSentMessageStatus({
+        broadcastId: broadcast.id,
+        recipient: '+1111111111',
+        isSecond: false,
+        twilioId: 'twilio1',
+        twilioSentStatus: 'delivered',
+      })
+      await createBroadcastSentMessageStatus({
+        broadcastId: broadcast.id,
+        recipient: '+1111111111',
+        isSecond: false,
+        twilioId: 'twilio2',
+        twilioSentStatus: 'delivered',
+      })
+
+      // Sent status
+      await createBroadcastSentMessageStatus({
+        broadcastId: broadcast.id,
+        recipient: '+2222222222',
+        isSecond: false,
+        twilioId: 'twilio2',
+        twilioSentStatus: 'sent',
+      })
+
+      // Failed status
+      await createBroadcastSentMessageStatus({
+        broadcastId: broadcast.id,
+        recipient: '+3333333333',
+        isSecond: false,
+        twilioId: 'twilio3',
+        twilioSentStatus: 'failed',
+      })
+
+      // Failed status
+      await createBroadcastSentMessageStatus({
+        broadcastId: broadcast.id,
+        recipient: '+3333333333',
+        isSecond: false,
+        twilioId: 'twilio4',
+        twilioSentStatus: 'failed',
+      })
+
+      // Undelivered status
+      await createBroadcastSentMessageStatus({
+        broadcastId: broadcast.id,
+        recipient: '+4444444444',
+        isSecond: false,
+        twilioId: 'twilio4',
+        twilioSentStatus: 'undelivered',
+      })
+
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
+        method: 'GET',
+      })
+
+      const broadcastData = data.past.find((b: Broadcast) => b.id === broadcast.id)
+      assertEquals(broadcastData, {
+        id: broadcast.id,
+        firstMessage: 'Test message',
+        secondMessage: 'Second message',
+        runAt: Math.floor(broadcast.runAt.getTime() / 1000),
+        totalFirstSent: 4,
+        totalSecondSent: 0,
+        successfullyDelivered: 2,
+        failedDelivered: 2,
+        totalUnsubscribed: 0,
+      })
     })
   },
 )

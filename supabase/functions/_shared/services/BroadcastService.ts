@@ -101,7 +101,7 @@ const sendNow = async (): Promise<void> => {
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  const results = await supabase.execute(pgmqRead(queueName, 10))
+  const results = await supabase.execute(pgmqRead(queueName, 60))
   if (results.length === 0) {
     return
   }
@@ -109,11 +109,13 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
   const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
   if (response.ok) {
+    let secondMessageQueueId = undefined
     if (!isSecond) {
-      await Promise.all([
+      const [_, sendResult] = await Promise.all([
         supabase.execute(pgmqDelete(queueName, results[0].msg_id)),
         supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
       ])
+      secondMessageQueueId = sendResult[0].send
     } else {
       await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
     }
@@ -129,21 +131,25 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         missiveId: id,
         missiveConversationId: conversation,
         audienceSegmentId: messageMetadata.segment_id,
+        secondMessageQueueId: secondMessageQueueId,
       })
   } else {
-    let errorMessage = `
+    const errorMessage = `
         [sendBroadcastMessage] Failed to send broadcast message.
         Message: ${JSON.stringify(results[0])},
         isSecond: ${isSecond},
         broadcast: ${messageMetadata.broadcast_id}
         Missive's response = ${JSON.stringify(await response.json())}
       `
-    if (results[0].read_ct > 2) {
-      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
-      errorMessage += ` Message deleted from queue after ${results[0].read_ct} retries.`
-    }
     console.error(errorMessage)
     Sentry.captureException(errorMessage)
+    if (results[0].read_ct > 2 && response?.status !== 429) {
+      // TODO: Insert somewhere to handle failed deliveries
+      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
+      Sentry.captureException(
+        `Message deleted from ${queueName}. Status code: ${response?.status}. ${JSON.stringify(messageMetadata)}`,
+      )
+    }
   }
 }
 
