@@ -1,29 +1,21 @@
 import { sql } from 'drizzle-orm'
-import { afterAll, afterEach, beforeEach } from 'jsr:@std/testing/bdd'
-import httpMocks from 'node-mocks-http'
-import * as mf from 'mock-fetch'
+import { afterAll, beforeEach } from 'jsr:@std/testing/bdd'
 import supabase, { postgresClient } from '../_shared/lib/supabase.ts'
 
 // This needs to be at the top level
 beforeEach(async () => {
-  mf.install()
   await supabase.execute(sql.raw(DROP_ALL_TABLES))
-  const sqlScript1 = await Deno.readTextFile(
+  const migrationFiles = [
     '../../migrations/0000_minor_magik.sql',
-  )
-  await supabase.execute(sql.raw(sqlScript1))
-  const sqlScript2 = await Deno.readTextFile(
     '../../migrations/0001_true_naoko.sql',
-  )
-  await supabase.execute(sql.raw(sqlScript2))
-  const sqlScript3 = await Deno.readTextFile(
     '../../migrations/20250210085456_add_second_message_queue_id.sql',
-  )
-  await supabase.execute(sql.raw(sqlScript3))
-})
+    '../../migrations/20250211082613_create_broadcast_settings_table.sql',
+  ]
 
-afterEach(() => {
-  mf.uninstall()
+  for (const filePath of migrationFiles) {
+    const sqlScript = await Deno.readTextFile(filePath)
+    await supabase.execute(sql.raw(sqlScript))
+  }
 })
 
 afterAll(async () => {
@@ -61,18 +53,6 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
   DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
+  DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
   DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
 `
-
-// Helper functions
-export const req = (path: string, params?: object, query?: object, body?: object) => {
-  return httpMocks.createRequest({
-    method: 'GET',
-    url: path,
-    params,
-    query,
-    body,
-  })
-}
-
-export const res = () => httpMocks.createResponse()

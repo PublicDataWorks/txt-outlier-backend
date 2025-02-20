@@ -108,3 +108,148 @@ ALTER TABLE public.broadcasts
 ALTER COLUMN delay DROP DEFAULT,
 ALTER COLUMN delay TYPE integer USING EXTRACT(EPOCH FROM delay)::integer,
 ALTER COLUMN delay SET DEFAULT 600;
+--> statement-breakpoint
+-- Description: Creates triggers to manage cron jobs for broadcast messages
+-- Drop existing objects if they exist
+DROP TRIGGER IF EXISTS trg_outlier_broadcast_messages_insert ON pgmq.q_broadcast_first_messages CASCADE;
+DROP TRIGGER IF EXISTS trg_outlier_broadcast_messages_delete ON pgmq.q_broadcast_first_messages CASCADE;
+DROP TRIGGER IF EXISTS trg_outlier_broadcast_second_messages_insert ON pgmq.q_broadcast_second_messages CASCADE;
+DROP TRIGGER IF EXISTS trg_outlier_broadcast_second_messages_delete ON pgmq.q_broadcast_second_messages CASCADE;
+DROP FUNCTION IF EXISTS pgmq.outlier_on_broadcast_first_messages_insert() CASCADE;
+DROP FUNCTION IF EXISTS pgmq.outlier_on_broadcast_first_messages_delete() CASCADE;
+DROP FUNCTION IF EXISTS pgmq.outlier_on_broadcast_second_messages_insert() CASCADE;
+DROP FUNCTION IF EXISTS pgmq.outlier_on_broadcast_second_messages_delete() CASCADE;
+
+-- First Messages Functions
+CREATE OR REPLACE FUNCTION pgmq.outlier_on_broadcast_first_messages_insert() RETURNS TRIGGER AS $$
+DECLARE
+    service_key TEXT;
+    edge_url TEXT;
+BEGIN
+    -- Get both secrets from vault
+    SELECT decrypted_secret INTO service_key
+    FROM vault.decrypted_secrets
+    WHERE name = 'service_role_key';
+
+    SELECT decrypted_secret INTO edge_url
+    FROM vault.decrypted_secrets
+    WHERE name = 'edge_function_url';
+
+    IF EXISTS (SELECT 1 FROM pgmq.q_broadcast_first_messages) THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM cron.job
+            WHERE jobname = 'send-first-messages'
+            AND schedule = '1 seconds'
+        ) THEN
+            PERFORM cron.schedule(
+                'send-first-messages',
+                '1 seconds',
+                format('SELECT net.http_post(
+                    url:=''%s/send-messages/'',
+                    body:=''{"isSecond": false}''::jsonb,
+                    headers:=''{
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer %s"
+                    }''::jsonb
+                ) as request_id;',
+                edge_url,
+                service_key)
+            );
+        END IF;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgmq.outlier_on_broadcast_first_messages_delete() RETURNS TRIGGER AS $$
+BEGIN
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pgmq.q_broadcast_first_messages) THEN
+            PERFORM cron.unschedule('send-first-messages');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            NULL; -- Silently continue if check fails
+    END;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Second Messages Functions
+CREATE OR REPLACE FUNCTION pgmq.outlier_on_broadcast_second_messages_insert() RETURNS TRIGGER AS $$
+DECLARE
+    service_key TEXT;
+    edge_url TEXT;
+BEGIN
+    -- Get both secrets from vault
+    SELECT decrypted_secret INTO service_key
+    FROM vault.decrypted_secrets
+    WHERE name = 'service_role_key';
+
+    SELECT decrypted_secret INTO edge_url
+    FROM vault.decrypted_secrets
+    WHERE name = 'edge_function_url';
+
+    IF EXISTS (SELECT 1 FROM pgmq.q_broadcast_second_messages) THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM cron.job
+            WHERE jobname = 'send-second-messages'
+            AND schedule = '1 seconds'
+        ) THEN
+            PERFORM cron.schedule(
+                'send-second-messages',
+                '1 seconds',
+                format('SELECT net.http_post(
+                    url:=''%s/send-messages/'',
+                    body:=''{"isSecond": true}''::jsonb,
+                    headers:=''{
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer %s"
+                    }''::jsonb
+                ) as request_id;',
+                edge_url,
+                service_key)
+            );
+        END IF;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgmq.outlier_on_broadcast_second_messages_delete() RETURNS TRIGGER AS $$
+BEGIN
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pgmq.q_broadcast_second_messages) THEN
+            PERFORM cron.unschedule('send-second-messages');
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            NULL; -- Silently continue if check fails
+    END;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create triggers for first messages
+CREATE TRIGGER trg_outlier_broadcast_messages_insert
+AFTER INSERT ON pgmq.q_broadcast_first_messages
+FOR EACH STATEMENT
+EXECUTE FUNCTION pgmq.outlier_on_broadcast_first_messages_insert();
+
+CREATE TRIGGER trg_outlier_broadcast_messages_delete
+AFTER DELETE ON pgmq.q_broadcast_first_messages
+FOR EACH STATEMENT
+EXECUTE FUNCTION pgmq.outlier_on_broadcast_first_messages_delete();
+
+-- Create triggers for second messages
+CREATE TRIGGER trg_outlier_broadcast_second_messages_insert
+AFTER INSERT ON pgmq.q_broadcast_second_messages
+FOR EACH STATEMENT
+EXECUTE FUNCTION pgmq.outlier_on_broadcast_second_messages_insert();
+
+CREATE TRIGGER trg_outlier_broadcast_second_messages_delete
+AFTER DELETE ON pgmq.q_broadcast_second_messages
+FOR EACH STATEMENT
+EXECUTE FUNCTION pgmq.outlier_on_broadcast_second_messages_delete();

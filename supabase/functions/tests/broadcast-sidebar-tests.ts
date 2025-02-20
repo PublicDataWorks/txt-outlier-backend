@@ -1,10 +1,11 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
-import { assertEquals } from 'jsr:@std/assert'
+import { assertEquals, assertGreater, assertNotEquals } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
 import { createBroadcast } from './factories/broadcast.ts'
-import { Broadcast } from '../_shared/drizzle/schema.ts'
+import { Broadcast, broadcastSettings, cronJob } from '../_shared/drizzle/schema.ts'
 import { createBroadcastSentMessageStatus } from './factories/broadcast-sent-message-status.ts'
+import supabase from '../_shared/lib/supabase.ts'
 
 const FUNCTION_NAME = 'broadcast-sidebar/'
 
@@ -31,7 +32,6 @@ describe(
       const futureDate = new Date()
       futureDate.setDate(futureDate.getDate() + 1)
       await createBroadcast({
-        runAt: futureDate,
         editable: true,
         firstMessage: 'Future broadcast',
         secondMessage: 'Future broadcast second message',
@@ -43,7 +43,7 @@ describe(
       })
       assertEquals(data.upcoming.firstMessage, 'Future broadcast')
       assertEquals(data.upcoming.secondMessage, 'Future broadcast second message')
-      assertEquals(data.upcoming.runAt, Math.floor(futureDate.getTime() / 1000))
+      assertEquals(data.upcoming.runAt, null)
 
       assertEquals(data.past.length, 5)
       assertEquals(data.past[0].firstMessage, 'Past broadcast 1')
@@ -57,15 +57,56 @@ describe(
       const { data } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'GET',
       })
-      assertEquals(data.past.length, 0)
-      assertEquals(data.upcoming, {
-        id: -1,
-        firstMessage: '',
-        secondMessage: '',
-        runAt: -1,
-        delay: 0,
-        noRecipients: -1,
+      assertEquals(data.past, undefined)
+      assertEquals(data.upcoming, undefined)
+    })
+
+    it('should set runAt from broadcast_settings for upcoming broadcast', async () => {
+      // Get tomorrow's day name in Detroit time
+      const detroitTomorrow = new Date(
+        new Date().toLocaleString('en-US', { timeZone: 'America/Detroit' }),
+      )
+      detroitTomorrow.setDate(detroitTomorrow.getDate() + 1)
+      const tomorrowDay = detroitTomorrow.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase()
+
+      // Create broadcast settings for tomorrow at 10 AM
+      await supabase
+        .insert(broadcastSettings)
+        .values({
+          [tomorrowDay]: '10:00:00',
+          active: true,
+        })
+
+      // Create the upcoming broadcast
+      await createBroadcast({
+        editable: true,
+        firstMessage: 'Future broadcast',
+        secondMessage: 'Future broadcast second message',
+        noUsers: 100,
       })
+
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
+        method: 'GET',
+      })
+
+      assertEquals(data.upcoming.firstMessage, 'Future broadcast')
+      assertNotEquals(data.upcoming.runAt, null)
+      assertGreater(data.upcoming.runAt, Math.floor(Date.now() / 1000))
+    })
+
+    it('should handle null runAt in last result', async () => {
+      await createBroadcast({
+        editable: true,
+        firstMessage: 'Broadcast with null runAt',
+        secondMessage: 'Second message',
+        noUsers: 10,
+      })
+
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
+        method: 'GET',
+      })
+
+      assertEquals(data.currentCursor, undefined)
     })
 
     it('should correctly count messages with different statuses', async () => {
@@ -187,8 +228,6 @@ describe(
           delay: 900,
         },
       })
-
-      assertEquals(data.noRecipients, 100)
       assertEquals(data.firstMessage, 'Updated first message')
       assertEquals(data.secondMessage, 'Updated second message')
       assertEquals(data.runAt, newTimestamp)
@@ -216,103 +255,6 @@ describe(
       })
 
       assertEquals(data, {})
-    })
-
-    describe('Patch noRecipients', () => {
-      it('should update the number of no recipients correctly', async () => {
-        const futureDate = new Date()
-        futureDate.setDate(futureDate.getDate() + 1)
-        const broadcast: Broadcast = await createBroadcast({
-          runAt: futureDate,
-          editable: true,
-          firstMessage: 'Original first message',
-          secondMessage: 'Original second message',
-          noUsers: 100,
-        })
-
-        const res = await client.functions.invoke(FUNCTION_NAME, {
-          method: 'PATCH',
-          body: {
-            id: broadcast.id,
-            noRecipients: 22,
-          },
-        })
-
-        assertEquals(res, {
-          data: {
-            id: broadcast.id,
-            firstMessage: 'Original first message',
-            secondMessage: 'Original second message',
-            noRecipients: 22,
-            delay: 600,
-            runAt: Math.floor((futureDate.getTime()) / 1000),
-          },
-          error: null,
-        })
-      })
-
-      it('shoud return bad request when the noRecipients is less than or equal to 0', async () => {
-        const futureDate = new Date()
-        futureDate.setDate(futureDate.getDate() + 1)
-        const broadcast: Broadcast = await createBroadcast({
-          runAt: futureDate,
-          editable: true,
-          firstMessage: 'Original first message',
-          secondMessage: 'Original second message',
-          noUsers: 100,
-        })
-
-        const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
-          method: 'PATCH',
-          body: {
-            id: 'asdf',
-            noRecipients: 0,
-          },
-        })
-
-        assertEquals(data, null)
-        let errorContext = await error.context.json()
-        assertEquals(errorContext.message, 'Bad Request')
-
-        const { data: data_negative, error: error_negative } = await client.functions.invoke(FUNCTION_NAME, {
-          method: 'PATCH',
-          body: {
-            id: broadcast.id,
-            noRecipients: -2,
-          },
-        })
-
-        assertEquals(data_negative, null)
-
-        errorContext = await error_negative.context.json()
-        assertEquals(errorContext.message, 'Bad Request')
-      })
-    })
-
-    it('should return error when field has invalid data type', async () => {
-      const futureDate = new Date()
-      futureDate.setDate(futureDate.getDate() + 1)
-      const broadcast: Broadcast = await createBroadcast({
-        runAt: futureDate,
-        editable: true,
-        firstMessage: 'Original first message',
-        secondMessage: 'Original second message',
-        noUsers: 100,
-      })
-
-      const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
-        method: 'PATCH',
-        body: {
-          id: broadcast.id,
-          noRecipients: 'asdfasfdv',
-          firstMessage: 'coreect msg',
-        },
-      })
-
-      assertEquals(data, null)
-
-      const errorContext = await error.context.json()
-      assertEquals(errorContext.message, 'Bad Request')
     })
 
     it('should update partial fields', async () => {

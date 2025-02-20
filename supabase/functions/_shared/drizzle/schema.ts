@@ -5,15 +5,19 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   serial,
   smallint,
   text,
+  time,
   timestamp,
   unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+
+export const cronSchema = pgSchema('cron')
 
 export const twilioStatus = pgEnum('twilio_status', [
   'delivery_unknown',
@@ -336,7 +340,7 @@ export const audienceSegments = pgTable('audience_segments', {
 export const broadcasts = pgTable('broadcasts', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-  runAt: timestamp('run_at', { withTimezone: true, mode: 'date' }).notNull(),
+  runAt: timestamp('run_at', { withTimezone: true, mode: 'date' }),
   delay: integer('delay').default(600).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   editable: boolean('editable').default(true).notNull(),
@@ -381,6 +385,28 @@ export const lookupTemplate = pgTable('lookup_template', {
   type: text('type').notNull(),
 })
 
+export const broadcastSettings = pgTable('broadcast_settings', {
+  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+  id: serial('id').primaryKey().notNull(),
+  mon: time('mon'),
+  tue: time('tue'),
+  wed: time('wed'),
+  thu: time('thu'),
+  fri: time('fri'),
+  sat: time('sat'),
+  sun: time('sun'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+})
+
+export const cronJob = cronSchema.table('job', {
+  jobid: serial('jobid').primaryKey(),
+  schedule: text('schedule').notNull(),
+  command: text('command').notNull(),
+  jobname: text('jobname').notNull(),
+})
+
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -401,4 +427,6 @@ export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
 export type Broadcast = typeof broadcasts.$inferInsert
 export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
+export type LookupTemplate = typeof lookupTemplate.$inferInsert
+export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert

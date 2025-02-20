@@ -11,8 +11,8 @@ import {
 import { delay } from './utils.ts'
 import Missive from '../../_shared/lib/Missive.ts'
 import supabase from '../../_shared/lib/supabase.ts'
-import { pgmq_delete } from '../../_shared/scheduledcron/queries.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
+import { pgmqDelete } from '../../_shared/scheduledcron/queries.ts'
 
 const UNSUBSCRIBED_TERMS = ['stop', 'unsubscribe']
 const START_TERMS = ['start']
@@ -91,7 +91,7 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
       // Handle second message queue deletion if exists
       if (sentMessage[0].secondMessageQueueId) {
         await supabase.execute(
-          pgmq_delete(SECOND_MESSAGES_QUEUE_NAME, String(sentMessage[0].secondMessageQueueId)),
+          pgmqDelete(SECOND_MESSAGES_QUEUE_NAME, String(sentMessage[0].secondMessageQueueId)),
         )
       }
     }

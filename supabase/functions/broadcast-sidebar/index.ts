@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { z } from 'https://deno.land/x/zod@v3.24.1/mod.ts'
+import { z } from 'zod'
 
 import BroadcastSidebar from '../_shared/services/BroadcastSidebar.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
@@ -11,7 +11,6 @@ app.get('/broadcast-sidebar/', async (c) => {
   const url = new URL(c.req.url)
   const limit = Number(url.searchParams.get('limit')) || 5
   const cursor = Number(url.searchParams.get('cursor')) || undefined
-  console.log(`Getting broadcast sidebar. Limit: ${limit}, cursor: ${cursor}`)
   try {
     const result = await BroadcastSidebar.getAll(limit, cursor)
     return AppResponse.ok(result)
@@ -35,17 +34,13 @@ app.patch('/broadcast-sidebar/', async (c) => {
   try {
     const requestBody = await c.req.json()
     const data = PatchBroadcastDTOSchema.parse(requestBody)
-
     const { id, firstMessage, secondMessage, runAt, delay, noRecipients } = data
-
     if (!firstMessage && !secondMessage && runAt === undefined && delay === undefined && noRecipients === undefined) {
       return AppResponse.badRequest()
     }
-
     console.log(
       `Updating broadcast with id ${id}. First message: ${firstMessage}, second message: ${secondMessage}, run at: ${runAt}, delay: ${delay}, noRecipients: ${noRecipients}`,
     )
-
     const result = await BroadcastSidebar.patch(Number(id), { firstMessage, secondMessage, runAt, delay, noRecipients })
     return AppResponse.ok(result)
   } catch (error) {

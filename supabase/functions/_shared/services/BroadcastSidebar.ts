@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 
+import DateUtils from '../misc/DateUtils.ts'
 import {
   BroadcastResponse,
   BroadcastUpdate,
@@ -10,7 +11,7 @@ import {
 import supabase from '../lib/supabase.ts'
 import { authors, Broadcast, broadcasts, broadcastSentMessageStatus } from '../drizzle/schema.ts'
 import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
-import { BroadcastDashBoardQueryReturn, pgmq_delete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
+import { BroadcastDashBoardQueryReturn, pgmqDelete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
 
@@ -18,23 +19,35 @@ const getAll = async (
   limit = 5, // Limit past batches
   cursor?: number,
 ): Promise<BroadcastResponse> => {
+  // cursor exists mean we are fetching only past batches, otherwise we are also fetching upcoming batch
   const selectQuery = selectBroadcastDashboard(cursor ? limit : limit + 1, cursor)
   const results: BroadcastDashBoardQueryReturn[] = await supabase.execute(sql.raw(selectQuery))
-  // "runAt" value should be a date, but it appears as a string when used in Supabase.
-  results.forEach((broadcast) => broadcast.runAt = new Date(broadcast.runAt))
-  const response = new BroadcastResponse()
   if (results.length === 0) {
-    return response
+    return {}
   }
-  if (cursor && results[0].runAt < new Date()) {
-    response.past = results.map((broadcast) => convertToPastBroadcast(broadcast))
-  } else {
-    response.upcoming = convertToUpcomingBroadcast(results[0])
-    response.past = results.slice(1).map((broadcast) => convertToPastBroadcast(broadcast))
+  const response = {} as BroadcastResponse
+  for (const broadcast of results) {
+    if (broadcast.editable) {
+      response.upcoming = convertToUpcomingBroadcast(broadcast)
+    } else {
+      if (!response.past) {
+        response.past = []
+      }
+      response.past.push(convertToPastBroadcast(broadcast))
+    }
   }
-
-  const lastRunAtTimestamp = results[results.length - 1].runAt.getTime() / 1000
-  response.currentCursor = Math.max(Math.floor(lastRunAtTimestamp) - 1, 0)
+  if (response.upcoming && !response.upcoming.runAt) {
+    // If upcoming broadcast is not paused, get runAt from settings
+    response.upcoming.runAt = await DateUtils.calculateNextScheduledTime()
+  }
+  const lastRunAt = results[results.length - 1].runAt?.getTime()
+  if (lastRunAt) {
+    response.currentCursor = Math.max(Math.floor(lastRunAt / 1000) - 1, 0)
+  } else if (response?.upcoming?.runAt) {
+    // Handle case where there's only one upcoming broadcast that hasn't been paused (no run_at in database)
+    // In this case, runAt was calculated from broadcast_settings
+    response.currentCursor = response.upcoming.runAt - 1
+  }
   return response
 }
 
@@ -57,8 +70,7 @@ const patch = async (
       return
     }
     if (broadcast.runAt) {
-      const invokeNextBroadcast = invokeBroadcastCron(broadcast.runAt * 1000)
-      await tx.execute(sql.raw(invokeNextBroadcast))
+      await tx.execute(invokeBroadcastCron(broadcast.runAt * 1000))
     }
     return convertToUpcomingBroadcast(result[0])
   })
@@ -106,7 +118,7 @@ const removeBroadcastSecondMessage = async (phoneNumber: string) => {
     .limit(1)
   if (sentMessage.length > 0 && sentMessage[0].secondMessageQueueId) {
     await supabase.execute(
-      pgmq_delete(SECOND_MESSAGES_QUEUE_NAME, String(sentMessage[0].secondMessageQueueId)),
+      pgmqDelete(SECOND_MESSAGES_QUEUE_NAME, String(sentMessage[0].secondMessageQueueId)),
     )
   }
 }

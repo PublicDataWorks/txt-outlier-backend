@@ -45,11 +45,12 @@
     ]
   },
   "tasks": {
-    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash run_broadcast_triggers.sh --env-file ../../../.env) && supabase functions serve",
+    "dev": "supabase start && (cd supabase/migrations/protected_migrations && bash add_keys_to_vault.sh --env-file ../../../.env) && supabase functions serve",
     "fmt": "deno fmt",
     "lint": "deno lint",
     "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
-    "test": "cd supabase/functions/tests/ && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing **/*.ts",
+    "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing **/*.ts",
+    "test:db": "supabase db test",
     "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile **/*.ts",
     "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
   },
@@ -58,6 +59,7 @@
     "drizzle-orm/postgres-js": "npm:drizzle-orm@0.28.5/postgres-js",
     "drizzle-orm/pg-core": "npm:drizzle-orm@0.28.5/pg-core",
     "date-fns": "https://esm.sh/date-fns@3.6.0",
+    "date-fns-tz": "npm:date-fns-tz",
     "encoding/": "https://deno.land/std@0.210.0/encoding/",
     "twilio": "npm:twilio@^5.4.3",
     "date-fns/": "https://deno.land/x/date_fns@v2.15.0/",
@@ -65,8 +67,8 @@
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
     "hono": "jsr:@hono/hono@4.6.20",
-    "node-mocks-http": "npm:node-mocks-http",
-    "mock-fetch": "https://deno.land/x/mock_fetch@0.3.0/mod.ts",
-    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts"
+    "zod": "https://deno.land/x/zod@v3.24.1/mod.ts",
+    "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts",
+    "croner": "jsr:@hexagon/croner@8.1.2"
   }
 }

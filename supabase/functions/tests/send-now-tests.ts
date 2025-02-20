@@ -13,11 +13,8 @@ const FUNCTION_NAME = 'send-now/'
 
 describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () => {
   it('should successfully send broadcast now', async () => {
-    // Setup: Create initial data
     await createAuthors(2)
-    await createSegment(0, 0, 'Inactive')
-
-    // Create broadcast scheduled for far future (more than 90 minutes)
+    await createSegment({ name: 'Inactive' })
     const runAt = new Date()
     runAt.setHours(runAt.getHours() + 3)
 
@@ -30,12 +27,9 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
       delay: 600,
     })
 
-    await createSegment(broadcast.id!)
+    await createSegment({ broadcastId: broadcast.id! })
 
-    // Act: Call the send-now endpoint
     await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
-
-    // Assert: Verify original broadcast is updated
     // @ts-ignore: Property broadcasts exists at runtime
     const updatedBroadcast = await supabase.query.broadcasts.findFirst({
       where: eq(broadcasts.id, broadcast.id!),
@@ -47,7 +41,6 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
       'Run time should be set to now',
     )
 
-    // Assert: Verify new broadcast was created
     // @ts-ignore: Property broadcasts exists at runtime
     const newBroadcast = await supabase.query.broadcasts.findFirst({
       where: and(
@@ -61,7 +54,6 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
       },
     })
 
-    // Verify new broadcast properties
     assertEquals(!!newBroadcast, true, 'New broadcast should exist')
     assertEquals(newBroadcast.firstMessage, 'Test first message', 'First message should match')
     assertEquals(newBroadcast.secondMessage, 'Test second message', 'Second message should match')
@@ -69,12 +61,10 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
     assertEquals(newBroadcast.delay, 600, 'Delay should match')
     assertEquals(newBroadcast.editable, true, 'New broadcast should be editable')
 
-    // Verify segments were copied
     assertEquals(newBroadcast.broadcastToSegments.length, 1, 'Should have one segment')
     assertEquals(newBroadcast.broadcastToSegments[0].segment.name, 'Test', 'Segment name should be Test')
     assertEquals(newBroadcast.broadcastToSegments[0].ratio, 100, 'Segment ratio should be 100')
 
-    // Verify messages were queued
     const queuedMessages = await supabase.execute(
       sql.raw('SELECT COUNT(*) as count FROM pgmq.q_broadcast_first_messages'),
     )
@@ -95,7 +85,7 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
       delay: 300,
     })
 
-    await createSegment(broadcast.id!)
+    await createSegment({ broadcastId: broadcast.id! })
 
     // Act & Assert: Verify error response
     const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
@@ -121,7 +111,7 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
   it('should fail when another broadcast is running', async () => {
     // Setup: Create broadcast scheduled for far future
     await createAuthors(2)
-    await createSegment(0, 0, 'Inactive')
+    await createSegment({ name: 'Inactive' })
 
     const runAt = new Date()
     runAt.setHours(runAt.getHours() + 3)
@@ -135,7 +125,7 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
       delay: 300,
     })
 
-    await createSegment(broadcast.id!)
+    await createSegment({ broadcastId: broadcast.id! })
 
     // First call should succeed
     await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })

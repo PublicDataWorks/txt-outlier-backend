@@ -8,9 +8,9 @@ import { newIncomingSmsRequest } from '../fixtures/incoming-twilio-message-reque
 import supabase from '../../_shared/lib/supabase.ts'
 import { client } from '../utils.ts'
 import { createBroadcastSentMessageStatus } from '../factories/broadcast-sent-message-status.ts'
-import { pgmq_send } from '../../_shared/scheduledcron/queries.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
 import { sql } from 'drizzle-orm'
+import { pgmqSend } from '../../_shared/scheduledcron/queries.ts'
 
 const FUNCTION_NAME = 'user-actions/'
 
@@ -19,7 +19,7 @@ describe(
   { sanitizeOps: false, sanitizeResources: false },
   () => {
     it('receive reply after sending first message', async () => {
-      const queue_message = await supabase.execute(pgmq_send(SECOND_MESSAGES_QUEUE_NAME, '{"hello": "world"}', 10))
+      const queue_message = await supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, '{"hello": "world"}', 10))
       const queuedMessagesBefore = await supabase.execute(
         sql.raw('SELECT message FROM pgmq.q_broadcast_second_messages'),
       )

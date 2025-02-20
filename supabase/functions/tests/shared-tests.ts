@@ -1,7 +1,12 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
-import { assertEquals } from 'jsr:@std/assert'
+import { assert, assertEquals, assertNotEquals } from 'jsr:@std/assert'
+import './setup.ts'
 import DateUtils from '../_shared/misc/DateUtils.ts'
 import { dateToCron } from '../_shared/scheduledcron/helpers.ts'
+import { createBroadcastSetting } from './factories/broadcast-settings.ts'
+import { formatInTimeZone } from 'date-fns-tz'
+
+const DETROIT_TIMEZONE = 'America/Detroit'
 
 describe('DateUtils', () => {
   describe('advance', () => {
@@ -33,53 +38,109 @@ describe('DateUtils', () => {
     })
   })
 
-  describe('getNextTimestamp', () => {
-    it('should get next Tuesday from Sunday', () => {
-      const sunday = new Date('2024-03-17T10:00:00') // A Sunday
-      const result = DateUtils.getNextTimestamp(sunday)
-      assertEquals(result.toISOString(), '2024-03-19T10:00:00.000Z', 'Should be next Tuesday')
+  describe('calculateNextScheduledTime', { sanitizeOps: false, sanitizeResources: false }, () => {
+    it('should return null when no active setting exists', async () => {
+      const result = await DateUtils.calculateNextScheduledTime()
+      assertEquals(result, null)
     })
 
-    it('should get next Wednesday from Monday', () => {
-      const monday = new Date('2024-03-18T10:00:00') // A Monday
-      const result = DateUtils.getNextTimestamp(monday)
-      assertEquals(result.toISOString(), '2024-03-19T10:00:00.000Z', 'Should be next Tuesday')
+    it('should return null when active setting has no schedules', async () => {
+      await createBroadcastSetting({
+        mon: null,
+        tue: null,
+        wed: null,
+        thu: null,
+        fri: null,
+        sat: null,
+        sun: null,
+        active: true,
+      })
+
+      const result = await DateUtils.calculateNextScheduledTime()
+      assertEquals(result, null)
     })
 
-    it('should get next Wednesday from Tuesday', () => {
-      const tuesday = new Date('2024-03-19T10:00:00') // A Tuesday
-      const result = DateUtils.getNextTimestamp(tuesday)
-      assertEquals(result.toISOString(), '2024-03-20T10:00:00.000Z', 'Should be next Wednesday')
+    it('should find next time on same day', async () => {
+      const now = new Date()
+
+      // Get later time in Detroit
+      const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+      const laterDetroitDateTime = formatInTimeZone(twoHoursLater, DETROIT_TIMEZONE, 'yyyy-MM-dd HH:mm:ss eee')
+      const [_, laterTimeDetroit, laterDay] = laterDetroitDateTime.split(' ')
+
+      await createBroadcastSetting({
+        [laterDay.toLowerCase()]: laterTimeDetroit,
+        active: true,
+      })
+
+      const result = await DateUtils.calculateNextScheduledTime()
+      assertNotEquals(result, null)
+      const resultInDetroit = new Date(result! * 1000)
+      const resultDetroitTime = formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'HH:mm:ss')
+
+      assertEquals(resultDetroitTime, laterTimeDetroit)
+
+      const resultDay = formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'eee').toLowerCase()
+      assertEquals(resultDay, laterDay.toLowerCase())
     })
 
-    it('should get next Thursday from Wednesday', () => {
-      const wednesday = new Date('2024-03-20T10:00:00') // A Wednesday
-      const result = DateUtils.getNextTimestamp(wednesday)
-      assertEquals(result.toISOString(), '2024-03-21T10:00:00.000Z', 'Should be next Thursday')
+    it('should find next time on next day when all times today have passed', async () => {
+      const now = new Date()
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+
+      const nowInDetroit = formatInTimeZone(now, DETROIT_TIMEZONE, 'yyyy-MM-dd HH:mm:ss eee')
+      const tomorrowInDetroit = formatInTimeZone(tomorrow, DETROIT_TIMEZONE, 'yyyy-MM-dd HH:mm:ss eee')
+      const [_, __, todayDay] = nowInDetroit.split(' ')
+      const [___, ____, tomorrowDay] = tomorrowInDetroit.split(' ')
+
+      await createBroadcastSetting({
+        [todayDay.toLowerCase()]: '00:00:00',
+        [tomorrowDay.toLowerCase()]: '09:00:00',
+        active: true,
+      })
+
+      const result = await DateUtils.calculateNextScheduledTime()
+      assertNotEquals(result, null)
+      const resultInDetroit = new Date(result! * 1000)
+      const resultDetroitTime = formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'HH:mm:ss')
+
+      assertEquals(resultDetroitTime, '09:00:00')
+      const resultDay = formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'eee').toLowerCase()
+      assertEquals(resultDay, tomorrowDay.toLowerCase())
     })
 
-    it('should get next Tuesday from Thursday', () => {
-      const thursday = new Date('2024-03-21T10:00:00') // A Thursday
-      const result = DateUtils.getNextTimestamp(thursday)
-      assertEquals(result.toISOString(), '2024-03-26T10:00:00.000Z', 'Should be next Tuesday')
-    })
+    it('should wrap around to next week when no remaining times this week', async () => {
+      const now = new Date()
+      const nowInDetroit = formatInTimeZone(now, DETROIT_TIMEZONE, 'yyyy-MM-dd HH:mm:ss eee')
+      const [_, currentTime, todayDay] = nowInDetroit.split(' ')
 
-    it('should get next Tuesday from Friday', () => {
-      const friday = new Date('2024-03-22T10:00:00') // A Friday
-      const result = DateUtils.getNextTimestamp(friday)
-      assertEquals(result.toISOString(), '2024-03-26T10:00:00.000Z', 'Should be next Tuesday')
-    })
+      // Get the day order and find yesterday's day
+      const dayOrder = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+      const todayIndex = dayOrder.indexOf(todayDay.toLowerCase())
+      const yesterdayIndex = (todayIndex - 1 + 7) % 7
+      const yesterdayDay = dayOrder[yesterdayIndex]
 
-    it('should get next Tuesday from Saturday', () => {
-      const saturday = new Date('2024-03-23T10:00:00') // A Saturday
-      const result = DateUtils.getNextTimestamp(saturday)
-      assertEquals(result.toISOString(), '2024-03-26T10:00:00.000Z', 'Should be next Tuesday')
-    })
+      // Set time only for yesterday, forcing a wrap to next week
+      await createBroadcastSetting({
+        [yesterdayDay]: '09:00:00',
+        active: true,
+      })
 
-    it('should reset minutes to zero', () => {
-      const dateWithMinutes = new Date('2024-03-19T10:30:00') // Tuesday with 30 minutes
-      const result = DateUtils.getNextTimestamp(dateWithMinutes)
-      assertEquals(result.getMinutes(), 0, 'Minutes should be reset to 0')
+      const result = await DateUtils.calculateNextScheduledTime()
+      assertNotEquals(result, null)
+      const resultInDetroit = new Date(result! * 1000)
+
+      // Verify it's scheduled for yesterday's day next week
+      const resultDay = formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'eee').toLowerCase()
+      assertEquals(resultDay, yesterdayDay)
+
+      // Verify the time
+      const resultTime = formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'HH:mm:ss')
+      assertEquals(resultTime, '09:00:00')
+
+      // Verify result is 6 days ahead (wrapping around to next week)
+      const diffInDays = Math.floor((resultInDetroit.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      assertEquals(diffInDays, 6)
     })
   })
 })
