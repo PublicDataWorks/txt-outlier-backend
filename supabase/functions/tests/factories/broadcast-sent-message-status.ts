@@ -1,5 +1,5 @@
 import { faker } from 'faker'
-import { BroadcastMessageStatus, broadcasts, broadcastSentMessageStatus } from '../../_shared/drizzle/schema.ts'
+import { broadcastSentMessageStatus } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { createBroadcast } from './broadcast.ts'
 import { createSegment } from './segment.ts'

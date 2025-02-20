@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { broadcastSettings } from '../_shared/drizzle/schema.ts'
+import { broadcasts, broadcastSettings } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import { CreateSettingSchema, formatScheduleResponse, formatScheduleSelect } from './dto.ts'
 
@@ -21,14 +21,20 @@ app.get('/broadcast-settings/', async () => {
     .where(eq(broadcastSettings.active, true))
     .orderBy(desc(broadcastSettings.id))
     .limit(1)
-  return AppResponse.ok(formatScheduleResponse(rawSchedule))
+  // We haven't fully migrated batchSize to settings yet
+  const [activeBroadcast] = await supabase
+    .select({ batchSize: broadcasts.noUsers })
+    .from(broadcasts).where(eq(broadcasts.editable, true))
+    .orderBy(desc(broadcasts.id))
+    .limit(1)
+  return AppResponse.ok(formatScheduleResponse({ rawSchedule, batchSize: activeBroadcast?.batchSize }))
 })
 
 app.post('/broadcast-settings/', async (c) => {
   try {
     const body = await c.req.json()
-    const { schedule } = CreateSettingSchema.parse(body)
-    console.log('Creating new schedule:', schedule)
+    const { schedule, batchSize } = CreateSettingSchema.parse(body)
+    console.log('Creating new schedule:', schedule, 'batchSize:', batchSize)
 
     const result = await supabase.transaction(async (tx) => {
       const deactivated = await tx
@@ -51,10 +57,38 @@ app.post('/broadcast-settings/', async (c) => {
           active: true,
         })
         .returning(formatScheduleSelect)
-      console.log('New schedule created:', newSchedule)
-      return newSchedule
+
+      let updatedBatchSize
+      if (batchSize !== undefined) {
+        const [updated] = await tx
+          .update(broadcasts)
+          .set({ noUsers: batchSize })
+          .where(eq(broadcasts.editable, true))
+          .returning({ batchSize: broadcasts.noUsers })
+        updatedBatchSize = updated
+      }
+
+      console.log('New schedule created:', newSchedule, updatedBatchSize)
+      return {
+        schedule: newSchedule,
+        batchSize: updatedBatchSize?.batchSize,
+      }
     })
-    return AppResponse.ok(formatScheduleResponse(result))
+
+    // We haven't fully migrated batchSize to settings yet
+    let finalBatchSize = result.batchSize
+    if (finalBatchSize === undefined) {
+      const [activeBroadcast] = await supabase
+        .select({ batchSize: broadcasts.noUsers })
+        .from(broadcasts)
+        .where(eq(broadcasts.editable, true))
+        .orderBy(desc(broadcasts.id))
+        .limit(1)
+      finalBatchSize = activeBroadcast?.batchSize
+    }
+    return AppResponse.ok(
+      formatScheduleResponse({ rawSchedule: result.schedule, batchSize: finalBatchSize }),
+    )
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessage = `Validation error in broadcast-schedules: ${
