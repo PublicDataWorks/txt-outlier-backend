@@ -51,7 +51,7 @@
     "test:setup": "supabase start && supabase functions serve --env-file supabase/functions/tests/.env.edge_testing",
     "test": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing **/*.ts",
     "test:db": "supabase db test",
-    "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile *.ts",
+    "test:coverage": "cd supabase/functions/tests && TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing --coverage=cov_profile **/*.ts",
     "coverage": "deno coverage supabase/functions/tests/cov_profile --exclude=tests"
   },
   "imports": {
