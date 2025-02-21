@@ -113,3 +113,266 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(errorData.message.includes('Run time must be in the future'), true)
   })
 })
+
+describe('PATCH /campaigns/:id', { sanitizeOps: false, sanitizeResources: false }, () => {
+  it('should update an upcoming campaign', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const campaign = await createCampaign({
+      firstMessage: 'Original message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    const newFutureTimestamp = futureTimestamp + 86400 // one more day
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        firstMessage: 'Updated message',
+        runAt: newFutureTimestamp,
+      },
+    })
+
+    assertEquals(data.firstMessage, 'Updated message')
+    assertEquals(data.runAt, newFutureTimestamp)
+
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(updatedCampaign.firstMessage, 'Updated message')
+    assertEquals(Math.floor(updatedCampaign.runAt.getTime() / 1000), newFutureTimestamp)
+  })
+
+  it('should allow partial updates', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const campaign = await createCampaign({
+      title: 'Original title',
+      firstMessage: 'Original message',
+      secondMessage: 'Original second message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        firstMessage: 'Updated message',
+      },
+    })
+
+    assertEquals(data.firstMessage, 'Updated message')
+    assertEquals(data.title, 'Original title')
+    assertEquals(data.secondMessage, 'Original second message')
+    assertEquals(data.runAt, futureTimestamp)
+  })
+
+  it('should return 400 for past campaigns', async () => {
+    const now = new Date()
+    const pastTimestamp = Math.floor(now.getTime() / 1000) - 86400
+    const campaign = await createCampaign({
+      firstMessage: 'Past message',
+      runAt: new Date(pastTimestamp * 1000),
+    })
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        firstMessage: 'Updated message',
+      },
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or cannot be edited')
+  })
+
+  it('should return 400 for non-existent campaign', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}999999/`, {
+      method: 'PATCH',
+      body: {
+        firstMessage: 'Updated message',
+        runAt: futureTimestamp,
+      },
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or cannot be edited')
+  })
+
+  it('should return 400 when no fields provided', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const campaign = await createCampaign({
+      firstMessage: 'Original message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {},
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message.includes('At least one field must be provided'), true)
+  })
+
+  it('should return 400 for invalid campaign ID', async () => {
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}invalid-id/`, {
+      method: 'PATCH',
+      body: {
+        firstMessage: 'Updated message',
+      },
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Invalid campaign ID')
+  })
+
+  it('should allow updating all fields', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const newFutureTimestamp = futureTimestamp + 86400 // one more day
+
+    const campaign = await createCampaign({
+      title: 'Original title',
+      firstMessage: 'Original first message',
+      secondMessage: 'Original second message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        title: 'Updated title',
+        firstMessage: 'Updated first message',
+        secondMessage: 'Updated second message',
+        runAt: newFutureTimestamp,
+      },
+    })
+
+    assertEquals(data.title, 'Updated title')
+    assertEquals(data.firstMessage, 'Updated first message')
+    assertEquals(data.secondMessage, 'Updated second message')
+    assertEquals(data.runAt, newFutureTimestamp)
+
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(updatedCampaign.title, 'Updated title')
+    assertEquals(updatedCampaign.firstMessage, 'Updated first message')
+    assertEquals(updatedCampaign.secondMessage, 'Updated second message')
+    assertEquals(Math.floor(updatedCampaign.runAt.getTime() / 1000), newFutureTimestamp)
+  })
+
+  it('should allow setting secondMessage to null', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+
+    const campaign = await createCampaign({
+      title: 'Original title',
+      firstMessage: 'Original first message',
+      secondMessage: 'Original second message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        secondMessage: null,
+      },
+    })
+
+    assertEquals(data.title, 'Original title')
+    assertEquals(data.firstMessage, 'Original first message')
+    assertEquals(data.secondMessage, null)
+    assertEquals(data.runAt, futureTimestamp)
+
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(updatedCampaign.title, 'Original title')
+    assertEquals(updatedCampaign.firstMessage, 'Original first message')
+    assertEquals(updatedCampaign.secondMessage, null)
+    assertEquals(Math.floor(updatedCampaign.runAt.getTime() / 1000), futureTimestamp)
+  })
+
+  it('should not modify fields not included in request body', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const campaign = await createCampaign({
+      title: 'Original title',
+      firstMessage: 'Original first message',
+      secondMessage: 'Original second message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        title: 'Updated title',
+      },
+    })
+
+    assertEquals(data.title, 'Updated title')
+    assertEquals(data.firstMessage, 'Original first message')
+    assertEquals(data.secondMessage, 'Original second message')
+    assertEquals(data.runAt, futureTimestamp)
+
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(updatedCampaign.title, 'Updated title')
+    assertEquals(updatedCampaign.firstMessage, 'Original first message')
+    assertEquals(updatedCampaign.secondMessage, 'Original second message')
+    assertEquals(Math.floor(updatedCampaign.runAt.getTime() / 1000), futureTimestamp)
+  })
+
+  it('should allow updating runAt to an earlier future time', async () => {
+    const now = new Date()
+    const farFutureTimestamp = Math.floor(now.getTime() / 1000) + (86400 * 7) // 7 days from now
+
+    const campaign = await createCampaign({
+      title: 'Original title',
+      firstMessage: 'Original first message',
+      runAt: new Date(farFutureTimestamp * 1000),
+    })
+
+    // Update to an earlier time (but still in future)
+    const earlierFutureTimestamp = farFutureTimestamp - 86400 // 1 day earlier (6 days from now)
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        runAt: earlierFutureTimestamp,
+      },
+    })
+
+    assertEquals(data.title, 'Original title')
+    assertEquals(data.firstMessage, 'Original first message')
+    assertEquals(data.runAt, earlierFutureTimestamp)
+
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(Math.floor(updatedCampaign.runAt.getTime() / 1000), earlierFutureTimestamp)
+  })
+})
