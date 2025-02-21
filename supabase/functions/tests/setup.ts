@@ -10,6 +10,7 @@ beforeEach(async () => {
     '../../migrations/0001_true_naoko.sql',
     '../../migrations/20250210085456_add_second_message_queue_id.sql',
     '../../migrations/20250211082613_create_broadcast_settings_table.sql',
+    '../../migrations/20250221071041_create_campaigns_table.sql',
   ]
 
   for (const filePath of migrationFiles) {
@@ -55,4 +56,5 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
   DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
   DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
+  DROP TABLE IF EXISTS "campaigns" CASCADE;
 `

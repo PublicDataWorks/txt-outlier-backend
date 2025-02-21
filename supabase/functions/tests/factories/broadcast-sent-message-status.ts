@@ -26,7 +26,7 @@ export const createBroadcastSentMessageStatus = async ({
   twilioSentStatus,
 }: CreateBroadcastSentMessageParams) => {
   const id = broadcastId || (await createBroadcast()).id
-  const segment = await createSegment(id)
+  const segment = await createSegment({ broadcastId: id })
   await createAuthors(1, recipient)
 
   const sentMessage = {

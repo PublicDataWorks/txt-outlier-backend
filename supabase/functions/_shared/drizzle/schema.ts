@@ -407,6 +407,16 @@ export const cronJob = cronSchema.table('job', {
   jobname: text('jobname').notNull(),
 })
 
+export const campaigns = pgTable('campaigns', {
+  id: serial('id').primaryKey(),
+  title: text('title'),
+  firstMessage: text('first_message').notNull(),
+  secondMessage: text('second_message'),
+  runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+})
+
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -425,8 +435,7 @@ export type ConversationAuthor = typeof conversationsAuthors.$inferInsert
 export type TwilioMessage = typeof twilioMessages.$inferInsert
 export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
 export type Broadcast = typeof broadcasts.$inferInsert
-export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
-export type LookupTemplate = typeof lookupTemplate.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
+export type Campaign = typeof campaigns.$inferInsert
