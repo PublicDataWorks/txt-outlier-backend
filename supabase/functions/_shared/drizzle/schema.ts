@@ -27,6 +27,7 @@ export const twilioStatus = pgEnum('twilio_status', [
   'received',
   'sent',
 ])
+export const campaignSegmentType = pgEnum('campaign_segment_type', ['label', 'engagement', 'time_based', 'ai'])
 
 export const broadcastsSegments = pgTable('broadcasts_segments', {
   id: serial('id').primaryKey().notNull(),
@@ -407,6 +408,35 @@ export const cronJob = cronSchema.table('job', {
   jobname: text('jobname').notNull(),
 })
 
+export const campaigns = pgTable('campaigns', {
+  id: serial('id').primaryKey(),
+  title: text('title'),
+  firstMessage: text('first_message').notNull(),
+  secondMessage: text('second_message'),
+  segments: jsonb('segments').notNull(),
+  runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const campaignSegments = pgTable('campaign_segments', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  type: campaignSegmentType('type').notNull(),
+  config: jsonb('config').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+})
+
+export const campaignSegmentRecipients = pgTable('campaign_segment_recipients', {
+  id: serial('id').primaryKey(),
+  segmentId: integer('segment_id').notNull().references(() => campaignSegments.id, { onDelete: 'cascade' }),
+  phoneNumber: text('phone_number').notNull().references(() => authors.phoneNumber, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -425,8 +455,8 @@ export type ConversationAuthor = typeof conversationsAuthors.$inferInsert
 export type TwilioMessage = typeof twilioMessages.$inferInsert
 export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
 export type Broadcast = typeof broadcasts.$inferInsert
-export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
-export type LookupTemplate = typeof lookupTemplate.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
+export type Campaign = typeof campaigns.$inferInsert
+export type CampaignSegment = typeof campaignSegments.$inferInsert

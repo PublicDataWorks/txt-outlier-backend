@@ -3,7 +3,7 @@ import { assertEquals, assertGreater, assertNotEquals } from 'jsr:@std/assert'
 import { client } from './utils.ts'
 import './setup.ts'
 import { createBroadcast } from './factories/broadcast.ts'
-import { Broadcast, broadcastSettings, cronJob } from '../_shared/drizzle/schema.ts'
+import { Broadcast, broadcastSettings } from '../_shared/drizzle/schema.ts'
 import { createBroadcastSentMessageStatus } from './factories/broadcast-sent-message-status.ts'
 import supabase from '../_shared/lib/supabase.ts'
 
@@ -184,7 +184,7 @@ describe(
         id: broadcast.id,
         firstMessage: 'Test message',
         secondMessage: 'Second message',
-        runAt: Math.floor(broadcast.runAt.getTime() / 1000),
+        runAt: Math.floor(broadcast.runAt!.getTime() / 1000),
         totalFirstSent: 4,
         totalSecondSent: 0,
         successfullyDelivered: 2,
@@ -244,7 +244,7 @@ describe(
         noUsers: 50,
       })
 
-      const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
+      const { data } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'PATCH',
         body: {
           id: broadcast.id,

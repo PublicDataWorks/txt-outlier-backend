@@ -4,20 +4,14 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
+CREATE extension IF NOT EXISTS moddatetime SCHEMA extensions;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "audience_segments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"query" text NOT NULL,
 	"description" text NOT NULL,
 	"name" text
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "authors_old" (
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone,
-	"name" text,
-	"phone_number" text PRIMARY KEY NOT NULL,
-	"unsubscribed" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "broadcast_sent_message_status" (
@@ -265,21 +259,6 @@ CREATE TABLE IF NOT EXISTS "teams" (
 	"updated_at" timestamp with time zone
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "twilio_messages_old" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"preview" text NOT NULL,
-	"type" text,
-	"delivered_at" timestamp with time zone NOT NULL,
-	"updated_at" timestamp with time zone,
-	"references" text[] NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"external_id" text,
-	"attachments" text,
-	"from_field" text NOT NULL,
-	"to_field" text NOT NULL,
-	"is_broadcast_reply" boolean DEFAULT false NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "unsubscribed_messages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -407,7 +386,6 @@ CREATE TABLE IF NOT EXISTS "twilio_messages" (
 	"sender_id" uuid
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "authors_phone_number_idx" ON "authors_old" ("phone_number");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_broadcast_sent_message_status_created_recipient" ON "broadcast_sent_message_status" ("created_at","recipient_phone_number");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "broadcast_sent_message_status_audience_segment_id_idx" ON "broadcast_sent_message_status" ("audience_segment_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "broadcast_sent_message_status_broadcast_id_idx" ON "broadcast_sent_message_status" ("broadcast_id");--> statement-breakpoint
@@ -436,9 +414,6 @@ CREATE INDEX IF NOT EXISTS "outgoing_messages_segment_id_idx" ON "outgoing_messa
 CREATE INDEX IF NOT EXISTS "tasks_assignees_comment_id_idx" ON "tasks_assignees" ("comment_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "tasks_assignees_user_id_idx" ON "tasks_assignees" ("user_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "teams_organization_id_idx" ON "teams" ("organization_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "twilio_messages_delivered_at_idx" ON "twilio_messages_old" ("delivered_at");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "twilio_messages_from_field_idx" ON "twilio_messages_old" ("from_field");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "twilio_messages_is_broadcast_reply_idx" ON "twilio_messages_old" ("is_broadcast_reply");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "unsubscribed_messages_broadcast_id_idx" ON "unsubscribed_messages" ("broadcast_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "unsubscribed_messages_twilio_message_id_idx" ON "unsubscribed_messages" ("twilio_message_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "unsubscribed_messages_reply_to_idx" ON "unsubscribed_messages" ("reply_to");--> statement-breakpoint
@@ -619,18 +594,6 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "teams" ADD CONSTRAINT "teams_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "twilio_messages_old" ADD CONSTRAINT "twilio_messages_from_field_fkey" FOREIGN KEY ("from_field") REFERENCES "public"."authors_old"("phone_number") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "twilio_messages_old" ADD CONSTRAINT "twilio_messages_to_field_fkey" FOREIGN KEY ("to_field") REFERENCES "public"."authors_old"("phone_number") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
