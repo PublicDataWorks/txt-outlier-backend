@@ -545,7 +545,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "conversations_authors" ADD CONSTRAINT "conversations_authors_author_phone_number_fkey" FOREIGN KEY ("author_phone_number") REFERENCES "public"."authors"("phone_number") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "conversations_authors" ADD CONSTRAINT "conversations_authors_author_phone_number_fkey" FOREIGN KEY ("author_phone_number") REFERENCES "public"."authors"("phone_number") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

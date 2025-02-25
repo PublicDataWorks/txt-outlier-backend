@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { campaigns, campaignSegmentRecipients, campaignSegments } from '../_shared/drizzle/schema.ts'
+import { campaigns } from '../_shared/drizzle/schema.ts'
 import { sql } from 'drizzle-orm'
 
-const SegmentIdSchema = z.number()
-const AndGroupSchema = z.array(z.number()) // Array of numbers represents AND
+const SegmentIdSchema = z.string().uuid('Invalid segment ID format. Must be a UUID.');
+const AndGroupSchema = z.array(SegmentIdSchema) // Array of numbers represents AND
 // [1, [2, 3], 4] => (1 OR (2 AND 3) OR 4)
 const SegmentConfigSchema = z.union([
   SegmentIdSchema,
@@ -39,15 +39,4 @@ export const formatCampaignSelect = {
   secondMessage: campaigns.secondMessage,
   segments: campaigns.segments,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
-}
-
-export const formatSegmentSelect = {
-  id: campaignSegments.id,
-  name: campaignSegments.name,
-  description: campaignSegments.description,
-  type: campaignSegments.type,
-  config: campaignSegments.config,
-  createdAt: campaignSegments.createdAt,
-  updatedAt: campaignSegments.updatedAt,
-  recipient_count: sql<number>`COUNT(DISTINCT ${campaignSegmentRecipients.phoneNumber})`,
 }

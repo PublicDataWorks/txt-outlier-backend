@@ -3,10 +3,10 @@ import { z } from 'zod'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { campaigns, campaignSegmentRecipients, campaignSegments } from '../_shared/drizzle/schema.ts'
+import { authors, campaigns, conversationsLabels, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { CreateCampaignSchema, formatCampaignSelect, formatSegmentSelect, UpdateCampaignSchema } from './dto.ts'
-import { and, eq, gt, sql } from 'drizzle-orm'
+import { CreateCampaignSchema, formatCampaignSelect, UpdateCampaignSchema } from './dto.ts'
+import { and, eq, gt, isNotNull, sql } from 'drizzle-orm'
 import { validateSegments } from './helpers.ts'
 
 const app = new Hono()
@@ -15,14 +15,28 @@ const FUNCTION_PATH = '/campaigns/'
 app.get(`${FUNCTION_PATH}segments/`, async () => {
   try {
     const segments = await supabase
-      .select(formatSegmentSelect)
-      .from(campaignSegments)
+      .select({
+        id: labels.id,
+        name: labels.name,
+        recipient_count: sql<number>`count(DISTINCT ${conversationsLabels.authorPhoneNumber})`,
+      })
+      .from(labels)
       .leftJoin(
-        campaignSegmentRecipients,
-        sql`${campaignSegments.id} = ${campaignSegmentRecipients.segmentId}`,
+        conversationsLabels,
+        and(
+          eq(labels.id, conversationsLabels.labelId),
+          eq(conversationsLabels.isArchived, false),
+          isNotNull(conversationsLabels.authorPhoneNumber),
+          sql`${conversationsLabels.authorPhoneNumber} IN (
+            SELECT ${authors.phoneNumber}
+            FROM ${authors}
+            WHERE ${authors.unsubscribed} = false
+            AND ${authors.exclude} = false
+          )`,
+        ),
       )
-      .groupBy(campaignSegments.id)
-      .orderBy(campaignSegments.name)
+      .groupBy(labels.id, labels.name, labels.createdAt)
+      .orderBy(labels.name)
 
     return AppResponse.ok(segments)
   } catch (error) {

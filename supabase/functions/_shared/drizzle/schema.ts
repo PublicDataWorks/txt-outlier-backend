@@ -27,7 +27,6 @@ export const twilioStatus = pgEnum('twilio_status', [
   'received',
   'sent',
 ])
-export const campaignSegmentType = pgEnum('campaign_segment_type', ['label', 'engagement', 'time_based', 'ai'])
 
 export const broadcastsSegments = pgTable('broadcasts_segments', {
   id: serial('id').primaryKey().notNull(),
@@ -139,6 +138,7 @@ export const conversationsLabels = pgTable('conversations_labels', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  authorPhoneNumber: text('author_phone_number').references(() => authors.phoneNumber, { onDelete: 'set null' }),
   labelId: uuid('label_id').notNull().references(() => labels.id, { onDelete: 'cascade' }),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   isArchived: boolean('is_archived').default(false).notNull(),
@@ -358,25 +358,6 @@ export const organizations = pgTable('organizations', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
 })
 
-export const outgoingMessages = pgTable('outgoing_messages', {
-  id: serial('id').primaryKey().notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-  recipientPhoneNumber: text('recipient_phone_number').notNull().references(() => authors.phoneNumber, {
-    onUpdate: 'cascade',
-  }),
-  message: text('message').notNull(),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  broadcastId: bigint('broadcast_id', { mode: 'number' }).notNull().references(() => broadcasts.id, {
-    onDelete: 'cascade',
-  }),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  segmentId: bigint('segment_id', { mode: 'number' }).notNull().references(() => audienceSegments.id, {
-    onUpdate: 'cascade',
-  }),
-  isSecond: boolean('is_second').default(false).notNull(),
-  processed: boolean('processed').default(false).notNull(),
-})
-
 export const lookupTemplate = pgTable('lookup_template', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -419,24 +400,6 @@ export const campaigns = pgTable('campaigns', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
-export const campaignSegments = pgTable('campaign_segments', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull(),
-  description: text('description'),
-  type: campaignSegmentType('type').notNull(),
-  config: jsonb('config').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
-})
-
-export const campaignSegmentRecipients = pgTable('campaign_segment_recipients', {
-  id: serial('id').primaryKey(),
-  segmentId: integer('segment_id').notNull().references(() => campaignSegments.id, { onDelete: 'cascade' }),
-  phoneNumber: text('phone_number').notNull().references(() => authors.phoneNumber, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-})
-
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -459,4 +422,3 @@ export type AudienceSegment = typeof audienceSegments.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
 export type Campaign = typeof campaigns.$inferInsert
-export type CampaignSegment = typeof campaignSegments.$inferInsert
