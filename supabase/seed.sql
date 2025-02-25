@@ -18,3 +18,139 @@ INSERT INTO broadcast_settings (mon, tue, wed, thu, fri, sat, sun, active)
 VALUES ('09:00:00', '09:00:00', '09:00:00', '09:00:00', null, null, null, true),
        (null, '12:30:00', '12:30:00', null, '12:30:00', null, null, false);
 
+-- campaign data
+INSERT INTO labels (
+    id,
+    name,
+    name_with_parent_names,
+    color,
+    parent,
+    share_with_organization,
+    visibility,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),  -- unique id for each label
+    'Label ' || LPAD(n::text, 3, '0'),  -- Label 001, Label 002, etc.
+    'Label ' || LPAD(n::text, 3, '0'),  -- same as name since no parent
+    CASE (n % 6)  -- rotate through some common colors
+        WHEN 0 THEN '#FF0000'  -- red
+        WHEN 1 THEN '#00FF00'  -- green
+        WHEN 2 THEN '#0000FF'  -- blue
+        WHEN 3 THEN '#FFFF00'  -- yellow
+        WHEN 4 THEN '#FF00FF'  -- magenta
+        WHEN 5 THEN '#00FFFF'  -- cyan
+    END,
+    NULL,  -- no parent
+    false,
+    'organization',
+    NOW() - (n || ' hours')::interval,  -- stagger creation times
+    NOW() - (n || ' minutes')::interval  -- stagger update times
+FROM generate_series(1, 10) n  -- Create 10 labels
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO authors (phone_number, name, unsubscribed, exclude, created_at)
+SELECT
+    'TEST-' || LPAD(n::text, 3, '0'),  -- Creates TEST-001, TEST-002, etc.
+    'Test Author ' || LPAD(n::text, 3, '0'),
+    false,
+    false,
+    NOW() - (n || ' hours')::interval
+FROM generate_series(1, 50) n  -- Create 50 test authors
+ON CONFLICT (phone_number) DO NOTHING;
+
+
+INSERT INTO conversations (id, web_url, app_url, created_at)
+SELECT
+    gen_random_uuid(),
+    'https://test.com/web/' || LPAD(n::text, 3, '0'),
+    'app://test.com/app/' || LPAD(n::text, 3, '0'),
+    NOW() - (n || ' hours')::interval
+FROM generate_series(1, 30) n  -- Create 30 conversations
+ON CONFLICT (id) DO NOTHING;
+
+WITH numbered_conversations AS (
+    SELECT id, ROW_NUMBER() OVER (ORDER BY created_at) as conv_num
+    FROM conversations
+    WHERE web_url LIKE 'https://test.com/web/%'  -- Only select our test conversations
+),
+numbered_authors AS (
+    SELECT phone_number, ROW_NUMBER() OVER (ORDER BY created_at) as author_num
+    FROM authors
+    WHERE phone_number LIKE 'TEST-%'  -- Only select our test authors
+)
+
+INSERT INTO conversations_authors (conversation_id, author_phone_number)
+SELECT
+    c.id,
+    a.phone_number
+FROM numbered_conversations c
+JOIN numbered_authors a
+    ON a.author_num = c.conv_num  -- One-to-one mapping
+WHERE a.author_num <= (SELECT COUNT(*) FROM conversations WHERE web_url LIKE 'https://test.com/web/%')
+ON CONFLICT (conversation_id, author_phone_number) DO NOTHING;
+
+
+WITH numbered_conversations AS (
+    SELECT id, ROW_NUMBER() OVER (ORDER BY created_at) as conv_num
+    FROM conversations
+    WHERE web_url LIKE 'https://test.com/web/%'  -- Only select our test conversations
+),
+available_labels AS (
+    SELECT id, ROW_NUMBER() OVER (ORDER BY created_at) as label_num
+    FROM labels
+    LIMIT 10  -- Use only first 10 labels
+)
+INSERT INTO conversations_labels (conversation_id, label_id, is_archived)
+SELECT DISTINCT  -- DISTINCT to avoid duplicates
+    c.id,
+    l.id,
+    false
+FROM numbered_conversations c
+CROSS JOIN generate_series(1, 3) n  -- Each conversation gets up to 3 labels
+JOIN available_labels l
+    ON l.label_num = (((c.conv_num - 1) * 3 + n) % 10) + 1  -- Distribute labels across conversations
+ON CONFLICT (conversation_id, label_id) DO NOTHING;
+
+
+INSERT INTO campaign_segment_recipients (segment_id, phone_number)
+SELECT DISTINCT cs.id as segment_id, ca.author_phone_number as phone_number
+FROM conversations_labels cl
+JOIN conversations_authors ca ON cl.conversation_id = ca.conversation_id
+JOIN campaign_segments cs ON cs.type = 'label'
+    AND (cs.config->>'label_id')::uuid = cl.label_id  -- Match label_id from config
+WHERE
+    ca.author_phone_number NOT IN (  -- Exclude authors who are unsubscribed or excluded
+        SELECT phone_number
+        FROM authors
+        WHERE unsubscribed = true OR exclude = true
+    )
+ON CONFLICT (segment_id, phone_number) DO NOTHING;
+
+-- Populates the campaign data from the existing conversations_labels table
+INSERT INTO campaign_segments (name, description, type, config, created_at)
+SELECT
+    l.name,
+    'Segment based on label: ' || l.name,
+    'label',
+    jsonb_build_object('label_id', l.id::text),
+    l.created_at
+FROM labels l;
+------------------------------------------------------------------------------
+-- Migrate data from conversations_labels to campaign_segment_recipients
+INSERT INTO campaign_segment_recipients
+    (segment_id, phone_number)
+SELECT DISTINCT
+    cs.id as segment_id,
+    ca.author_phone_number as phone_number
+FROM conversations_labels cl
+JOIN conversations_authors ca ON cl.conversation_id = ca.conversation_id
+JOIN campaign_segments cs ON cs.type = 'label'
+    AND (cs.config->>'label_id')::uuid = cl.label_id
+WHERE
+    ca.author_phone_number NOT IN (  -- Exclude authors who are unsubscribed or excluded
+        SELECT phone_number
+        FROM authors
+        WHERE unsubscribed = true OR exclude = true
+    );
