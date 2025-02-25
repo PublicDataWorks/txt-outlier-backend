@@ -1,26 +1,35 @@
-// factories/campaign.ts
 import { faker } from 'faker'
 import { campaigns } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
+import { createLabel } from './label.ts'
 
 export type CreateCampaignParams = {
-  title?: string
-  firstMessage?: string
-  secondMessage?: string
-  runAt?: Date
-}
+  title?: string | null;
+  firstMessage?: string;
+  secondMessage?: string | null;
+  runAt?: Date;
+  includedSegments?: string[];
+  excludedSegments?: string[];
+};
 
 export const createCampaign = async ({
-  title,
+  title = null,
   firstMessage,
-  secondMessage,
+  secondMessage = null,
   runAt,
+  includedSegments,
+  excludedSegments,
 }: CreateCampaignParams = {}) => {
+  // Create a default label if includedSegments is not provided
+  const defaultLabel = includedSegments ? null : await createLabel()
+
   const campaign = {
-    title: title,
+    title,
     firstMessage: firstMessage || faker.lorem.sentence(),
-    secondMessage: secondMessage,
+    secondMessage,
     runAt: runAt || new Date(Date.now() + 86400000), // tomorrow
+    includedSegments: includedSegments || [defaultLabel!.id], // use created label id
+    excludedSegments,
   }
 
   const [result] = await supabase
