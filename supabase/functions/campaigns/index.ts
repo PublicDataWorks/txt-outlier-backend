@@ -46,11 +46,27 @@ app.get(`${FUNCTION_PATH}segments/`, async () => {
   }
 })
 
+app.get(FUNCTION_PATH, async () => {
+  try {
+    const upcomingCampaigns = await supabase
+      .select(formatCampaignSelect)
+      .from(campaigns)
+      .where(gt(campaigns.runAt, new Date()))
+      .orderBy(campaigns.runAt)
+
+    return AppResponse.ok(upcomingCampaigns)
+  } catch (error) {
+    console.error('Error fetching upcoming campaigns:', error)
+    Sentry.captureException(error)
+    return AppResponse.internalServerError()
+  }
+})
+
 app.post(FUNCTION_PATH, async (c) => {
   try {
     const body = await c.req.json()
     const campaignData = CreateCampaignSchema.parse(body)
-    const segmentsValid = await validateSegments(campaignData.segments)
+    const segmentsValid = await validateSegments(campaignData.includedSegments, campaignData.excludedSegments)
     if (!segmentsValid) {
       return AppResponse.badRequest('One or more segment IDs are invalid')
     }
@@ -81,11 +97,9 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
     }
     const body = await c.req.json()
     const campaignData = UpdateCampaignSchema.parse(body)
-    if (campaignData.segments) {
-      const segmentsValid = await validateSegments(campaignData.segments)
-      if (!segmentsValid) {
-        return AppResponse.badRequest('One or more segment IDs are invalid')
-      }
+    const segmentsValid = await validateSegments(campaignData.includedSegments, campaignData.excludedSegments)
+    if (!segmentsValid) {
+      return AppResponse.badRequest('One or more segment IDs are invalid')
     }
 
     const [updatedCampaign] = await supabase

@@ -2,12 +2,12 @@ import { z } from 'zod'
 import { campaigns } from '../_shared/drizzle/schema.ts'
 import { sql } from 'drizzle-orm'
 
-const SegmentIdSchema = z.string().uuid('Invalid segment ID format. Must be a UUID.');
-const AndGroupSchema = z.array(SegmentIdSchema) // Array of numbers represents AND
-// [1, [2, 3], 4] => (1 OR (2 AND 3) OR 4)
+const UUIDSchema = z.string().uuid('Invalid segment ID format. Must be a UUID.')
+const AndGroupSchema = z.array(UUIDSchema) // Array of numbers represents AND
+// ["uuid1", ["uuid2", "uuid3"], "uuid4"] => (uuid1 OR (uuid2 AND uuid3) OR uuid4)
 const SegmentConfigSchema = z.union([
-  SegmentIdSchema,
-  z.array(z.union([SegmentIdSchema, AndGroupSchema])),
+  UUIDSchema,
+  z.array(z.union([UUIDSchema, AndGroupSchema])),
 ])
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
 
@@ -15,7 +15,8 @@ export const CreateCampaignSchema = z.object({
   title: z.string().optional(),
   firstMessage: z.string().nonempty('First message is required'),
   secondMessage: z.string().nullable().optional(),
-  segments: SegmentConfigSchema,
+  includedSegments: SegmentConfigSchema,
+  excludedSegments: SegmentConfigSchema.nullable().optional(),
   runAt: z.number()
     .int('Must be a Unix timestamp')
     .transform((timestamp) => new Date(timestamp * 1000))
@@ -37,6 +38,7 @@ export const formatCampaignSelect = {
   title: campaigns.title,
   firstMessage: campaigns.firstMessage,
   secondMessage: campaigns.secondMessage,
-  segments: campaigns.segments,
+  includedSegments: campaigns.includedSegments,
+  excludedSegments: campaigns.excludedSegments,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
 }

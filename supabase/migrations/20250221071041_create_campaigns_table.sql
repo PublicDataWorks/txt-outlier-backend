@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS "campaigns" (
     "title" text,
     "first_message" text NOT NULL,
     "second_message" text,
-    "segments" jsonb NOT NULL,
+    "included_segments" jsonb NOT NULL,
+    "excluded_segments" jsonb,
     "run_at" timestamp with time zone NOT NULL,
     "created_at" timestamp with time zone DEFAULT now() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT now() NOT NULL
