@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": [
+      "deno.window"
+    ],
+    "strict": true
+  },
+  "imports": {
+    "drizzle-orm": "npm:drizzle-orm@0.28.5",
+    "drizzle-orm/postgres-js": "npm:drizzle-orm@0.28.5/postgres-js",
+    "drizzle-orm/pg-core": "npm:drizzle-orm@0.28.5/pg-core",
+    "date-fns": "https://esm.sh/date-fns@3.6.0",
+    "date-fns-tz": "npm:date-fns-tz",
+    "encoding/": "https://deno.land/std@0.210.0/encoding/",
+    "twilio": "npm:twilio@^5.4.3",
+    "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
+    "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
+    "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
+    "hono": "jsr:@hono/hono@4.6.20",
+    "zod": "https://deno.land/x/zod@v3.24.1/mod.ts"
+  }
+}
