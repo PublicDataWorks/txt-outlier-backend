@@ -6,9 +6,9 @@ import {
   authors,
   broadcasts,
   BroadcastSegment,
-  broadcastSentMessageStatus,
   broadcastsSegments,
   lookupTemplate,
+  messageStatuses,
 } from '../drizzle/schema.ts'
 import { handleFailedDeliveriesCron, reconcileTwilioStatusCron } from '../scheduledcron/cron.ts'
 import MissiveUtils from '../lib/Missive.ts'
@@ -49,6 +49,7 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
+    // Webhook already handles this, consider remove this one
     await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers + broadcast.delay + 900))
     await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
@@ -106,11 +107,12 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     return
   }
   const messageMetadata = results[0].message
+  console.log(`Sending broadcast message. isSecond: ${isSecond}, messageMetadata: ${JSON.stringify(messageMetadata)}`)
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
   const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
   if (response.ok) {
     let secondMessageQueueId = undefined
-    if (!isSecond) {
+    if (!isSecond && messageMetadata.second_message) {
       const [_, sendResult] = await Promise.all([
         supabase.execute(pgmqDelete(queueName, results[0].msg_id)),
         supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
@@ -122,12 +124,13 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     const responseBody = await response.json()
     const { id, conversation } = responseBody.drafts
     await supabase
-      .insert(broadcastSentMessageStatus)
+      .insert(messageStatuses)
       .values({
         recipientPhoneNumber: messageMetadata.recipient_phone_number,
         message: message,
         isSecond: isSecond,
-        broadcastId: messageMetadata.broadcast_id,
+        broadcastId: messageMetadata?.broadcast_id,
+        campaignId: messageMetadata?.campaign_id,
         missiveId: id,
         missiveConversationId: conversation,
         audienceSegmentId: messageMetadata.segment_id,
@@ -166,7 +169,7 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
   try {
     for (const msg of messages) {
       await supabase
-        .update(broadcastSentMessageStatus)
+        .update(messageStatuses)
         .set({
           twilioSentStatus: msg.status,
           twilioId: msg.sid,
@@ -175,7 +178,7 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
         .where(
           and(
             eq(
-              broadcastSentMessageStatus.id,
+              messageStatuses.id,
               sql`(SELECT id
                FROM broadcast_sent_message_status
                WHERE broadcast_id = ${broadcastId}
@@ -269,10 +272,10 @@ const handleFailedDeliveries = async () => {
     phonesToUpdate.push(conversation.phone_number)
     if (conversationsToUpdate.length > 4) {
       await supabase
-        .update(broadcastSentMessageStatus)
+        .update(messageStatuses)
         .set({ closed: true })
         .where(and(
-          inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
+          inArray(messageStatuses.missiveConversationId, conversationsToUpdate),
         ))
       await supabase.update(authors)
         .set({ exclude: true })
@@ -290,10 +293,10 @@ const handleFailedDeliveries = async () => {
 
   if (conversationsToUpdate.length > 0) {
     await supabase
-      .update(broadcastSentMessageStatus)
+      .update(messageStatuses)
       .set({ closed: true })
       .where(and(
-        inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
+        inArray(messageStatuses.missiveConversationId, conversationsToUpdate),
       ))
     await supabase.update(authors)
       .set({ exclude: true })

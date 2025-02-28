@@ -146,7 +146,7 @@ BEGIN
                 'send-first-messages',
                 '1 seconds',
                 format('SELECT net.http_post(
-                    url:=''%s/send-messages/'',
+                    url:=''%ssend-messages/'',
                     body:=''{"isSecond": false}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",

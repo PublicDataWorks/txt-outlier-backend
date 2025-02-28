@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { and, eq, gt, lte, sql } from 'drizzle-orm'
+import { and, eq, lte, sql } from 'drizzle-orm'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'

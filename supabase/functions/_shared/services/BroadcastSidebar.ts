@@ -9,7 +9,7 @@ import {
   UpcomingBroadcastResponse,
 } from '../dto/BroadcastRequestResponse.ts'
 import supabase from '../lib/supabase.ts'
-import { authors, Broadcast, broadcasts, broadcastSentMessageStatus } from '../drizzle/schema.ts'
+import { authors, Broadcast, broadcasts, messageStatuses } from '../drizzle/schema.ts'
 import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
 import { BroadcastDashBoardQueryReturn, pgmqDelete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
@@ -107,14 +107,14 @@ const updateSubscriptionStatus = async (
 const removeBroadcastSecondMessage = async (phoneNumber: string) => {
   const sentMessage = await supabase
     .select()
-    .from(broadcastSentMessageStatus)
+    .from(messageStatuses)
     .where(
       and(
-        eq(broadcastSentMessageStatus.recipientPhoneNumber, phoneNumber),
-        eq(broadcastSentMessageStatus.isSecond, false),
+        eq(messageStatuses.recipientPhoneNumber, phoneNumber),
+        eq(messageStatuses.isSecond, false),
       ),
     )
-    .orderBy(desc(broadcastSentMessageStatus.id))
+    .orderBy(desc(messageStatuses.id))
     .limit(1)
   if (sentMessage.length > 0 && sentMessage[0].secondMessageQueueId) {
     await supabase.execute(

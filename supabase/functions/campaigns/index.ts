@@ -66,14 +66,14 @@ app.post(FUNCTION_PATH, async (c) => {
   try {
     const body = await c.req.json()
     const campaignData = CreateCampaignSchema.parse(body)
-    const segmentsValid = await validateSegments(campaignData.includedSegments, campaignData.excludedSegments)
+    const segmentsValid = await validateSegments(campaignData.segments.included, campaignData.segments.excluded)
     if (!segmentsValid) {
       return AppResponse.badRequest('One or more segment IDs are invalid')
     }
     console.log('Creating new campaign:', campaignData)
     const [newCampaign] = await supabase
       .insert(campaigns)
-      .values({ ...campaignData })
+      .values({ ...campaignData, segments: sql`${campaignData.segments}::jsonb` })
       .returning(formatCampaignSelect)
 
     return AppResponse.ok(newCampaign)
@@ -97,14 +97,23 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
     }
     const body = await c.req.json()
     const campaignData = UpdateCampaignSchema.parse(body)
-    const segmentsValid = await validateSegments(campaignData.includedSegments, campaignData.excludedSegments)
-    if (!segmentsValid) {
-      return AppResponse.badRequest('One or more segment IDs are invalid')
+    if (campaignData.segments) {
+      const segmentsValid = await validateSegments(campaignData.segments.included, campaignData.segments.excluded)
+
+      if (!segmentsValid) {
+        return AppResponse.badRequest('One or more segment IDs are invalid')
+      }
+    }
+
+    const updateData = { ...campaignData }
+    if (campaignData.segments) {
+      // @ts-ignore - TypeScript doesn't understand this is valid for PostgreSQL JSONB
+      updateData.segments = sql`${campaignData.segments}::jsonb`
     }
 
     const [updatedCampaign] = await supabase
       .update(campaigns)
-      .set({ ...campaignData })
+      .set(updateData)
       .where(and(eq(campaigns.id, id), gt(campaigns.runAt, new Date())))
       .returning(formatCampaignSelect)
 

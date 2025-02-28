@@ -2,21 +2,33 @@ import { z } from 'zod'
 import { campaigns } from '../_shared/drizzle/schema.ts'
 import { sql } from 'drizzle-orm'
 
-const UUIDSchema = z.string().uuid('Invalid segment ID format. Must be a UUID.')
-const AndGroupSchema = z.array(UUIDSchema) // Array of numbers represents AND
-// ["uuid1", ["uuid2", "uuid3"], "uuid4"] => (uuid1 OR (uuid2 AND uuid3) OR uuid4)
+const SegmentSchema = z.object({
+  id: z.string().uuid('Invalid segment ID format. Must be a UUID.'),
+  since: z.number()
+    .int('Date filter must be a Unix timestamp')
+    .optional(),
+})
+
+const AndGroupSchema = z.array(SegmentSchema)
+
 const SegmentConfigSchema = z.union([
-  UUIDSchema,
-  z.array(z.union([UUIDSchema, AndGroupSchema])),
+  SegmentSchema,
+  z.array(z.union([
+    SegmentSchema,
+    AndGroupSchema
+  ])),
 ])
+
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
 
 export const CreateCampaignSchema = z.object({
   title: z.string().optional(),
   firstMessage: z.string().nonempty('First message is required'),
   secondMessage: z.string().nullable().optional(),
-  includedSegments: SegmentConfigSchema,
-  excludedSegments: SegmentConfigSchema.nullable().optional(),
+  segments: z.object({
+    included: SegmentConfigSchema,
+    excluded: SegmentConfigSchema.nullable().optional(),
+  }),
   runAt: z.number()
     .int('Must be a Unix timestamp')
     .transform((timestamp) => new Date(timestamp * 1000))
@@ -33,12 +45,16 @@ export const UpdateCampaignSchema = CreateCampaignSchema
     'At least one field must be provided for update',
   )
 
+export const RecipientCountSchema = z.object({
+  includedSegments: SegmentConfigSchema,
+  excludedSegments: SegmentConfigSchema.nullable().optional(),
+}).strict()
+
 export const formatCampaignSelect = {
   id: campaigns.id,
   title: campaigns.title,
   firstMessage: campaigns.firstMessage,
   secondMessage: campaigns.secondMessage,
-  includedSegments: campaigns.includedSegments,
-  excludedSegments: campaigns.excludedSegments,
+  segments: campaigns.segments,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
 }

@@ -3,7 +3,7 @@ import { addMinutes } from 'date-fns/index.js'
 import { RequestBody } from '../types.ts'
 import {
   authors,
-  broadcastSentMessageStatus,
+  messageStatuses,
   twilioMessages,
   UnsubscribedMessage,
   unsubscribedMessages,
@@ -27,17 +27,17 @@ const findRecentBroadcastMessage = async (phoneNumber: string, deliveredDate: Da
   const last36Hours = addMinutes(deliveredDate, -36 * 60)
   return await supabase
     .select()
-    .from(broadcastSentMessageStatus)
+    .from(messageStatuses)
     .where(
       and(
-        eq(broadcastSentMessageStatus.recipientPhoneNumber, phoneNumber),
+        eq(messageStatuses.recipientPhoneNumber, phoneNumber),
         // @ts-expect-error Type mismatch
         lt(last36Hours.toISOString(), broadcastSentMessageStatus.createdAt),
         // @ts-expect-error Type mismatch
         gt(deliveredDate.toISOString(), broadcastSentMessageStatus.createdAt),
       ),
     )
-    .orderBy(desc(broadcastSentMessageStatus.id))
+    .orderBy(desc(messageStatuses.id))
     .limit(1)
 }
 
@@ -45,7 +45,7 @@ const updateSubscriptionStatus = async (
   phoneNumber: string,
   unsubscribe: boolean,
   conversationId?: string,
-  broadcastInfo?: { broadcastId?: number; messageId: string; sentMessageId?: number },
+  broadcastInfo?: { broadcastId?: number | null; messageId: string; sentMessageId?: number },
 ) => {
   try {
     await supabase
@@ -118,8 +118,8 @@ const handleBroadcastOutgoing = async (requestBody: RequestBody) => {
     const message = requestBody.message!
     const sentStatus = await supabase
       .select()
-      .from(broadcastSentMessageStatus)
-      .where(eq(broadcastSentMessageStatus.missiveId, message.id))
+      .from(messageStatuses)
+      .where(eq(messageStatuses.missiveId, message.id))
       .limit(1)
 
     if (sentStatus.length === 0) return
@@ -147,10 +147,10 @@ const handleBroadcastOutgoing = async (requestBody: RequestBody) => {
       }
 
     await supabase
-      .update(broadcastSentMessageStatus)
+      .update(messageStatuses)
       // @ts-expect-error Type mismatch
       .set(updateData)
-      .where(eq(broadcastSentMessageStatus.missiveId, message.id))
+      .where(eq(messageStatuses.missiveId, message.id))
 
     console.info(
       `Updated broadcastSentMessageStatus for ${message.id}:`,

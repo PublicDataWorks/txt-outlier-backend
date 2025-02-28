@@ -3,20 +3,27 @@ import { inArray } from 'drizzle-orm'
 import { labels } from '../_shared/drizzle/schema.ts'
 import { SegmentConfig } from './dto.ts'
 
-export const getAllSegmentIds = (config: SegmentConfig): string[] => {
-  if (typeof config === 'string') {
-    return [config]
+const getAllSegmentIds = (config: SegmentConfig): string[] => {
+  if (!Array.isArray(config)) {
+    return [config.id];
   }
-  return config.flatMap((item) => Array.isArray(item) ? item : [item])
-}
+
+  return config.flatMap(item => {
+    if (Array.isArray(item)) {
+      return item.map(segment => segment.id);
+    }
+    return [item.id];
+  });
+};
 
 export const validateSegments = async (
-  includedSegments?: SegmentConfig | null,
-  excludedSegments?: SegmentConfig | null,
+  included?: SegmentConfig | null,
+  excluded?: SegmentConfig | null,
 ): Promise<boolean> => {
-  const includedIds = includedSegments ? getAllSegmentIds(includedSegments) : []
-  const excludedIds = excludedSegments ? getAllSegmentIds(excludedSegments) : []
+  const includedIds = included ? getAllSegmentIds(included) : []
+  const excludedIds = excluded ? getAllSegmentIds(excluded) : []
   const allIds = [...includedIds, ...excludedIds]
+
   if (allIds.length === 0) {
     return true
   }
