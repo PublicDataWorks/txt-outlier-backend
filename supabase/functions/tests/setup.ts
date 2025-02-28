@@ -11,6 +11,8 @@ beforeEach(async () => {
     '../../migrations/20250210085456_add_second_message_queue_id.sql',
     '../../migrations/20250211082613_create_broadcast_settings_table.sql',
     '../../migrations/20250221071041_create_campaigns_table.sql',
+    '../../migrations/20250227075436_add_campaign_processing_functions.sql',
+    '../../migrations/20250228040858_add_campaign_support_to_message_statuses.sql',
   ]
 
   for (const filePath of migrationFiles) {
@@ -52,7 +54,7 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "twilio_messages" CASCADE;
   DROP TABLE IF EXISTS "user_history" CASCADE;
   DROP TABLE IF EXISTS "outgoing_messages" CASCADE;
-  DROP TABLE IF EXISTS "broadcast_sent_message_status" CASCADE;
+  DROP TABLE IF EXISTS "message_statuses" CASCADE;
   DROP TABLE IF EXISTS "lookup_template" CASCADE;
   DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
   DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;

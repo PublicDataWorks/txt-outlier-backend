@@ -5,16 +5,16 @@ import { SegmentConfig } from './dto.ts'
 
 const getAllSegmentIds = (config: SegmentConfig): string[] => {
   if (!Array.isArray(config)) {
-    return [config.id];
+    return [config.id]
   }
 
-  return config.flatMap(item => {
+  return config.flatMap((item) => {
     if (Array.isArray(item)) {
-      return item.map(segment => segment.id);
+      return item.map((segment) => segment.id)
     }
-    return [item.id];
-  });
-};
+    return [item.id]
+  })
+}
 
 export const validateSegments = async (
   included?: SegmentConfig | null,

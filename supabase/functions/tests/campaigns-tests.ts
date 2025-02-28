@@ -6,11 +6,11 @@ import { desc, eq } from 'drizzle-orm'
 import { client } from './utils.ts'
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import {authors, campaigns} from '../_shared/drizzle/schema.ts'
+import { authors, campaigns } from '../_shared/drizzle/schema.ts'
 import { createCampaign } from './factories/campaign.ts'
 import { createLabel } from './factories/label.ts'
 import { createAuthor, createAuthors } from './factories/author.ts'
-import {createConversationLabel} from "./factories/conversation-label.ts";
+import { createConversationLabel } from './factories/conversation-label.ts'
 import { createConversation } from './factories/conversation.ts'
 
 const FUNCTION_NAME = 'campaigns/'
@@ -22,21 +22,22 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     const label3 = await createLabel()
     const futureTimestamp = Math.floor(Date.now() / 1000) + 86412
 
-    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+    const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
       body: {
         firstMessage: 'Test first message',
         runAt: futureTimestamp,
-        includedSegments: [label.id],
-        excludedSegments: [label2.id, label3.id],
+        segments: {
+          included: [{ id: label.id }],
+          excluded: [{ id: label2.id }, { id: label3.id }],
+        },
       },
     })
-
     assertEquals(data.firstMessage, 'Test first message')
     assertEquals(data.runAt, futureTimestamp)
     assertEquals(data.secondMessage, null)
     assertEquals(data.title, null)
-    assertEquals(data.includedSegments, [label.id])
+    assertEquals(data.segments.included, [{ id: label.id }])
 
     const [newCampaign] = await supabase
       .select()
@@ -48,8 +49,10 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(Math.floor(newCampaign.runAt.getTime() / 1000), futureTimestamp)
     assertEquals(newCampaign.secondMessage, null)
     assertEquals(newCampaign.title, null)
-    assertEquals(newCampaign.includedSegments, [label.id])
-    assertEquals(newCampaign.excludedSegments, [label2.id, label3.id])
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(newCampaign.segments.included, [{ id: label.id }])
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(newCampaign.segments.excluded, [{ id: label2.id }, { id: label3.id }])
   })
 
   it('should create a campaign with all fields', async () => {
@@ -63,7 +66,9 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
         firstMessage: 'Test first message',
         secondMessage: 'Test second message',
         runAt: futureTimestamp,
-        includedSegments: [label.id],
+        segments: {
+          included: [{ id: label.id }],
+        },
       },
     })
 
@@ -71,7 +76,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(data.firstMessage, 'Test first message')
     assertEquals(data.secondMessage, 'Test second message')
     assertEquals(data.runAt, futureTimestamp)
-    assertEquals(data.includedSegments, [label.id])
+    assertEquals(data.segments.included, [{ id: label.id }])
 
     const [savedCampaign] = await supabase
       .select()
@@ -83,7 +88,8 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(savedCampaign.firstMessage, 'Test first message')
     assertEquals(savedCampaign.secondMessage, 'Test second message')
     assertEquals(Math.floor(savedCampaign.runAt.getTime() / 1000), futureTimestamp)
-    assertEquals(savedCampaign.includedSegments, [label.id])
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(savedCampaign.segments.included, [{ id: label.id }])
   })
 
   it('should return 400 when included segment IDs are invalid', async () => {
@@ -95,7 +101,9 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
         firstMessage: 'Test first message',
         secondMessage: 'Test second message',
         runAt: futureTimestamp,
-        includedSegments: ['c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1'],
+        segments: {
+          included: [{ id: 'c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1' }],
+        },
       },
     })
 
@@ -124,8 +132,10 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
         firstMessage: 'Test first message',
         secondMessage: 'Test second message',
         runAt: futureTimestamp,
-        includedSegments: [label.id],
-        excludedSegments: ['c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1'],
+        segments: {
+          included: [{ id: label.id }],
+          excluded: [{ id: 'c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1' }],
+        },
       },
     })
 
@@ -152,7 +162,9 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
       body: {
         firstMessage: 'Test first message',
         runAt: futureTimestamp,
-        includedSegments: ['123'],
+        segments: {
+          included: [{ id: '123' }],
+        },
       },
     })
 
@@ -160,7 +172,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     const includeError = await invalidIncluded.error.context.json()
     assertEquals(
       includeError.message,
-      'Validation error in campaigns:  [includedSegments,0] - Invalid segment ID format. Must be a UUID.',
+      'Validation error in campaigns:  [segments,included,0,id] - Invalid segment ID format. Must be a UUID.',
     )
 
     // Test invalid excludedSegments
@@ -169,8 +181,10 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
       body: {
         firstMessage: 'Test first message',
         runAt: futureTimestamp,
-        includedSegments: [crypto.randomUUID()], // valid UUID format
-        excludedSegments: ['abc'],
+        segments: {
+          included: [{ id: crypto.randomUUID() }], // valid UUID format
+          excluded: [{ id: 'abc' }],
+        },
       },
     })
 
@@ -178,7 +192,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     const excludeError = await invalidExcluded.error.context.json()
     assertEquals(
       excludeError.message,
-      'Validation error in campaigns:  [excludedSegments,0] - Invalid segment ID format. Must be a UUID.',
+      'Validation error in campaigns:  [segments,excluded,0,id] - Invalid segment ID format. Must be a UUID.',
     )
 
     // Verify no campaigns were created
@@ -688,10 +702,10 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 2)
     assertEquals(data[0].id, label1.id)
     assertEquals(data[0].name, 'Label A')
-    assertEquals(data[0].recipient_count, "2")
+    assertEquals(data[0].recipient_count, '2')
     assertEquals(data[1].id, label2.id)
     assertEquals(data[1].name, 'Label B')
-    assertEquals(data[1].recipient_count, "1")
+    assertEquals(data[1].recipient_count, '1')
   })
 
   it('should handle labels with no conversations', async () => {
@@ -704,7 +718,7 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Empty Label')
-    assertEquals(data[0].recipient_count, "0")
+    assertEquals(data[0].recipient_count, '0')
   })
 
   it('should handle labels with only archived conversations', async () => {
@@ -726,7 +740,7 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Archived Label')
-    assertEquals(data[0].recipient_count, "0")
+    assertEquals(data[0].recipient_count, '0')
   })
 
   it('should handle labels with only unsubscribed or excluded authors', async () => {
@@ -755,6 +769,6 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Test Label')
-    assertEquals(data[0].recipient_count, "0")
+    assertEquals(data[0].recipient_count, '0')
   })
 })

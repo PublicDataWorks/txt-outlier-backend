@@ -4,13 +4,13 @@ import supabase from '../../_shared/lib/supabase.ts'
 import { createLabel } from './label.ts'
 
 export type CreateCampaignParams = {
-  title?: string | null;
-  firstMessage?: string;
-  secondMessage?: string | null;
-  runAt?: Date;
-  includedSegments?: string[];
-  excludedSegments?: string[];
-};
+  title?: string | null
+  firstMessage?: string
+  secondMessage?: string | null
+  runAt?: Date
+  includedSegments?: string[]
+  excludedSegments?: string[]
+}
 
 export const createCampaign = async ({
   title = null,
@@ -28,8 +28,10 @@ export const createCampaign = async ({
     firstMessage: firstMessage || faker.lorem.sentence(),
     secondMessage,
     runAt: runAt || new Date(Date.now() + 86400000), // tomorrow
-    includedSegments: includedSegments || [defaultLabel!.id], // use created label id
-    excludedSegments,
+    segments: {
+      included: [{ id: includedSegments || defaultLabel!.id }],
+      excluded: [{ id: includedSegments }],
+    },
   }
 
   const [result] = await supabase

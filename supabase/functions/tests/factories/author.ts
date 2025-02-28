@@ -10,7 +10,7 @@ type AuthorOptions = {
 
 export const createAuthor = async (
   phoneNumber?: string,
-  options: AuthorOptions = { unsubscribed: false, exclude: false }
+  options: AuthorOptions = { unsubscribed: false, exclude: false },
 ) => {
   const [result] = await supabase
     .insert(authors)

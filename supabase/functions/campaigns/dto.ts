@@ -15,7 +15,7 @@ const SegmentConfigSchema = z.union([
   SegmentSchema,
   z.array(z.union([
     SegmentSchema,
-    AndGroupSchema
+    AndGroupSchema,
   ])),
 ])
 
@@ -46,8 +46,10 @@ export const UpdateCampaignSchema = CreateCampaignSchema
   )
 
 export const RecipientCountSchema = z.object({
-  includedSegments: SegmentConfigSchema,
-  excludedSegments: SegmentConfigSchema.nullable().optional(),
+  segments: z.object({
+    included: SegmentConfigSchema,
+    excluded: SegmentConfigSchema.nullable().optional(),
+  }),
 }).strict()
 
 export const formatCampaignSelect = {

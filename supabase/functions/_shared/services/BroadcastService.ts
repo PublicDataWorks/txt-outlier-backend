@@ -49,7 +49,6 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    // Webhook already handles this, consider remove this one
     await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers + broadcast.delay + 900))
     await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
@@ -180,7 +179,7 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
             eq(
               messageStatuses.id,
               sql`(SELECT id
-               FROM broadcast_sent_message_status
+               FROM message_statuses
                WHERE broadcast_id = ${broadcastId}
                AND recipient_phone_number = ${msg.to}
                AND (twilio_sent_status IS NULL OR twilio_id IS NULL)

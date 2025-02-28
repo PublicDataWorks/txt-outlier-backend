@@ -4,7 +4,7 @@ import { client } from './utils.ts'
 import './setup.ts'
 import { createBroadcast } from './factories/broadcast.ts'
 import { Broadcast, broadcastSettings } from '../_shared/drizzle/schema.ts'
-import { createBroadcastSentMessageStatus } from './factories/broadcast-sent-message-status.ts'
+import { createMessageStatus } from './factories/broadcast-sent-message-status.ts'
 import supabase from '../_shared/lib/supabase.ts'
 
 const FUNCTION_NAME = 'broadcast-sidebar/'
@@ -126,14 +126,14 @@ describe(
       })
 
       // Delivered status
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+1111111111',
         isSecond: false,
         twilioId: 'twilio1',
         twilioSentStatus: 'delivered',
       })
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+1111111111',
         isSecond: false,
@@ -142,7 +142,7 @@ describe(
       })
 
       // Sent status
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+2222222222',
         isSecond: false,
@@ -151,7 +151,7 @@ describe(
       })
 
       // Failed status
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+3333333333',
         isSecond: false,
@@ -159,7 +159,7 @@ describe(
         twilioSentStatus: 'failed',
       })
 
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+3333333333',
         isSecond: false,
@@ -167,7 +167,7 @@ describe(
         twilioSentStatus: 'failed',
       })
 
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         broadcastId: broadcast.id,
         recipient: '+4444444444',
         isSecond: false,
@@ -178,7 +178,6 @@ describe(
       const { data } = await client.functions.invoke(FUNCTION_NAME, {
         method: 'GET',
       })
-
       const broadcastData = data.past.find((b: Broadcast) => b.id === broadcast.id)
       assertEquals(broadcastData, {
         id: broadcast.id,

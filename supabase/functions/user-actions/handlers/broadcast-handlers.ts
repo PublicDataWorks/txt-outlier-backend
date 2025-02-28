@@ -32,9 +32,9 @@ const findRecentBroadcastMessage = async (phoneNumber: string, deliveredDate: Da
       and(
         eq(messageStatuses.recipientPhoneNumber, phoneNumber),
         // @ts-expect-error Type mismatch
-        lt(last36Hours.toISOString(), broadcastSentMessageStatus.createdAt),
+        lt(last36Hours.toISOString(), messageStatuses.createdAt),
         // @ts-expect-error Type mismatch
-        gt(deliveredDate.toISOString(), broadcastSentMessageStatus.createdAt),
+        gt(deliveredDate.toISOString(), messageStatuses.createdAt),
       ),
     )
     .orderBy(desc(messageStatuses.id))
@@ -153,7 +153,7 @@ const handleBroadcastOutgoing = async (requestBody: RequestBody) => {
       .where(eq(messageStatuses.missiveId, message.id))
 
     console.info(
-      `Updated broadcastSentMessageStatus for ${message.id}:`,
+      `Updated message status for ${message.id}:`,
       JSON.stringify(updateData),
     )
   } catch (error) {

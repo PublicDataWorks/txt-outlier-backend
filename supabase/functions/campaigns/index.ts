@@ -5,7 +5,7 @@ import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { authors, campaigns, conversationsLabels, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { CreateCampaignSchema, formatCampaignSelect, UpdateCampaignSchema } from './dto.ts'
+import { CreateCampaignSchema, formatCampaignSelect, RecipientCountSchema, UpdateCampaignSchema } from './dto.ts'
 import { and, eq, gt, isNotNull, sql } from 'drizzle-orm'
 import { validateSegments } from './helpers.ts'
 
@@ -57,6 +57,30 @@ app.get(FUNCTION_PATH, async () => {
     return AppResponse.ok(upcomingCampaigns)
   } catch (error) {
     console.error('Error fetching upcoming campaigns:', error)
+    Sentry.captureException(error)
+    return AppResponse.internalServerError()
+  }
+})
+
+app.post(`${FUNCTION_PATH}recipient-count/`, async (c) => {
+  try {
+    // Parse and validate the request body
+    const body = await c.req.json()
+    const { segments } = RecipientCountSchema.parse(body)
+
+    const result = await supabase.execute<{ count: number }>(sql`
+      SELECT get_campaign_recipient_count(${segments}::jsonb) as count
+    `)
+
+    return AppResponse.ok(result[0])
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const errorMessage = `Validation error: ${error.errors.map((e) => ` [${e.path}] - ${e.message}`).join(', ')}`
+      console.error(errorMessage)
+      return AppResponse.badRequest(errorMessage)
+    }
+
+    console.error('[recipient-count] Error counting recipients:', error)
     Sentry.captureException(error)
     return AppResponse.internalServerError()
   }

@@ -49,4 +49,3 @@ export const createLabels = async (count: number) => {
     .map(() => createLabel())
   return Promise.all(labelPromises)
 }
-
