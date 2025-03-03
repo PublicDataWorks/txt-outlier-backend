@@ -391,6 +391,7 @@ export const campaigns = pgTable('campaigns', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   processed: boolean('processed').notNull().default(false),
+  twilioPaging: text('twilio_paging'),
 })
 
 export const campaignMessages = pgTable('campaign_messages', {

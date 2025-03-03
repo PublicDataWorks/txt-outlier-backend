@@ -7,6 +7,7 @@ import {
   broadcasts,
   BroadcastSegment,
   broadcastsSegments,
+  campaigns,
   lookupTemplate,
   messageStatuses,
 } from '../drizzle/schema.ts'
@@ -155,16 +156,32 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   }
 }
 
-const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number) => {
-  const [broadcast] = await supabase
-    .select({ twilioPaging: broadcasts.twilioPaging })
-    .from(broadcasts)
-    .where(eq(broadcasts.id, broadcastId))
+const reconcileTwilioStatus = async (
+  { broadcastId, campaignId, runAt }: {
+    broadcastId?: number | null
+    campaignId?: number | null
+    runAt: number
+  },
+) => {
+  const id = broadcastId || campaignId
+
+  if (!id) {
+    throw new Error('Either broadcastId or campaignId must be provided')
+  }
+  const sourceTable = broadcastId ? broadcasts : campaigns
+  const idField = broadcastId ? 'broadcast_id' : 'campaign_id'
+
+  const [record] = await supabase
+    .select({ twilioPaging: sourceTable.twilioPaging })
+    .from(sourceTable)
+    .where(eq(sourceTable.id, id))
     .limit(1)
+
   const { messages, nextPageUrl } = await Twilio.getMessages(
-    new Date(broadcastRunAt),
-    broadcast?.twilioPaging || undefined,
+    new Date(runAt),
+    record?.twilioPaging || undefined,
   )
+  console.log(messages, nextPageUrl)
   try {
     for (const msg of messages) {
       await supabase
@@ -180,7 +197,7 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
               messageStatuses.id,
               sql`(SELECT id
                FROM message_statuses
-               WHERE broadcast_id = ${broadcastId}
+               WHERE ${idField} = ${id}
                AND recipient_phone_number = ${msg.to}
                AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
                ORDER BY id DESC LIMIT 1)`,
@@ -195,12 +212,11 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
         await supabase.execute(handleFailedDeliveriesCron()),
       ])
     } else {
+      const pageToken = nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null
       await supabase
-        .update(broadcasts)
-        .set({
-          twilioPaging: nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null,
-        })
-        .where(eq(broadcasts.id, broadcastId))
+        .update(sourceTable)
+        .set({ twilioPaging: pageToken })
+        .where(eq(sourceTable.id, id))
     }
   } catch (error) {
     const errorMessage = `Error in reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`

@@ -295,6 +295,11 @@ DECLARE
     current_timestamp_utc TIMESTAMP WITH TIME ZONE;
     campaigns_to_run INTEGER;
     campaign_ids INTEGER[];
+    future_timestamp TIMESTAMP WITH TIME ZONE;
+    cron_expression TEXT;
+    service_key TEXT;
+    edge_url TEXT;
+    cron_command TEXT;
 BEGIN
     current_timestamp_utc := CURRENT_TIMESTAMP AT TIME ZONE 'UTC';
     SELECT array_agg(id), COUNT(*) INTO campaign_ids, campaigns_to_run
@@ -322,6 +327,47 @@ BEGIN
         UPDATE campaigns
         SET processed = TRUE
         WHERE id = campaign_record.id;
+
+        future_timestamp := current_timestamp_utc + interval '2 hours';
+        cron_expression :=
+            EXTRACT(MINUTE FROM future_timestamp) || ' ' ||
+            EXTRACT(HOUR FROM future_timestamp) || ' ' ||
+            EXTRACT(DAY FROM future_timestamp) || ' ' ||
+            EXTRACT(MONTH FROM future_timestamp) || ' ' ||
+            '*';
+
+        SELECT decrypted_secret INTO service_key
+        FROM vault.decrypted_secrets
+        WHERE name = 'service_role_key';
+
+        SELECT decrypted_secret INTO edge_url
+        FROM vault.decrypted_secrets
+        WHERE name = 'edge_function_url';
+
+        cron_command := format(
+          'SELECT cron.schedule(
+            ''reconcile-twilio-status'',
+            ''* * * * *'',
+            ''SELECT net.http_post(
+              url:=''''%s/reconcile-twilio-status/'''',
+              body:=''''{"campaignId": %s, "runAt": %s}''''::jsonb,
+              headers:=''''{
+                "Content-Type": "application/json",
+                "Authorization": "Bearer %s"
+                }''''::jsonb)
+            as request_id;''
+          );',
+          edge_url,
+          campaign_record.id,
+          EXTRACT(EPOCH FROM current_timestamp_utc)::INTEGER,
+          service_key
+        );
+
+       PERFORM cron.schedule(
+            'delay-reconcile-twilio-status',
+            cron_expression,
+            cron_command
+        );
 
         RAISE WARNING '[check_and_run_campaigns] Queued campaign ID: %', campaign_record.id;
     END LOOP;
