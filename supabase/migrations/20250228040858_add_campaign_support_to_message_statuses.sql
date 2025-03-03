@@ -19,7 +19,8 @@ RENAME CONSTRAINT broadcast_sent_message_status_missive_id_key TO message_status
 ALTER INDEX broadcast_sent_message_status_audience_segment_id_idx RENAME TO message_statuses_audience_segment_id_idx;
 ALTER INDEX broadcast_sent_message_status_broadcast_id_idx RENAME TO message_statuses_broadcast_id_idx;
 ALTER INDEX broadcast_sent_message_status_recipient_phone_number_idx RENAME TO message_statuses_recipient_phone_number_idx;
-ALTER INDEX broadcast_sent_message_status_pkey RENAME TO message_statuses_pkey;
+-- ALTER INDEX broadcast_sent_messages_pkey RENAME TO message_statuses_pkey;
+ALTER INDEX idx_broadcast_sent_message_status_created_recipient RENAME TO idx_message_statuses_created_recipient;
 
 -- Add an index on campaign_id for better query performance
 CREATE INDEX idx_message_statuses_campaign_id ON message_statuses(campaign_id);

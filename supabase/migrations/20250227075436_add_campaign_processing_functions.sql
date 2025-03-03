@@ -319,6 +319,10 @@ BEGIN
         WHERE id = ANY(campaign_ids)
     LOOP
         PERFORM queue_campaign_messages(campaign_record.id);
+        UPDATE campaigns
+        SET processed = TRUE
+        WHERE id = campaign_record.id;
+
         RAISE WARNING '[check_and_run_campaigns] Queued campaign ID: %', campaign_record.id;
     END LOOP;
 

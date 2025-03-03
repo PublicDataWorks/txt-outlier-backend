@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS "campaigns" (
 CREATE TRIGGER handle_updated_at_campaigns
     BEFORE UPDATE ON campaigns
     FOR EACH ROW
-    EXECUTE PROCEDURE moddatetime(updated_at);
+    EXECUTE PROCEDURE extensions.moddatetime(updated_at);
 -----------------------------------------------
 ALTER TABLE conversations_labels
 ADD COLUMN author_phone_number text REFERENCES authors(phone_number) ON DELETE SET NULL;
@@ -26,4 +26,4 @@ WHERE cl.conversation_id = ca.conversation_id;
 CREATE TRIGGER handle_updated_at_conversations_labels
     BEFORE UPDATE ON conversations_labels
     FOR EACH ROW
-    EXECUTE PROCEDURE moddatetime(updated_at);
+    EXECUTE PROCEDURE extensions.moddatetime(updated_at);

@@ -23,7 +23,7 @@ interface BroadcastMessageUpdate {
   twilioSentStatus: 'delivered' | 'sent' | 'undelivered'
 }
 
-const findRecentBroadcastMessage = async (phoneNumber: string, deliveredDate: Date) => {
+const findRecentBroadcastOrCampaignMessage = async (phoneNumber: string, deliveredDate: Date) => {
   const last36Hours = addMinutes(deliveredDate, -36 * 60)
   return await supabase
     .select()
@@ -77,14 +77,16 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
     const phoneNumber = requestMessage.from_field.id
     const deliveredDate = new Date(requestMessage.delivered_at * 1000)
 
-    const sentMessage = await findRecentBroadcastMessage(phoneNumber, deliveredDate)
+    const sentMessage = await findRecentBroadcastOrCampaignMessage(phoneNumber, deliveredDate)
+    console.log(sentMessage, 'sentMessage', phoneNumber, deliveredDate)
     if (sentMessage.length > 0) {
       // Update Twilio message with broadcast reply info
+      // TODO: rename isBroadcastReply and replyToBroadcast
       await supabase
         .update(twilioMessages)
         .set({
           isBroadcastReply: true,
-          replyToBroadcast: sentMessage[0].broadcastId,
+          replyToBroadcast: sentMessage[0].broadcastId || sentMessage[0].campaignId,
         })
         .where(eq(twilioMessages.id, requestMessage.id))
 
