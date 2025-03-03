@@ -240,9 +240,14 @@ export const upsertLabel = async (
       shareWithOrganization: label.share_with_organization,
       visibility: label.visibility,
     })
-    requestConversationsLabels.add({
-      conversationId: requestConvo.id,
-      labelId: label.id,
+    requestConvo.authors.forEach((author) => {
+      if (author.phone_number) {
+        requestConversationsLabels.add({
+          conversationId: requestConvo.id,
+          labelId: label.id,
+          authorPhoneNumber: author.phone_number,
+        })
+      }
     })
     labelIds.push(label.id)
   }

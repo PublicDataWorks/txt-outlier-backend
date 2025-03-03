@@ -276,7 +276,7 @@ BEGIN
                     'second_message', v_campaign_record.second_message,
                     'title', v_campaign_record.title,
                     'delay', v_campaign_record.delay,
-                    'created_at', EXTRACT(EPOCH FROM NOW())
+                    'created_at', EXTRACT(EPOCH FROM NOW())::INTEGER
                 )
                 FROM campaign_recipients_temp
                 LIMIT v_batch_size

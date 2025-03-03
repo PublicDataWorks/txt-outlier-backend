@@ -1,29 +1,6 @@
 import { dateToCron } from './helpers.ts'
 import { sql } from 'drizzle-orm'
 
-const invokeBroadcastCron = (runAt: number | Date) => {
-  const runTime = dateToCron(new Date(runAt))
-  return sql.raw(`
-    SELECT cron.schedule(
-      'delay-invoke-broadcast',
-      '${runTime}',
-      $$
-        SELECT cron.schedule(
-          'invoke-broadcast',
-          '* * * * *',
-          'SELECT net.http_get(
-             url:=''${Deno.env.get('EDGE_FUNCTION_URL')!}make/'',
-             headers:=''{
-               "Content-Type": "application/json",
-               "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"
-             }''::jsonb
-          ) as request_id;'
-        );
-      $$
-    );
-  `)
-}
-
 /**
  * delay: number of seconds to wait before scheduling the cron
  */
@@ -70,4 +47,4 @@ const handleFailedDeliveriesCron = () => {
   `)
 }
 
-export { handleFailedDeliveriesCron, invokeBroadcastCron, reconcileTwilioStatusCron }
+export { handleFailedDeliveriesCron, reconcileTwilioStatusCron }

@@ -10,7 +10,6 @@ import {
 } from '../dto/BroadcastRequestResponse.ts'
 import supabase from '../lib/supabase.ts'
 import { authors, Broadcast, broadcasts, messageStatuses } from '../drizzle/schema.ts'
-import { invokeBroadcastCron } from '../scheduledcron/cron.ts'
 import { BroadcastDashBoardQueryReturn, pgmqDelete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
@@ -68,9 +67,6 @@ const patch = async (
       .returning()
     if (result.length === 0) {
       return
-    }
-    if (broadcast.runAt) {
-      await tx.execute(invokeBroadcastCron(broadcast.runAt * 1000))
     }
     return convertToUpcomingBroadcast(result[0])
   })

@@ -169,7 +169,6 @@ const reconcileTwilioStatus = async (
     throw new Error('Either broadcastId or campaignId must be provided')
   }
   const sourceTable = broadcastId ? broadcasts : campaigns
-  const idField = broadcastId ? 'broadcast_id' : 'campaign_id'
 
   const [record] = await supabase
     .select({ twilioPaging: sourceTable.twilioPaging })
@@ -181,9 +180,22 @@ const reconcileTwilioStatus = async (
     new Date(runAt),
     record?.twilioPaging || undefined,
   )
-  console.log(messages, nextPageUrl)
   try {
     for (const msg of messages) {
+      const subquery = broadcastId
+        ? sql`(SELECT id
+             FROM message_statuses
+             WHERE broadcast_id = ${id}
+             AND recipient_phone_number = ${msg.to}
+             AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+             ORDER BY id DESC LIMIT 1)`
+        : sql`(SELECT id
+             FROM message_statuses
+             WHERE campaign_id = ${id}
+             AND recipient_phone_number = ${msg.to}
+             AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+             ORDER BY id DESC LIMIT 1)`
+
       await supabase
         .update(messageStatuses)
         .set({
@@ -191,19 +203,7 @@ const reconcileTwilioStatus = async (
           twilioId: msg.sid,
           twilioSentAt: msg.dateSent,
         })
-        .where(
-          and(
-            eq(
-              messageStatuses.id,
-              sql`(SELECT id
-               FROM message_statuses
-               WHERE ${idField} = ${id}
-               AND recipient_phone_number = ${msg.to}
-               AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
-               ORDER BY id DESC LIMIT 1)`,
-            ),
-          ),
-        )
+        .where(eq(messageStatuses.id, subquery))
     }
     if (!nextPageUrl) {
       await Promise.all([
