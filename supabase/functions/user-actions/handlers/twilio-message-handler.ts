@@ -15,7 +15,7 @@ const handleTwilioMessage = async (requestBody: RequestBody) => {
     await upsertRule(tx, requestBody.rule)
     await upsertConversation(tx, requestBody.conversation)
     await insertTwilioMessage(tx, requestBody)
-    await upsertLabel(tx, requestBody.conversation)
+    await upsertLabel(tx, requestBody)
   })
 }
 

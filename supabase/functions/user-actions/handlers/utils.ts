@@ -225,8 +225,9 @@ export const upsertAuthor = async (
 export const upsertLabel = async (
   // deno-lint-ignore no-explicit-any
   tx: PostgresJsTransaction<any, any>,
-  requestConvo: RequestConversation,
+  requestBody: RequestBody,
 ) => {
+  const requestConvo = requestBody.conversation
   const requestLabels = new Set<Label>()
   const requestConversationsLabels = new Set<ConversationLabel>()
   const labelIds: string[] = []
@@ -249,9 +250,15 @@ export const upsertLabel = async (
         })
       }
     })
+    if (requestBody.message?.to_fields?.[0]?.id) {
+      requestConversationsLabels.add({
+        conversationId: requestConvo.id,
+        labelId: label.id,
+        authorPhoneNumber: requestBody.message.to_fields[0].id,
+      })
+    }
     labelIds.push(label.id)
   }
-
   if (requestLabels.size > 0) {
     await tx.insert(labels).values([...requestLabels]).onConflictDoUpdate({
       target: labels.id,
@@ -265,6 +272,7 @@ export const upsertLabel = async (
       },
     })
   }
+
   if (labelIds.length == 0) {
     await tx.update(conversationsLabels).set({ isArchived: true })
       .where(and(
@@ -276,9 +284,11 @@ export const upsertLabel = async (
         eq(conversationsLabels.conversationId, requestConvo.id!),
         notInArray(conversationsLabels.labelId, labelIds),
       ))
-    await tx.insert(conversationsLabels).values([
-      ...requestConversationsLabels,
-    ]).onConflictDoNothing()
+    if (requestConversationsLabels.size > 0) {
+      await tx.insert(conversationsLabels).values([
+        ...requestConversationsLabels,
+      ]).onConflictDoNothing()
+    }
   }
 }
 

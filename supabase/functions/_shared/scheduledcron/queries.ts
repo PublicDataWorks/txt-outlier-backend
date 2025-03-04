@@ -72,11 +72,35 @@ const FAILED_DELIVERED_QUERY = `
   LIMIT 330;
 `
 
+const BROADCAST_DOUBLE_FAILURE_QUERY = sql.raw(`
+  WITH LatestBroadcast AS (
+    SELECT id
+    FROM broadcasts
+    WHERE editable = false
+    ORDER BY run_at DESC
+    LIMIT 1
+  )
+  SELECT
+    bsms.recipient_phone_number,
+    bsms.missive_conversation_id
+  FROM message_statuses bsms
+  JOIN LatestBroadcast lb ON bsms.broadcast_id = lb.id
+  JOIN conversations c ON bsms.missive_conversation_id = c.id
+  WHERE
+    (c.shared_label_names IS NULL OR c.shared_label_names NOT ILIKE '%archive%')
+  GROUP BY bsms.recipient_phone_number, bsms.missive_conversation_id
+  HAVING
+    COUNT(*) = 2
+    AND SUM(CASE WHEN bsms.twilio_sent_status IN ('undelivered', 'failed') THEN 1 ELSE 0 END) = 2
+  LIMIT 40;
+`)
+
 const UNSCHEDULE_COMMANDS = {
   DELAY_INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('delay-invoke-broadcast');`),
   RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('reconcile-twilio-status');`),
   DELAY_RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('delay-reconcile-twilio-status');`),
   HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('handle-failed-deliveries');`),
+  ARCHIVE_BROADCAST_DOUBLE_FAILURES: sql.raw(`SELECT cron.unschedule('archive-broadcast-double-failures');`),
 } as const
 
 const SELECT_JOB_NAMES = sql.raw('SELECT jobname from cron.job;')
@@ -113,4 +137,5 @@ export {
   SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,
+  BROADCAST_DOUBLE_FAILURE_QUERY
 }
