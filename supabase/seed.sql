@@ -114,3 +114,80 @@ JOIN available_labels l
     ON l.label_num = (((c.conv_num - 1) * 3 + n) % 10) + 1  -- Distribute labels across conversations
 JOIN conversations_authors ca ON c.id = ca.conversation_id -- Join with conversations_authors
 ON CONFLICT (conversation_id, label_id) DO NOTHING;
+-- Insert data for Campaign
+INSERT INTO campaigns (
+    title,
+    first_message,
+    second_message,
+    segments,
+    delay,
+    run_at,
+    created_at,
+    updated_at,
+    recipient_count,
+    processed
+)
+SELECT
+    CASE
+        WHEN n % 4 = 0 THEN 'Welcome Campaign'
+        WHEN n % 4 = 1 THEN 'Product Update'
+        WHEN n % 4 = 2 THEN 'Special Offer'
+        WHEN n % 4 = 3 THEN 'Feedback Request'
+    END || ' ' || LPAD(n::text, 3, '0'),
+
+    CASE
+        WHEN n % 4 = 0 THEN 'Hi there! Welcome to our community. We''re excited to have you join us!'
+        WHEN n % 4 = 1 THEN 'We''ve just released some exciting new features that we think you''ll love.'
+        WHEN n % 4 = 2 THEN 'For a limited time, we''re offering a special discount just for our valued customers.'
+        WHEN n % 4 = 3 THEN 'We value your opinion! Could you take a moment to share your thoughts with us?'
+    END,
+
+    CASE
+        WHEN n % 4 = 0 THEN 'Feel free to reply with any questions you might have. We''re here to help!'
+        WHEN n % 4 = 1 THEN 'Have you had a chance to try our new features? We''d love to hear what you think!'
+        WHEN n % 4 = 2 THEN 'Don''t miss out on this limited-time offer. It expires soon!'
+        WHEN n % 4 = 3 THEN 'Thank you for your feedback! It helps us improve our service for everyone.'
+    END,
+
+    -- Segments JSON with varying configurations
+    CASE
+        WHEN n % 3 = 0 THEN
+            '{"included": {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '", "since": null}, "excluded": null}'
+        WHEN n % 3 = 1 THEN
+            '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '", "since": null}], "excluded": null}'
+        ELSE
+            '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '", "since": null}, {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET ((n+1) % 10)) || '", "since": null}], "excluded": {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET ((n+2) % 10)) || '", "since": null}}'
+    END::jsonb,
+
+    -- Delay varies between 600 and 1800 seconds
+    600 + (n % 3) * 600,
+
+    -- Run at times: 25 past and 5 upcoming
+    CASE
+        WHEN n <= 25 THEN NOW() - ((26 - n) || ' days')::interval  -- Past campaigns
+        WHEN n = 26 THEN NOW() + '2 hours'::interval                -- Today but later
+        WHEN n = 27 THEN NOW() + '1 day'::interval                  -- Tomorrow
+        WHEN n = 28 THEN NOW() + '3 days'::interval                 -- This week
+        WHEN n = 29 THEN NOW() + '1 week'::interval                 -- Next week
+        WHEN n = 30 THEN NOW() + '2 weeks'::interval                -- Further in future
+    END,
+
+    -- Created times staggered
+    NOW() - ((30 - n) || ' hours')::interval,
+    NOW() - ((30 - n) || ' minutes')::interval,
+
+    -- Recipient count varies
+    CASE
+        WHEN n % 5 = 0 THEN 1234
+        WHEN n % 5 = 1 THEN 567
+        WHEN n % 5 = 2 THEN 89
+        WHEN n % 5 = 3 THEN 3456
+        ELSE 789
+    END,
+
+    -- Mark past campaigns as processed
+    CASE
+        WHEN n <= 25 THEN true  -- Past campaigns are processed
+        ELSE false              -- Upcoming campaigns are not processed
+    END
+FROM generate_series(1, 30) n;  -- Create 30 campaigns total

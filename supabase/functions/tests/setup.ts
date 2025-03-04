@@ -13,6 +13,8 @@ beforeEach(async () => {
     '../../migrations/20250221071041_create_campaigns_table.sql',
     '../../migrations/20250227075436_add_campaign_processing_functions.sql',
     '../../migrations/20250228040858_add_campaign_support_to_message_statuses.sql',
+    '../../migrations/20250303034658_drop_reply_to_broadcast_fkey.sql',
+    '../../migrations/20250304080718_add_recipient_count_to_campaigns.sql',
   ]
 
   for (const filePath of migrationFiles) {

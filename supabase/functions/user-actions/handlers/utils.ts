@@ -276,9 +276,11 @@ export const upsertLabel = async (
         eq(conversationsLabels.conversationId, requestConvo.id!),
         notInArray(conversationsLabels.labelId, labelIds),
       ))
-    await tx.insert(conversationsLabels).values([
-      ...requestConversationsLabels,
-    ]).onConflictDoNothing()
+    if (requestConversationsLabels.size > 0) {
+      await tx.insert(conversationsLabels).values([
+        ...requestConversationsLabels,
+      ]).onConflictDoNothing()
+    }
   }
 }
 

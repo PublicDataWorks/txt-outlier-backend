@@ -6,10 +6,10 @@ import { desc, eq } from 'drizzle-orm'
 import { client } from './utils.ts'
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { authors, campaigns } from '../_shared/drizzle/schema.ts'
+import { campaigns } from '../_shared/drizzle/schema.ts'
 import { createCampaign } from './factories/campaign.ts'
 import { createLabel } from './factories/label.ts'
-import { createAuthor, createAuthors } from './factories/author.ts'
+import { createAuthor } from './factories/author.ts'
 import { createConversationLabel } from './factories/conversation-label.ts'
 import { createConversation } from './factories/conversation.ts'
 
@@ -22,7 +22,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     const label3 = await createLabel()
     const futureTimestamp = Math.floor(Date.now() / 1000) + 86412
 
-    const { data, error } = await client.functions.invoke(FUNCTION_NAME, {
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
       body: {
         firstMessage: 'Test first message',
@@ -259,6 +259,84 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(error.context.status, 400)
     const errorData = await error.context.json()
     assertEquals(errorData.message.includes('Run time must be in the future'), true)
+  })
+
+  it('should create a campaign with custom delay', async () => {
+    const label = await createLabel()
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const customDelay = 1800 // 30 minutes
+
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test first message',
+        runAt: futureTimestamp,
+        delay: customDelay,
+        segments: {
+          included: [{ id: label.id }],
+        },
+      },
+    })
+
+    assertEquals(data.firstMessage, 'Test first message')
+    assertEquals(data.runAt, futureTimestamp)
+    assertEquals(data.delay, customDelay)
+
+    const [savedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(savedCampaign.firstMessage, 'Test first message')
+    assertEquals(Math.floor(savedCampaign.runAt.getTime() / 1000), futureTimestamp)
+    assertEquals(savedCampaign.delay, customDelay)
+  })
+
+  it('should return 400 when delay is less than or equal to 0', async () => {
+    const label = await createLabel()
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const zeroDelayResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test first message',
+        runAt: futureTimestamp,
+        delay: 0,
+        segments: {
+          included: [{ id: label.id }],
+        },
+      },
+    })
+
+    assertEquals(zeroDelayResponse.error.context.status, 400)
+    const zeroDelayError = await zeroDelayResponse.error.context.json()
+    assertEquals(zeroDelayError.message.includes('delay'), true)
+
+    // Test with negative delay
+    const negativeDelayResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test first message',
+        runAt: futureTimestamp,
+        delay: -300,
+        segments: {
+          included: [{ id: label.id }],
+        },
+      },
+    })
+
+    assertEquals(negativeDelayResponse.error.context.status, 400)
+    const negativeDelayError = await negativeDelayResponse.error.context.json()
+    assertEquals(negativeDelayError.message.includes('delay'), true)
+
+    const [savedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(savedCampaign?.firstMessage !== 'Test first message', true)
   })
 })
 
@@ -527,17 +605,22 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
 
 describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
   it('should return empty array when no upcoming campaigns exist', async () => {
-    // Create a past campaign
-    await createCampaign({
-      firstMessage: 'Past campaign',
-      runAt: new Date(Date.now() - 86400000), // yesterday
-    })
-
     const { data } = await client.functions.invoke(FUNCTION_NAME, {
       method: 'GET',
     })
 
-    assertEquals(data, [])
+    assertEquals(data, {
+      past: {
+        items: [],
+        pagination: {
+          page: 1,
+          pageSize: 20,
+          totalItems: 0,
+          totalPages: 0,
+        },
+      },
+      upcoming: [],
+    })
   })
 
   it('should return only upcoming campaigns ordered by runAt', async () => {
@@ -558,7 +641,7 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
       runAt: nextWeek,
     })
 
-    await createCampaign({
+    const pastCampaign = await createCampaign({
       title: 'Past Campaign',
       firstMessage: 'First message 3',
       runAt: yesterday,
@@ -568,11 +651,20 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
       method: 'GET',
     })
 
-    assertEquals(data.length, 2)
-    assertEquals(data[0].id, campaign1.id)
-    assertEquals(data[1].id, campaign2.id)
-    assertEquals(data[0].title, 'Tomorrow Campaign')
-    assertEquals(data[1].title, 'Next Week Campaign')
+    assertEquals(data.upcoming.length, 2)
+    assertEquals(data.upcoming[0].id, campaign1.id)
+    assertEquals(data.upcoming[1].id, campaign2.id)
+    assertEquals(data.upcoming[0].title, 'Tomorrow Campaign')
+    assertEquals(data.upcoming[1].title, 'Next Week Campaign')
+
+    assertEquals(data.past.items.length, 1)
+    assertEquals(data.past.items[0].id, pastCampaign.id)
+    assertEquals(data.past.items[0].title, 'Past Campaign')
+
+    assertEquals(data.past.pagination.totalItems, 1)
+    assertEquals(data.past.pagination.page, 1)
+    assertEquals(typeof data.past.pagination.pageSize, 'number')
+    assertEquals(data.past.pagination.totalPages, 1)
   })
 
   it('should return campaigns with all fields correctly formatted', async () => {
@@ -589,13 +681,18 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
       method: 'GET',
     })
 
-    assertEquals(data.length, 1)
-    const returnedCampaign = data[0]
+    assertEquals(data.upcoming.length, 1)
+    const returnedCampaign = data.upcoming[0]
+
     assertEquals(returnedCampaign.id, campaign.id)
     assertEquals(returnedCampaign.title, 'Test Campaign')
     assertEquals(returnedCampaign.firstMessage, 'First message')
     assertEquals(returnedCampaign.secondMessage, 'Second message')
     assertEquals(returnedCampaign.runAt, Math.floor(futureDate.getTime() / 1000))
+
+    assertEquals(data.past.items.length, 0)
+    assertEquals(data.past.pagination.totalItems, 0)
+    assertEquals(data.past.pagination.page, 1)
   })
 
   it('should handle campaigns with null fields', async () => {
@@ -609,13 +706,18 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
       method: 'GET',
     })
 
-    assertEquals(data.length, 1)
-    const returnedCampaign = data[0]
+    assertEquals(data.upcoming.length, 1)
+
+    const returnedCampaign = data.upcoming[0]
+
     assertEquals(returnedCampaign.id, campaign.id)
     assertEquals(returnedCampaign.title, null)
     assertEquals(returnedCampaign.firstMessage, 'First message')
     assertEquals(returnedCampaign.secondMessage, null)
     assertEquals(returnedCampaign.runAt, Math.floor(futureDate.getTime() / 1000))
+
+    assertEquals(data.past.items.length, 0)
+    assertEquals(data.past.pagination.totalItems, 0)
   })
 
   it('should handle multiple campaigns with mixed null fields', async () => {
@@ -638,11 +740,16 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
       method: 'GET',
     })
 
-    assertEquals(data.length, 2)
-    assertEquals(data[0].title, 'Campaign 1')
-    assertEquals(data[0].secondMessage, null)
-    assertEquals(data[1].title, null)
-    assertEquals(data[1].secondMessage, 'Second message 2')
+    assertEquals(data.upcoming.length, 2)
+
+    assertEquals(data.upcoming[0].title, 'Campaign 1')
+    assertEquals(data.upcoming[0].secondMessage, null)
+
+    assertEquals(data.upcoming[1].title, null)
+    assertEquals(data.upcoming[1].secondMessage, 'Second message 2')
+
+    assertEquals(data.past.items.length, 0)
+    assertEquals(data.past.pagination.totalItems, 0)
   })
 })
 
@@ -770,5 +877,209 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Test Label')
     assertEquals(data[0].recipient_count, '0')
+  })
+})
+
+describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResources: false }, () => {
+  it('should return correct recipient count for given segments', async () => {
+    const label1 = await createLabel({ name: 'Test Label 1' })
+    const label2 = await createLabel({ name: 'Test Label 2' })
+    const label3 = await createLabel({ name: 'Test Label 3' })
+
+    const author1 = await createAuthor('+1111111111', { unsubscribed: false, exclude: false })
+    const author2 = await createAuthor('+2222222222', { unsubscribed: false, exclude: false })
+    const author3 = await createAuthor('+3333333333', { unsubscribed: false, exclude: false })
+    const author4 = await createAuthor('+4444444444', { unsubscribed: false, exclude: false })
+    const author5 = await createAuthor('+5555555555', { unsubscribed: true, exclude: false }) // unsubscribed
+
+    const conversation1 = await createConversation()
+    const conversation2 = await createConversation()
+    const conversation3 = await createConversation()
+    const conversation4 = await createConversation()
+    const conversation5 = await createConversation()
+    const conversation6 = await createConversation()
+
+    await createConversationLabel({
+      labelId: label1.id,
+      authorPhoneNumber: author1.phoneNumber,
+      conversationId: conversation1.id,
+    })
+    await createConversationLabel({
+      labelId: label1.id,
+      authorPhoneNumber: author2.phoneNumber,
+      conversationId: conversation2.id,
+    })
+    await createConversationLabel({
+      labelId: label1.id,
+      authorPhoneNumber: author3.phoneNumber,
+      conversationId: conversation3.id,
+    })
+
+    await createConversationLabel({
+      labelId: label2.id,
+      authorPhoneNumber: author3.phoneNumber,
+      conversationId: conversation4.id,
+    })
+    await createConversationLabel({
+      labelId: label2.id,
+      authorPhoneNumber: author4.phoneNumber,
+      conversationId: conversation5.id,
+    })
+
+    await createConversationLabel({
+      labelId: label3.id,
+      authorPhoneNumber: author5.phoneNumber,
+      conversationId: conversation6.id,
+    })
+
+    const singleSegmentResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: { id: label1.id },
+        },
+      },
+    })
+
+    assertEquals(singleSegmentResponse.error, null)
+    assertEquals(singleSegmentResponse.data.recipient_count, 3)
+
+    const multipleIncludedResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: [
+            { id: label1.id },
+            { id: label2.id },
+          ],
+        },
+      },
+    })
+
+    assertEquals(multipleIncludedResponse.error, null)
+    assertEquals(multipleIncludedResponse.data.recipient_count, 4) // Union of label1 (3) and label2 (2) with 1 overlap
+
+    const excludedSegmentResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: { id: label1.id },
+          excluded: { id: label2.id },
+        },
+      },
+    })
+
+    assertEquals(excludedSegmentResponse.error, null)
+    assertEquals(excludedSegmentResponse.data.recipient_count, 2) // label1 (3) minus overlap with label2 (1)
+
+    const unsubscribedSegmentResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: { id: label3.id },
+        },
+      },
+    })
+
+    assertEquals(unsubscribedSegmentResponse.error, null)
+    assertEquals(unsubscribedSegmentResponse.data.recipient_count, 0) // No active subscribers
+  })
+
+  it('should return 400 for invalid segment format', async () => {
+    const invalidResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: { id: 'not-a-uuid' },
+        },
+      },
+    })
+
+    assertEquals(invalidResponse.error.context.status, 400)
+    const errorData = await invalidResponse.error.context.json()
+    assertEquals(errorData.message.includes('Invalid segment ID format'), true)
+  })
+
+  it('should return 400 for missing segments', async () => {
+    const missingSegmentsResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {},
+    })
+
+    assertEquals(missingSegmentsResponse.error.context.status, 400)
+    const errorData = await missingSegmentsResponse.error.context.json()
+    assertEquals(errorData.message.includes('segments'), true)
+  })
+
+  it('should count correctly with AND groups', async () => {
+    const label1 = await createLabel({ name: 'AND Test Label 1' })
+    const label2 = await createLabel({ name: 'AND Test Label 2' })
+
+    const author1 = await createAuthor('+6666666666', { unsubscribed: false, exclude: false })
+    const author2 = await createAuthor('+7777777777', { unsubscribed: false, exclude: false })
+    const author3 = await createAuthor('+8888888888', { unsubscribed: false, exclude: false })
+
+    const conversation1 = await createConversation()
+    const conversation2 = await createConversation()
+    const conversation3 = await createConversation()
+    const conversation4 = await createConversation()
+
+    await createConversationLabel({
+      labelId: label1.id,
+      authorPhoneNumber: author1.phoneNumber,
+      conversationId: conversation1.id,
+    })
+    await createConversationLabel({
+      labelId: label2.id,
+      authorPhoneNumber: author1.phoneNumber,
+      conversationId: conversation2.id,
+    })
+
+    await createConversationLabel({
+      labelId: label1.id,
+      authorPhoneNumber: author2.phoneNumber,
+      conversationId: conversation3.id,
+    })
+
+    await createConversationLabel({
+      labelId: label2.id,
+      authorPhoneNumber: author3.phoneNumber,
+      conversationId: conversation4.id,
+    })
+
+    const andGroupResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: [
+            [
+              { id: label1.id },
+              { id: label2.id },
+            ],
+          ],
+        },
+      },
+    })
+
+    assertEquals(andGroupResponse.error, null)
+    assertEquals(andGroupResponse.data.recipient_count, 1)
+  })
+
+  it('should reject null excluded segments', async () => {
+    const label = await createLabel({ name: 'Test Label for Null Rejection' })
+
+    const nullExcludedResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: { id: label.id },
+          excluded: null,
+        },
+      },
+    })
+
+    assertEquals(nullExcludedResponse.error.context.status, 400)
+    const errorData = await nullExcludedResponse.error.context.json()
+    assertEquals(errorData.message.includes('excluded'), true)
   })
 })

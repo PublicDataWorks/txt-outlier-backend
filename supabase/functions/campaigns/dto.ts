@@ -29,6 +29,7 @@ export const CreateCampaignSchema = z.object({
     included: SegmentConfigSchema,
     excluded: SegmentConfigSchema.nullable().optional(),
   }),
+  delay: z.number().int().positive('Delay must be a positive integer').optional(),
   runAt: z.number()
     .int('Must be a Unix timestamp')
     .transform((timestamp) => new Date(timestamp * 1000))
@@ -48,7 +49,7 @@ export const UpdateCampaignSchema = CreateCampaignSchema
 export const RecipientCountSchema = z.object({
   segments: z.object({
     included: SegmentConfigSchema,
-    excluded: SegmentConfigSchema.nullable().optional(),
+    excluded: SegmentConfigSchema.optional(),
   }),
 }).strict()
 
@@ -58,5 +59,7 @@ export const formatCampaignSelect = {
   firstMessage: campaigns.firstMessage,
   secondMessage: campaigns.secondMessage,
   segments: campaigns.segments,
+  delay: campaigns.delay,
+  recipientCount: campaigns.recipientCount,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
 }
