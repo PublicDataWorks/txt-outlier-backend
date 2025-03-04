@@ -189,4 +189,8 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
   }
 })
 
+app.options('/campaigns/', () => {
+  return AppResponse.ok()
+})
+
 Deno.serve(app.fetch)
