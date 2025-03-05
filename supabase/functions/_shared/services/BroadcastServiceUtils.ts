@@ -2,8 +2,6 @@
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
 import { AudienceSegment, Broadcast, broadcasts, broadcastsSegments } from '../drizzle/schema.ts'
-import { BROADCAST_RUNNING_INDICATORS, SELECT_JOB_NAMES } from '../scheduledcron/queries.ts'
-import supabase from '../lib/supabase.ts'
 
 const createNextBroadcast = async (
   tx: PostgresJsTransaction<any, any>,
@@ -26,9 +24,4 @@ const createNextBroadcast = async (
   })))
 }
 
-const isBroadcastRunning = async (): Promise<boolean> => {
-  const jobs = await supabase.execute(SELECT_JOB_NAMES)
-  return jobs.some((job: { jobname: string }) => BROADCAST_RUNNING_INDICATORS.includes(job.jobname))
-}
-
-export { createNextBroadcast, isBroadcastRunning }
+export { createNextBroadcast }

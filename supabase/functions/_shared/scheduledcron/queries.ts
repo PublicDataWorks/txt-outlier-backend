@@ -79,15 +79,6 @@ const UNSCHEDULE_COMMANDS = {
   HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('handle-failed-deliveries');`),
 } as const
 
-const SELECT_JOB_NAMES = sql.raw('SELECT jobname from cron.job;')
-
-const BROADCAST_RUNNING_INDICATORS: string[] = [
-  'send-first-messages',
-  'send-second-messages',
-  'delay-reconcile-twilio-status',
-  'reconcile-twilio-status',
-]
-
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -103,14 +94,12 @@ interface BroadcastDashBoardQueryReturn {
 }
 
 export {
-  BROADCAST_RUNNING_INDICATORS,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
   pgmqDelete,
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,
 }

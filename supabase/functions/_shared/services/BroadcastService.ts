@@ -23,17 +23,12 @@ import {
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
-import BadRequestError from '../exception/BadRequestError.ts'
 import Sentry from '../lib/Sentry.ts'
-import { createNextBroadcast, isBroadcastRunning } from './BroadcastServiceUtils.ts'
+import { createNextBroadcast } from './BroadcastServiceUtils.ts'
 import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
 import { cloneBroadcast } from '../misc/utils.ts'
 
 const makeBroadcast = async (): Promise<void> => {
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to make broadcast: another broadcast is running')
-  }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: eq(broadcasts.editable, true),
@@ -57,10 +52,6 @@ const makeBroadcast = async (): Promise<void> => {
 }
 
 const sendNow = async (): Promise<void> => {
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to send now: another broadcast is running')
-  }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(eq(broadcasts.editable, true)),
