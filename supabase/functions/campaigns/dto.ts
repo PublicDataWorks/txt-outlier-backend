@@ -27,7 +27,7 @@ export const CreateCampaignSchema = z.object({
   secondMessage: z.string().nullable().optional(),
   segments: z.object({
     included: SegmentConfigSchema,
-    excluded: SegmentConfigSchema.nullable().optional(),
+    excluded: SegmentConfigSchema.optional(),
   }),
   delay: z.number().int().positive('Delay must be a positive integer').optional(),
   runAt: z.number()

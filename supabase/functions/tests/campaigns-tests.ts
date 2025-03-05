@@ -338,6 +338,36 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     assertEquals(savedCampaign?.firstMessage !== 'Test first message', true)
   })
+
+  it('should return 400 when excluded is null', async () => {
+    const label = await createLabel()
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const { error } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test first message',
+        runAt: futureTimestamp,
+        segments: {
+          included: [{ id: label.id }],
+          excluded: null,
+        },
+      },
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message.includes('excluded'), true)
+
+    // Verify no campaign was created
+    const [savedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(savedCampaign?.firstMessage !== 'Test first message', true)
+  })
 })
 
 describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
@@ -600,6 +630,43 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .limit(1)
 
     assertEquals(Math.floor(updatedCampaign.runAt.getTime() / 1000), earlierFutureTimestamp)
+  })
+
+  it('should return 400 when excluded is null in update', async () => {
+    const label = await createLabel()
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+
+    // First create a valid campaign
+    const campaign = await createCampaign({
+      firstMessage: 'Original message',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    // Try to update with excluded: null
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        segments: {
+          included: [{ id: label.id }],
+          excluded: null,
+        },
+      },
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message.includes('excluded'), true)
+
+    // Verify the campaign was not updated with our first message
+    const [unchangedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    // The original campaign should be unchanged
+    assertEquals(unchangedCampaign.firstMessage, 'Original message')
   })
 })
 
