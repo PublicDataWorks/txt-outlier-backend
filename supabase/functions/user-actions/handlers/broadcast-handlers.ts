@@ -3,7 +3,7 @@ import { addMinutes } from 'date-fns/index.js'
 import { RequestBody } from '../types.ts'
 import {
   authors,
-  broadcastSentMessageStatus,
+  messageStatuses,
   twilioMessages,
   UnsubscribedMessage,
   unsubscribedMessages,
@@ -23,21 +23,21 @@ interface BroadcastMessageUpdate {
   twilioSentStatus: 'delivered' | 'sent' | 'undelivered'
 }
 
-const findRecentBroadcastMessage = async (phoneNumber: string, deliveredDate: Date) => {
+const findRecentBroadcastOrCampaignMessage = async (phoneNumber: string, deliveredDate: Date) => {
   const last36Hours = addMinutes(deliveredDate, -36 * 60)
   return await supabase
     .select()
-    .from(broadcastSentMessageStatus)
+    .from(messageStatuses)
     .where(
       and(
-        eq(broadcastSentMessageStatus.recipientPhoneNumber, phoneNumber),
+        eq(messageStatuses.recipientPhoneNumber, phoneNumber),
         // @ts-expect-error Type mismatch
-        lt(last36Hours.toISOString(), broadcastSentMessageStatus.createdAt),
+        lt(last36Hours.toISOString(), messageStatuses.createdAt),
         // @ts-expect-error Type mismatch
-        gt(deliveredDate.toISOString(), broadcastSentMessageStatus.createdAt),
+        gt(deliveredDate.toISOString(), messageStatuses.createdAt),
       ),
     )
-    .orderBy(desc(broadcastSentMessageStatus.id))
+    .orderBy(desc(messageStatuses.id))
     .limit(1)
 }
 
@@ -45,7 +45,7 @@ const updateSubscriptionStatus = async (
   phoneNumber: string,
   unsubscribe: boolean,
   conversationId?: string,
-  broadcastInfo?: { broadcastId?: number; messageId: string; sentMessageId?: number },
+  broadcastInfo?: { broadcastId?: number | null; messageId: string; sentMessageId?: number },
 ) => {
   try {
     await supabase
@@ -77,14 +77,16 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
     const phoneNumber = requestMessage.from_field.id
     const deliveredDate = new Date(requestMessage.delivered_at * 1000)
 
-    const sentMessage = await findRecentBroadcastMessage(phoneNumber, deliveredDate)
+    const sentMessage = await findRecentBroadcastOrCampaignMessage(phoneNumber, deliveredDate)
+    console.log(sentMessage, 'sentMessage', phoneNumber, deliveredDate)
     if (sentMessage.length > 0) {
       // Update Twilio message with broadcast reply info
+      // TODO: rename isBroadcastReply and replyToBroadcast
       await supabase
         .update(twilioMessages)
         .set({
           isBroadcastReply: true,
-          replyToBroadcast: sentMessage[0].broadcastId,
+          replyToBroadcast: sentMessage[0].broadcastId || sentMessage[0].campaignId,
         })
         .where(eq(twilioMessages.id, requestMessage.id))
 
@@ -118,8 +120,8 @@ const handleBroadcastOutgoing = async (requestBody: RequestBody) => {
     const message = requestBody.message!
     const sentStatus = await supabase
       .select()
-      .from(broadcastSentMessageStatus)
-      .where(eq(broadcastSentMessageStatus.missiveId, message.id))
+      .from(messageStatuses)
+      .where(eq(messageStatuses.missiveId, message.id))
       .limit(1)
 
     if (sentStatus.length === 0) return
@@ -147,13 +149,13 @@ const handleBroadcastOutgoing = async (requestBody: RequestBody) => {
       }
 
     await supabase
-      .update(broadcastSentMessageStatus)
+      .update(messageStatuses)
       // @ts-expect-error Type mismatch
       .set(updateData)
-      .where(eq(broadcastSentMessageStatus.missiveId, message.id))
+      .where(eq(messageStatuses.missiveId, message.id))
 
     console.info(
-      `Updated broadcastSentMessageStatus for ${message.id}:`,
+      `Updated message status for ${message.id}:`,
       JSON.stringify(updateData),
     )
   } catch (error) {

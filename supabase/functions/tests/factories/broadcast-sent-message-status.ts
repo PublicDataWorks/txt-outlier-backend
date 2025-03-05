@@ -1,9 +1,9 @@
 import { faker } from 'faker'
-import { broadcastSentMessageStatus } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { createBroadcast } from './broadcast.ts'
 import { createSegment } from './segment.ts'
 import { createAuthors } from './author.ts'
+import { messageStatuses } from '../../_shared/drizzle/schema.ts'
 
 type CreateBroadcastSentMessageParams = {
   recipient?: string
@@ -16,7 +16,7 @@ type CreateBroadcastSentMessageParams = {
   twilioId?: string
 }
 
-export const createBroadcastSentMessageStatus = async ({
+export const createMessageStatus = async ({
   isSecond = false,
   broadcastId,
   recipient,
@@ -26,7 +26,7 @@ export const createBroadcastSentMessageStatus = async ({
   twilioSentStatus,
 }: CreateBroadcastSentMessageParams) => {
   const id = broadcastId || (await createBroadcast()).id
-  const segment = await createSegment(id)
+  const segment = await createSegment({ broadcastId: id })
   await createAuthors(1, recipient)
 
   const sentMessage = {
@@ -44,7 +44,7 @@ export const createBroadcastSentMessageStatus = async ({
   }
 
   const [result] = await supabase
-    .insert(broadcastSentMessageStatus)
+    .insert(messageStatuses)
     // @ts-expect-error Type mismatch
     .values(sentMessage)
     .returning()

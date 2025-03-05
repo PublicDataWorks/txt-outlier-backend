@@ -7,13 +7,19 @@ import Sentry from '../_shared/lib/Sentry.ts'
 const app = new Hono()
 
 app.post('/reconcile-twilio-status/', async (c) => {
-  const { broadcastId, broadcastRunAt } = await c.req.json()
-  if (!broadcastId || isNaN(Number(broadcastId))) {
-    return AppResponse.badRequest('Invalid broadcastId')
+  const { broadcastId, campaignId, runAt } = await c.req.json()
+  if (!broadcastId && !campaignId) {
+    return AppResponse.badRequest('Either broadcastId or campaignId must be provided')
   }
-  console.log(`Reconciling Twilio status for broadcastId: ${broadcastId}, broadcastRunAt: ${broadcastRunAt}`)
+
   try {
-    await BroadcastService.reconcileTwilioStatus(Number(broadcastId), broadcastRunAt)
+    if (broadcastId) {
+      console.log(`Reconciling Twilio status for broadcastId: ${broadcastId}, runAt: ${runAt}`)
+      await BroadcastService.reconcileTwilioStatus({ broadcastId, runAt })
+    } else {
+      console.log(`Reconciling Twilio status for campaignId: ${campaignId}, runAt: ${runAt}`)
+      await BroadcastService.reconcileTwilioStatus({ campaignId, runAt })
+    }
   } catch (error) {
     console.error(`Error in BroadcastService.reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`)
     Sentry.captureException(error)

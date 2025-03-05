@@ -6,9 +6,10 @@ import {
   authors,
   broadcasts,
   BroadcastSegment,
-  broadcastSentMessageStatus,
   broadcastsSegments,
+  campaigns,
   lookupTemplate,
+  messageStatuses,
 } from '../drizzle/schema.ts'
 import { handleFailedDeliveriesCron, reconcileTwilioStatusCron } from '../scheduledcron/cron.ts'
 import MissiveUtils from '../lib/Missive.ts'
@@ -22,17 +23,12 @@ import {
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
-import BadRequestError from '../exception/BadRequestError.ts'
 import Sentry from '../lib/Sentry.ts'
-import { createNextBroadcast, isBroadcastRunning } from './BroadcastServiceUtils.ts'
+import { createNextBroadcast } from './BroadcastServiceUtils.ts'
 import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
 import { cloneBroadcast } from '../misc/utils.ts'
 
 const makeBroadcast = async (): Promise<void> => {
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to make broadcast: another broadcast is running')
-  }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: eq(broadcasts.editable, true),
@@ -56,10 +52,6 @@ const makeBroadcast = async (): Promise<void> => {
 }
 
 const sendNow = async (): Promise<void> => {
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to send now: another broadcast is running')
-  }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(eq(broadcasts.editable, true)),
@@ -106,11 +98,12 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     return
   }
   const messageMetadata = results[0].message
+  console.log(`Sending broadcast message. isSecond: ${isSecond}, messageMetadata: ${JSON.stringify(messageMetadata)}`)
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
   const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
   if (response.ok) {
     let secondMessageQueueId = undefined
-    if (!isSecond) {
+    if (!isSecond && messageMetadata.second_message) {
       const [_, sendResult] = await Promise.all([
         supabase.execute(pgmqDelete(queueName, results[0].msg_id)),
         supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), messageMetadata.delay)),
@@ -122,12 +115,13 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     const responseBody = await response.json()
     const { id, conversation } = responseBody.drafts
     await supabase
-      .insert(broadcastSentMessageStatus)
+      .insert(messageStatuses)
       .values({
         recipientPhoneNumber: messageMetadata.recipient_phone_number,
         message: message,
         isSecond: isSecond,
-        broadcastId: messageMetadata.broadcast_id,
+        broadcastId: messageMetadata?.broadcast_id,
+        campaignId: messageMetadata?.campaign_id,
         missiveId: id,
         missiveConversationId: conversation,
         audienceSegmentId: messageMetadata.segment_id,
@@ -153,38 +147,54 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   }
 }
 
-const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number) => {
-  const [broadcast] = await supabase
-    .select({ twilioPaging: broadcasts.twilioPaging })
-    .from(broadcasts)
-    .where(eq(broadcasts.id, broadcastId))
+const reconcileTwilioStatus = async (
+  { broadcastId, campaignId, runAt }: {
+    broadcastId?: number | null
+    campaignId?: number | null
+    runAt: number
+  },
+) => {
+  const id = broadcastId || campaignId
+
+  if (!id) {
+    throw new Error('Either broadcastId or campaignId must be provided')
+  }
+  const sourceTable = broadcastId ? broadcasts : campaigns
+
+  const [record] = await supabase
+    .select({ twilioPaging: sourceTable.twilioPaging })
+    .from(sourceTable)
+    .where(eq(sourceTable.id, id))
     .limit(1)
+
   const { messages, nextPageUrl } = await Twilio.getMessages(
-    new Date(broadcastRunAt),
-    broadcast?.twilioPaging || undefined,
+    new Date(runAt),
+    record?.twilioPaging || undefined,
   )
   try {
     for (const msg of messages) {
+      const subquery = broadcastId
+        ? sql`(SELECT id
+             FROM message_statuses
+             WHERE broadcast_id = ${id}
+             AND recipient_phone_number = ${msg.to}
+             AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+             ORDER BY id DESC LIMIT 1)`
+        : sql`(SELECT id
+             FROM message_statuses
+             WHERE campaign_id = ${id}
+             AND recipient_phone_number = ${msg.to}
+             AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+             ORDER BY id DESC LIMIT 1)`
+
       await supabase
-        .update(broadcastSentMessageStatus)
+        .update(messageStatuses)
         .set({
           twilioSentStatus: msg.status,
           twilioId: msg.sid,
           twilioSentAt: msg.dateSent,
         })
-        .where(
-          and(
-            eq(
-              broadcastSentMessageStatus.id,
-              sql`(SELECT id
-               FROM broadcast_sent_message_status
-               WHERE broadcast_id = ${broadcastId}
-               AND recipient_phone_number = ${msg.to}
-               AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
-               ORDER BY id DESC LIMIT 1)`,
-            ),
-          ),
-        )
+        .where(eq(messageStatuses.id, subquery))
     }
     if (!nextPageUrl) {
       await Promise.all([
@@ -193,12 +203,11 @@ const reconcileTwilioStatus = async (broadcastId: number, broadcastRunAt: number
         await supabase.execute(handleFailedDeliveriesCron()),
       ])
     } else {
+      const pageToken = nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null
       await supabase
-        .update(broadcasts)
-        .set({
-          twilioPaging: nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null,
-        })
-        .where(eq(broadcasts.id, broadcastId))
+        .update(sourceTable)
+        .set({ twilioPaging: pageToken })
+        .where(eq(sourceTable.id, id))
     }
   } catch (error) {
     const errorMessage = `Error in reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`
@@ -269,10 +278,10 @@ const handleFailedDeliveries = async () => {
     phonesToUpdate.push(conversation.phone_number)
     if (conversationsToUpdate.length > 4) {
       await supabase
-        .update(broadcastSentMessageStatus)
+        .update(messageStatuses)
         .set({ closed: true })
         .where(and(
-          inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
+          inArray(messageStatuses.missiveConversationId, conversationsToUpdate),
         ))
       await supabase.update(authors)
         .set({ exclude: true })
@@ -290,10 +299,10 @@ const handleFailedDeliveries = async () => {
 
   if (conversationsToUpdate.length > 0) {
     await supabase
-      .update(broadcastSentMessageStatus)
+      .update(messageStatuses)
       .set({ closed: true })
       .where(and(
-        inArray(broadcastSentMessageStatus.missiveConversationId, conversationsToUpdate),
+        inArray(messageStatuses.missiveConversationId, conversationsToUpdate),
       ))
     await supabase.update(authors)
       .set({ exclude: true })

@@ -35,7 +35,7 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
            count(distinct (bsms.recipient_phone_number, bsms.is_second)) FILTER (WHERE bsms.twilio_sent_status IN ('undelivered', 'failed'))                                AS "failedDelivered",
            count(distinct bsms.recipient_phone_number) FILTER (WHERE um.id IS NOT NULL)                                                                                     AS "totalUnsubscribed"
     FROM broadcasts b
-           LEFT JOIN broadcast_sent_message_status bsms ON b.id = bsms.broadcast_id
+           LEFT JOIN message_statuses bsms ON b.id = bsms.broadcast_id
            LEFT JOIN unsubscribed_messages um ON b.id = um.broadcast_id AND um.reply_to = bsms.id
       ${WHERE_CLAUSE}
     GROUP BY b.id
@@ -57,7 +57,7 @@ const FAILED_DELIVERED_QUERY = `
             PARTITION BY recipient_phone_number
             ORDER BY id DESC
         ) as rn
-    FROM broadcast_sent_message_status
+    FROM message_statuses
   )
   SELECT
     r.recipient_phone_number as phone_number,
@@ -79,15 +79,6 @@ const UNSCHEDULE_COMMANDS = {
   HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('handle-failed-deliveries');`),
 } as const
 
-const SELECT_JOB_NAMES = sql.raw('SELECT jobname from cron.job;')
-
-const BROADCAST_RUNNING_INDICATORS: string[] = [
-  'send-first-messages',
-  'send-second-messages',
-  'delay-reconcile-twilio-status',
-  'reconcile-twilio-status',
-]
-
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -103,14 +94,12 @@ interface BroadcastDashBoardQueryReturn {
 }
 
 export {
-  BROADCAST_RUNNING_INDICATORS,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
   pgmqDelete,
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,
 }

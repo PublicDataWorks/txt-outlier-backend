@@ -7,7 +7,7 @@ import { twilioMessages, unsubscribedMessages } from '../../_shared/drizzle/sche
 import { newIncomingSmsRequest } from '../fixtures/incoming-twilio-message-request.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { client } from '../utils.ts'
-import { createBroadcastSentMessageStatus } from '../factories/broadcast-sent-message-status.ts'
+import { createMessageStatus } from '../factories/broadcast-sent-message-status.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
 import { sql } from 'drizzle-orm'
 import { pgmqSend } from '../../_shared/scheduledcron/queries.ts'
@@ -26,7 +26,7 @@ describe(
       assertEquals(queuedMessagesBefore.length, 1)
       const incomingSms = newIncomingSmsRequest
       incomingSms.message!.delivered_at = Date.now() / 1000
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         recipient: incomingSms.message!.from_field.id,
         secondMessageQueueId: queue_message[0].send,
         createdAt: subMinutes(new Date(), 10).toISOString(),
@@ -58,7 +58,7 @@ describe(
       const unsubscribeMsg = newIncomingSmsRequest
       unsubscribeMsg.message!.preview = 'unsubscribe'
       unsubscribeMsg.message!.delivered_at = Date.now() / 1000
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         recipient: unsubscribeMsg.message!.from_field.id,
         createdAt: subMinutes(new Date(), 10).toISOString(),
       })
@@ -82,7 +82,7 @@ describe(
       const unsubscribeMsg = newIncomingSmsRequest
       unsubscribeMsg.message!.preview = 'stop'
       unsubscribeMsg.message!.delivered_at = Date.now() / 1000
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         recipient: unsubscribeMsg.message!.from_field.id,
         createdAt: subMinutes(new Date(), 10).toISOString(),
       })
@@ -106,7 +106,7 @@ describe(
       const unsubscribeMsg = newIncomingSmsRequest
       unsubscribeMsg.message!.preview = '123'
       unsubscribeMsg.message!.delivered_at = Date.now() / 1000
-      await createBroadcastSentMessageStatus({
+      await createMessageStatus({
         recipient: unsubscribeMsg.message!.from_field.id,
         createdAt: subMinutes(new Date(), 10).toISOString(),
       })

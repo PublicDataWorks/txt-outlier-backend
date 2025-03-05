@@ -52,7 +52,7 @@ export const broadcastsSegments = pgTable('broadcasts_segments', {
   }
 })
 
-export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status', {
+export const messageStatuses = pgTable('message_statuses', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   recipientPhoneNumber: text('recipient_phone_number').notNull().references(() => authors.phoneNumber, {
@@ -61,26 +61,18 @@ export const broadcastSentMessageStatus = pgTable('broadcast_sent_message_status
   missiveId: uuid('missive_id').notNull(),
   missiveConversationId: uuid('missive_conversation_id').notNull(),
   twilioSentAt: timestamp('twilio_sent_at', { withTimezone: true, mode: 'string' }),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  broadcastId: bigint('broadcast_id', { mode: 'number' }).notNull().references(() => broadcasts.id, {
-    onDelete: 'cascade',
-  }),
+  broadcastId: bigint('broadcast_id', { mode: 'number' }).references(() => broadcasts.id, { onDelete: 'cascade' }),
+  campaignId: integer('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }),
   isSecond: boolean('is_second').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   twilioSentStatus: twilioStatus('twilio_sent_status').default('delivered'),
   twilioId: text('twilio_id'),
   message: text('message').notNull(),
-  audienceSegmentId: bigint('audience_segment_id', { mode: 'number' }).notNull().references(() =>
-    audienceSegments
-      .id, {
+  audienceSegmentId: bigint('audience_segment_id', { mode: 'number' }).references(() => audienceSegments.id, {
     onDelete: 'cascade',
   }),
   closed: boolean('closed').default(false),
   secondMessageQueueId: bigint('second_message_queue_id', { mode: 'number' }),
-}, (table) => {
-  return {
-    broadcastSentMessageStatusMissiveIdKey: unique('broadcast_sent_message_status_missive_id_key').on(table.missiveId),
-  }
 })
 
 export const unsubscribedMessages = pgTable('unsubscribed_messages', {
@@ -92,7 +84,7 @@ export const unsubscribedMessages = pgTable('unsubscribed_messages', {
   }),
   twilioMessageId: uuid('twilio_message_id').notNull().references(() => twilioMessages.id, { onDelete: 'cascade' }),
   // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  replyTo: bigint('reply_to', { mode: 'number' }).references(() => broadcastSentMessageStatus.id, {
+  replyTo: bigint('reply_to', { mode: 'number' }).references(() => messageStatuses.id, {
     onDelete: 'cascade',
   }),
 })
@@ -138,6 +130,7 @@ export const conversationsLabels = pgTable('conversations_labels', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  authorPhoneNumber: text('author_phone_number').references(() => authors.phoneNumber, { onDelete: 'set null' }),
   labelId: uuid('label_id').notNull().references(() => labels.id, { onDelete: 'cascade' }),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   isArchived: boolean('is_archived').default(false).notNull(),
@@ -300,7 +293,7 @@ export const twilioMessages = pgTable('twilio_messages', {
   fromField: text('from_field').notNull().references(() => authors.phoneNumber),
   toField: text('to_field').notNull().references(() => authors.phoneNumber),
   isBroadcastReply: boolean('is_broadcast_reply').default(false).notNull(),
-  replyToBroadcast: bigint('reply_to_broadcast', { mode: 'number' }).references(() => broadcasts.id),
+  replyToBroadcast: bigint('reply_to_broadcast', { mode: 'number' }),
   senderId: uuid('sender_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => {
   return {
@@ -357,25 +350,6 @@ export const organizations = pgTable('organizations', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
 })
 
-export const outgoingMessages = pgTable('outgoing_messages', {
-  id: serial('id').primaryKey().notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-  recipientPhoneNumber: text('recipient_phone_number').notNull().references(() => authors.phoneNumber, {
-    onUpdate: 'cascade',
-  }),
-  message: text('message').notNull(),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  broadcastId: bigint('broadcast_id', { mode: 'number' }).notNull().references(() => broadcasts.id, {
-    onDelete: 'cascade',
-  }),
-  // You can use { mode: "bigint" } if numbers are exceeding js number limitations
-  segmentId: bigint('segment_id', { mode: 'number' }).notNull().references(() => audienceSegments.id, {
-    onUpdate: 'cascade',
-  }),
-  isSecond: boolean('is_second').default(false).notNull(),
-  processed: boolean('processed').default(false).notNull(),
-})
-
 export const lookupTemplate = pgTable('lookup_template', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -407,6 +381,21 @@ export const cronJob = cronSchema.table('job', {
   jobname: text('jobname').notNull(),
 })
 
+export const campaigns = pgTable('campaigns', {
+  id: serial('id').primaryKey(),
+  title: text('title'),
+  firstMessage: text('first_message').notNull(),
+  secondMessage: text('second_message'),
+  segments: jsonb('segments').notNull(),
+  runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+  delay: integer('delay').default(600).notNull(),
+  recipientCount: integer('recipient_count').default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  processed: boolean('processed').notNull().default(false),
+  twilioPaging: text('twilio_paging'),
+})
+
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -425,8 +414,6 @@ export type ConversationAuthor = typeof conversationsAuthors.$inferInsert
 export type TwilioMessage = typeof twilioMessages.$inferInsert
 export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
 export type Broadcast = typeof broadcasts.$inferInsert
-export type BroadcastMessageStatus = typeof broadcastSentMessageStatus.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
-export type LookupTemplate = typeof lookupTemplate.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
