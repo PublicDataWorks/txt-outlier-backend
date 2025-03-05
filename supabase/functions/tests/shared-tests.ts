@@ -157,8 +157,9 @@ describe('DateUtils', () => {
         // If no DST change, times should match exactly
         assertEquals(resultTime, originalTime)
       }
-      // Verify result is 6 days ahead (wrapping around to next week)
-      const diffInDays = Math.floor((resultInDetroit.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      const nowDate = new Date(formatInTimeZone(now, DETROIT_TIMEZONE, 'yyyy-MM-dd'))
+      const resultDate = new Date(formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'yyyy-MM-dd'))
+      const diffInDays = Math.round((resultDate.getTime() - nowDate.getTime()) / (24 * 60 * 60 * 1000))
       assertEquals(diffInDays, 6)
     })
   })

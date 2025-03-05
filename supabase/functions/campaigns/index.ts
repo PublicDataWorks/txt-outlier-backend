@@ -139,7 +139,7 @@ app.post(FUNCTION_PATH, async (c) => {
       console.error(errorMessage)
       return AppResponse.badRequest(errorMessage)
     }
-    console.log('Error creating new campaign:', error)
+    console.error('Error creating new campaign:', error)
     Sentry.captureException(error)
     return AppResponse.internalServerError()
   }
