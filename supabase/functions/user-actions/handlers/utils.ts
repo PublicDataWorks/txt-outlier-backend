@@ -250,11 +250,11 @@ export const upsertLabel = async (
         })
       }
     })
-    if (requestBody.message?.to_fields?.[0]?.id) {
+    if (requestBody.message?.to_fields?.[0]?.id || requestBody.latest_message?.to_fields?.[0]?.id) {
       requestConversationsLabels.add({
         conversationId: requestConvo.id,
         labelId: label.id,
-        authorPhoneNumber: requestBody.message.to_fields[0].id,
+        authorPhoneNumber: requestBody.message?.to_fields?.[0]?.id || requestBody.latest_message?.to_fields?.[0]?.id,
       })
     }
     labelIds.push(label.id)
