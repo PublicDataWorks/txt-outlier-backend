@@ -18,32 +18,89 @@ const pgmqDelete = (queueName: string, messageId: string) => {
 
 const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: number): string => {
   let WHERE_CLAUSE = (cursor && typeof cursor === 'number')
-    ? `WHERE b.run_at < to_timestamp($$${cursor}$$)`
+    ? `WHERE run_at < to_timestamp($$${cursor}$$)`
     : 'WHERE TRUE'
   if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND b.id = $$${broadcastId}$$`)
   return `
-    SELECT b.id,
-           b.run_at                                                                                                                                                         AS "runAt",
-           b.delay,
-           b.editable,
-		       b.first_message                                                                                                                                                  AS "firstMessage",
-           b.second_message                                                                                                                                                 AS "secondMessage",
-           b.no_users                                                                                                                                                       AS "noUsers",
-           count(distinct bsms.recipient_phone_number) FILTER (WHERE bsms.is_second = FALSE)                                                                                AS "totalFirstSent",
-           count(distinct bsms.recipient_phone_number) FILTER (WHERE bsms.is_second = TRUE)                                                                                 AS "totalSecondSent",
-           count(distinct (bsms.recipient_phone_number, bsms.is_second)) FILTER (WHERE bsms.twilio_id IS NOT NULL AND bsms.twilio_sent_status IN ('delivered', 'sent'))     AS "successfullyDelivered",
-           count(distinct (bsms.recipient_phone_number, bsms.is_second)) FILTER (WHERE bsms.twilio_sent_status IN ('undelivered', 'failed'))                                AS "failedDelivered",
-           count(distinct bsms.recipient_phone_number) FILTER (WHERE um.id IS NOT NULL)                                                                                     AS "totalUnsubscribed"
-    FROM broadcasts b
-           LEFT JOIN message_statuses bsms ON b.id = bsms.broadcast_id
-           LEFT JOIN unsubscribed_messages um ON b.id = um.broadcast_id AND um.reply_to = bsms.id
+    WITH limited_broadcasts AS (
+      SELECT id, run_at, delay, first_message, second_message, no_users, editable
+      FROM broadcasts
       ${WHERE_CLAUSE}
-    GROUP BY b.id
+      ORDER BY
+          CASE WHEN editable = TRUE THEN 1 ELSE 2 END,
+          run_at DESC,
+          id DESC
+      LIMIT ${limit}
+    ),
+    first_message_counts AS (
+      SELECT
+          broadcast_id,
+          COUNT(DISTINCT recipient_phone_number) AS total_first
+      FROM message_statuses
+      WHERE is_second = FALSE
+      AND broadcast_id IN (SELECT id FROM limited_broadcasts)
+      GROUP BY broadcast_id
+    ),
+    second_message_counts AS (
+      SELECT
+          broadcast_id,
+          COUNT(DISTINCT recipient_phone_number) AS total_second
+      FROM message_statuses
+      WHERE is_second = TRUE
+      AND broadcast_id IN (SELECT id FROM limited_broadcasts)
+      GROUP BY broadcast_id
+    ),
+    successful_deliveries AS (
+      SELECT
+          broadcast_id,
+          COUNT(DISTINCT (recipient_phone_number, is_second)) AS total_success
+      FROM message_statuses
+      WHERE twilio_id IS NOT NULL
+      AND twilio_sent_status IN ('delivered', 'sent')
+      AND broadcast_id IN (SELECT id FROM limited_broadcasts)
+      GROUP BY broadcast_id
+    ),
+    failed_deliveries AS (
+      SELECT
+          broadcast_id,
+          COUNT(DISTINCT (recipient_phone_number, is_second)) AS total_failed
+      FROM message_statuses
+      WHERE twilio_sent_status IN ('undelivered', 'failed')
+      AND broadcast_id IN (SELECT id FROM limited_broadcasts)
+      GROUP BY broadcast_id
+    ),
+    unsubscribes AS (
+      SELECT
+          um.broadcast_id,
+          COUNT(DISTINCT ms.recipient_phone_number) AS total_unsub
+      FROM unsubscribed_messages um
+      JOIN message_statuses ms ON um.reply_to = ms.id
+      WHERE um.broadcast_id IN (SELECT id FROM limited_broadcasts)
+      GROUP BY um.broadcast_id
+    )
+    SELECT
+      b.id,
+      b.run_at AS "runAt",
+      b.delay,
+      b.editable,
+      b.first_message AS "firstMessage",
+      b.second_message AS "secondMessage",
+      b.no_users AS "noUsers",
+      COALESCE(fmc.total_first, 0) AS "totalFirstSent",
+      COALESCE(smc.total_second, 0) AS "totalSecondSent",
+      COALESCE(sd.total_success, 0) AS "successfullyDelivered",
+      COALESCE(fd.total_failed, 0) AS "failedDelivered",
+      COALESCE(u.total_unsub, 0) AS "totalUnsubscribed"
+    FROM limited_broadcasts b
+    LEFT JOIN first_message_counts fmc ON b.id = fmc.broadcast_id
+    LEFT JOIN second_message_counts smc ON b.id = smc.broadcast_id
+    LEFT JOIN successful_deliveries sd ON b.id = sd.broadcast_id
+    LEFT JOIN failed_deliveries fd ON b.id = fd.broadcast_id
+    LEFT JOIN unsubscribes u ON b.id = u.broadcast_id
     ORDER BY
-        CASE WHEN editable = TRUE THEN 1 ELSE 2 END,
-        b.run_at DESC,
-        b.id DESC
-    LIMIT ${limit}
+      CASE WHEN b.editable = TRUE THEN 1 ELSE 2 END,
+      b.run_at DESC,
+      b.id DESC;
   `
 }
 
