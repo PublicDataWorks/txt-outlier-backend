@@ -209,7 +209,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
     assertEquals(scheduleParts.length, 5, 'Should have valid cron schedule format')
   })
 
-  it('should not create new broadcast when another broadcast is running', async () => {
+  it('should create new broadcast when another broadcast is running', async () => {
     await createAuthors(2)
     await createSegment({ name: 'Inactive' })
 
@@ -253,7 +253,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
       where: gt(broadcasts.id, secondBroadcast.id!),
     })
 
-    assertEquals(allBroadcasts.length, 0, 'Should not create new broadcast while another is running')
+    assertEquals(allBroadcasts.length, 1)
   })
 
   it('should fail when run_at_utc does not match current time', async () => {

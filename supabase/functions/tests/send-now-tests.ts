@@ -108,7 +108,7 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
     )
   })
 
-  it('should fail when another broadcast is running', async () => {
+  it('should not fail when another broadcast is running', async () => {
     // Setup: Create broadcast scheduled for far future
     await createAuthors(2)
     await createSegment({ name: 'Inactive' })
@@ -127,16 +127,8 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
 
     await createSegment({ broadcastId: broadcast.id! })
 
-    // First call should succeed
     await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
-
-    // Second call should fail because first broadcast is still running
     const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
-    const { message: actualErrorMessage }: { message: string } = await error.context.json()
-    assertEquals(
-      actualErrorMessage,
-      'Unable to send now: another broadcast is running',
-      'Should return correct error message',
-    )
+    assertEquals(error, null)
   })
 })

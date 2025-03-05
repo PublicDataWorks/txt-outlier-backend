@@ -103,15 +103,6 @@ const UNSCHEDULE_COMMANDS = {
   ARCHIVE_BROADCAST_DOUBLE_FAILURES: sql.raw(`SELECT cron.unschedule('archive-broadcast-double-failures');`),
 } as const
 
-const SELECT_JOB_NAMES = sql.raw('SELECT jobname from cron.job;')
-
-const BROADCAST_RUNNING_INDICATORS: string[] = [
-  'send-first-messages',
-  'send-second-messages',
-  'delay-reconcile-twilio-status',
-  'reconcile-twilio-status',
-]
-
 interface BroadcastDashBoardQueryReturn {
   id: number
   runAt: Date
@@ -127,15 +118,13 @@ interface BroadcastDashBoardQueryReturn {
 }
 
 export {
-  BROADCAST_RUNNING_INDICATORS,
+  BROADCAST_DOUBLE_FAILURE_QUERY,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
   pgmqDelete,
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  SELECT_JOB_NAMES,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,
-  BROADCAST_DOUBLE_FAILURE_QUERY
 }

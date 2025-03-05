@@ -202,7 +202,7 @@ BEGIN
                 'send-second-messages',
                 '1 seconds',
                 format('SELECT net.http_post(
-                    url:=''%s/send-messages/'',
+                    url:=''%ssend-messages/'',
                     body:=''{"isSecond": true}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",

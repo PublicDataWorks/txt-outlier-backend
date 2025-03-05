@@ -28,9 +28,8 @@ import {
   UNSCHEDULE_COMMANDS,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
-import BadRequestError from '../exception/BadRequestError.ts'
 import Sentry from '../lib/Sentry.ts'
-import { createNextBroadcast, isBroadcastRunning } from './BroadcastServiceUtils.ts'
+import { createNextBroadcast } from './BroadcastServiceUtils.ts'
 import {
   ARCHIVE_MESSAGE,
   FIRST_MESSAGES_QUEUE,
@@ -40,10 +39,6 @@ import {
 import { cloneBroadcast } from '../misc/utils.ts'
 
 const makeBroadcast = async (): Promise<void> => {
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to make broadcast: another broadcast is running')
-  }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: eq(broadcasts.editable, true),
@@ -67,10 +62,6 @@ const makeBroadcast = async (): Promise<void> => {
 }
 
 const sendNow = async (): Promise<void> => {
-  const isRunning = await isBroadcastRunning()
-  if (isRunning) {
-    throw new BadRequestError('Unable to send now: another broadcast is running')
-  }
   // @ts-ignore: Property broadcasts exists at runtime
   const broadcast = await supabase.query.broadcasts.findFirst({
     where: and(eq(broadcasts.editable, true)),
@@ -346,10 +337,12 @@ const archiveBroadcastDoubleFailures = async () => {
       Deno.env.get('MISSIVE_ARCHIVE_LABEL_ID')!,
     )
     if (response.ok) {
-      console.info(`Successfully archived conversation for ${conversation.recipient_phone_number} due to double failure.`)
+      console.info(
+        `Successfully archived conversation for ${conversation.recipient_phone_number} due to double failure.`,
+      )
     } else {
       console.error(
-        `[archiveBroadcastDoubleFailures] Failed to archive conversation. conversationId: ${conversation.missive_conversation_id}`
+        `[archiveBroadcastDoubleFailures] Failed to archive conversation. conversationId: ${conversation.missive_conversation_id}`,
       )
       Sentry.captureException(`Failed to archive conversation: ${conversation.missive_conversation_id}`)
     }
@@ -369,5 +362,5 @@ export default {
   sendNow,
   reconcileTwilioStatus,
   handleFailedDeliveries,
-  archiveBroadcastDoubleFailures
+  archiveBroadcastDoubleFailures,
 } as const

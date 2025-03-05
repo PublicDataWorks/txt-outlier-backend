@@ -388,27 +388,12 @@ export const campaigns = pgTable('campaigns', {
   secondMessage: text('second_message'),
   segments: jsonb('segments').notNull(),
   runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+  delay: integer('delay').default(600).notNull(),
+  recipientCount: integer('recipient_count').default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   processed: boolean('processed').notNull().default(false),
   twilioPaging: text('twilio_paging'),
-})
-
-export const campaignMessages = pgTable('campaign_messages', {
-  id: serial('id').primaryKey(),
-  campaignId: integer('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
-  recipientPhoneNumber: text('recipient_phone_number').notNull().references(() => authors.phoneNumber, {
-    onDelete: 'cascade',
-  }),
-  messageType: text('message_type').notNull().$type<'first' | 'second'>(),
-  status: text('status').notNull().default('queued').$type<'queued' | 'sent' | 'delivered' | 'failed'>(),
-  missiveId: uuid('missive_id'),
-  missiveConversationId: uuid('missive_conversation_id'),
-  twilioId: text('twilio_id'),
-  twilioSentStatus: text('twilio_sent_status'),
-  twilioSentAt: timestamp('twilio_sent_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export type Rule = typeof rules.$inferInsert
@@ -432,5 +417,3 @@ export type Broadcast = typeof broadcasts.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
-export type Campaign = typeof campaigns.$inferInsert
-export type CampaignMessage = typeof campaignMessages.$inferInsert
