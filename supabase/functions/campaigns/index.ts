@@ -6,7 +6,7 @@ import supabase from '../_shared/lib/supabase.ts'
 import { authors, campaigns, conversationsAuthors, conversationsLabels, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import { CreateCampaignSchema, formatCampaignSelect, RecipientCountSchema, UpdateCampaignSchema } from './dto.ts'
-import { and, asc, desc, eq, gt, isNotNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
 import { validateSegments } from './helpers.ts'
 
 const app = new Hono()
@@ -30,12 +30,12 @@ app.get(`${FUNCTION_PATH}segments/`, async () => {
         conversationsLabels,
         and(
           eq(labels.id, conversationsLabels.labelId),
-          eq(conversationsLabels.isArchived, false)
-        )
+          eq(conversationsLabels.isArchived, false),
+        ),
       )
       .leftJoin(
         conversationsAuthors,
-        eq(conversationsLabels.conversationId, conversationsAuthors.conversationId)
+        eq(conversationsLabels.conversationId, conversationsAuthors.conversationId),
       )
       .groupBy(labels.id, labels.name, labels.createdAt)
       .orderBy(labels.name)

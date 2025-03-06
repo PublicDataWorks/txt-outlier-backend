@@ -1,7 +1,7 @@
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { eq } from 'drizzle-orm'
 
-import { ConversationAuthor, authors, conversationsAuthors, twilioMessages } from '../../_shared/drizzle/schema.ts'
+import { authors, ConversationAuthor, conversationsAuthors, twilioMessages } from '../../_shared/drizzle/schema.ts'
 import { RequestBody } from '../types.ts'
 import { upsertAuthor, upsertConversation, upsertLabel, upsertRule } from './utils.ts'
 import { adaptTwilioMessage, adaptTwilioRequestAuthor } from '../adapters.ts'
