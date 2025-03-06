@@ -1,7 +1,7 @@
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { eq } from 'drizzle-orm'
 
-import { authors, twilioMessages } from '../../_shared/drizzle/schema.ts'
+import { ConversationAuthor, authors, conversationsAuthors, twilioMessages } from '../../_shared/drizzle/schema.ts'
 import { RequestBody } from '../types.ts'
 import { upsertAuthor, upsertConversation, upsertLabel, upsertRule } from './utils.ts'
 import { adaptTwilioMessage, adaptTwilioRequestAuthor } from '../adapters.ts'
@@ -35,6 +35,16 @@ const insertTwilioMessage = async (
   )
 
   await upsertAuthor(tx, filteredTwilioAuthors)
+  const convoAuthors: ConversationAuthor[] = []
+  for (const twilioAuthor of filteredTwilioAuthors) {
+    convoAuthors.push({
+      conversationId: requestBody.conversation.id,
+      authorPhoneNumber: twilioAuthor.phone_number,
+    })
+  }
+  if (convoAuthors.length > 0) {
+    await tx.insert(conversationsAuthors).values(convoAuthors).onConflictDoNothing()
+  }
   // Sample data:
   // from_field: {
   //       id: "AC0d82ffb9b12d5acf383ca62f1d78c54a",

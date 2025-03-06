@@ -130,7 +130,6 @@ export const conversationsLabels = pgTable('conversations_labels', {
   id: serial('id').primaryKey().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
-  authorPhoneNumber: text('author_phone_number').references(() => authors.phoneNumber, { onDelete: 'set null' }),
   labelId: uuid('label_id').notNull().references(() => labels.id, { onDelete: 'cascade' }),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
   isArchived: boolean('is_archived').default(false).notNull(),
@@ -208,10 +207,6 @@ export const invokeHistory = pgTable('invoke_history', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   conversationId: uuid('conversation_id'),
   requestBody: jsonb('request_body'),
-}, (table) => {
-  return {
-    requestBodyIdx: index('invoke_history_request_body_idx').on(table.requestBody),
-  }
 })
 
 export const conversationsUsers = pgTable('conversations_users', {

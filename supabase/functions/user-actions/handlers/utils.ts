@@ -241,22 +241,7 @@ export const upsertLabel = async (
       shareWithOrganization: label.share_with_organization,
       visibility: label.visibility,
     })
-    requestConvo.authors.forEach((author) => {
-      if (author.phone_number) {
-        requestConversationsLabels.add({
-          conversationId: requestConvo.id,
-          labelId: label.id,
-          authorPhoneNumber: author.phone_number,
-        })
-      }
-    })
-    if (requestBody.message?.to_fields?.[0]?.id || requestBody.latest_message?.to_fields?.[0]?.id) {
-      requestConversationsLabels.add({
-        conversationId: requestConvo.id,
-        labelId: label.id,
-        authorPhoneNumber: requestBody.message?.to_fields?.[0]?.id || requestBody.latest_message?.to_fields?.[0]?.id,
-      })
-    }
+    requestConversationsLabels.add({ conversationId: requestConvo.id, labelId: label.id })
     labelIds.push(label.id)
   }
   if (requestLabels.size > 0) {
@@ -284,11 +269,9 @@ export const upsertLabel = async (
         eq(conversationsLabels.conversationId, requestConvo.id!),
         notInArray(conversationsLabels.labelId, labelIds),
       ))
-    if (requestConversationsLabels.size > 0) {
-      await tx.insert(conversationsLabels).values([
-        ...requestConversationsLabels,
-      ]).onConflictDoNothing()
-    }
+    await tx.insert(conversationsLabels).values([
+      ...requestConversationsLabels,
+    ]).onConflictDoNothing()
   }
 }
 

@@ -420,7 +420,6 @@ CREATE INDEX IF NOT EXISTS "unsubscribed_messages_reply_to_idx" ON "unsubscribed
 CREATE INDEX IF NOT EXISTS "idx_user_history_id" ON "user_history" ("id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "user_history_user_id_idx" ON "user_history" ("user_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_authors_phone_unsub_exclude" ON "authors" ("phone_number","unsubscribed","exclude");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "invoke_history_request_body_idx" ON "invoke_history" ("request_body");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_tm_from_created_broadcast" ON "twilio_messages" ("created_at","from_field","is_broadcast_reply");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_twilio_messages_created_from_broadcast" ON "twilio_messages" ("created_at","from_field","is_broadcast_reply");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_twilio_messages_delivered_from" ON "twilio_messages" ("delivered_at","from_field");--> statement-breakpoint
