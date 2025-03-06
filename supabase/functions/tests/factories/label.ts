@@ -41,11 +41,3 @@ export const createLabel = async ({
 
   return result
 }
-
-// Helper to create multiple labels
-export const createLabels = async (count: number) => {
-  const labelPromises = Array(count)
-    .fill(null)
-    .map(() => createLabel())
-  return Promise.all(labelPromises)
-}
