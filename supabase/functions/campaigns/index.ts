@@ -189,7 +189,11 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
   }
 })
 
-app.options('/campaigns/*', () => {
+app.options('/campaigns/', () => {
+  return AppResponse.ok()
+})
+
+app.options('/campaigns/*/', () => {
   return AppResponse.ok()
 })
 

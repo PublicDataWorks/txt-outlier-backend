@@ -22,16 +22,16 @@ export const validateSegments = async (
 ): Promise<boolean> => {
   const includedIds = included ? getAllSegmentIds(included) : []
   const excludedIds = excluded ? getAllSegmentIds(excluded) : []
-  const allIds = [...includedIds, ...excludedIds]
+  const allIds = new Set([...includedIds, ...excludedIds])
 
-  if (allIds.length === 0) {
+  if (allIds.size === 0) {
     return true
   }
 
   const existingSegments = await supabase
     .select({ id: labels.id })
     .from(labels)
-    .where(inArray(labels.id, allIds))
+    .where(inArray(labels.id, Array.from(allIds)))
 
-  return existingSegments.length === allIds.length
+  return existingSegments.length === allIds.size
 }
