@@ -20,7 +20,7 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
   let WHERE_CLAUSE = (cursor && typeof cursor === 'number')
     ? `WHERE run_at < to_timestamp($$${cursor}$$)`
     : 'WHERE TRUE'
-  if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND b.id = $$${broadcastId}$$`)
+  if (broadcastId) WHERE_CLAUSE = WHERE_CLAUSE.concat(` AND id = $$${broadcastId}$$`)
   return `
     WITH limited_broadcasts AS (
       SELECT id, run_at, delay, first_message, second_message, no_users, editable
