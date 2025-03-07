@@ -15,31 +15,8 @@ const FUNCTION_PATH = '/campaigns/'
 app.get(`${FUNCTION_PATH}segments/`, async () => {
   try {
     const segments = await supabase
-      .select({
-        id: labels.id,
-        name: labels.name,
-        recipient_count: sql<number>`count(DISTINCT CASE WHEN ${conversationsAuthors.authorPhoneNumber} IN (
-          SELECT ${authors.phoneNumber}
-          FROM ${authors}
-          WHERE ${authors.unsubscribed} = false
-          AND ${authors.exclude} = false
-        ) THEN ${conversationsAuthors.authorPhoneNumber} ELSE NULL END)`,
-      })
+      .select({ id: labels.id, name: labels.name })
       .from(labels)
-      .leftJoin(
-        conversationsLabels,
-        and(
-          eq(labels.id, conversationsLabels.labelId),
-          eq(conversationsLabels.isArchived, false),
-        ),
-      )
-      .leftJoin(
-        conversationsAuthors,
-        eq(conversationsLabels.conversationId, conversationsAuthors.conversationId),
-      )
-      .groupBy(labels.id, labels.name, labels.createdAt)
-      .orderBy(labels.name)
-
     return AppResponse.ok(segments)
   } catch (error) {
     console.error('Error fetching segments:', error)
