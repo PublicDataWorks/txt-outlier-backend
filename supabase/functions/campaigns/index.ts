@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { campaigns } from '../_shared/drizzle/schema.ts'
+import { campaigns, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import { CreateCampaignSchema, formatCampaignSelect, RecipientCountSchema, UpdateCampaignSchema } from './dto.ts'
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
