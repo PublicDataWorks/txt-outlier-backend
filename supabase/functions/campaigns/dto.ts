@@ -15,7 +15,7 @@ const SegmentConfigSchema = z.array(
   z.union([
     SegmentSchema,
     AndGroupSchema,
-  ])
+  ]),
 )
 
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
@@ -52,10 +52,9 @@ export const RecipientCountSchema = z.object({
   }),
 }).strict()
 
-
 export interface CampaignSegments {
-  included: SegmentConfig;
-  excluded?: SegmentConfig;
+  included: SegmentConfig
+  excluded?: SegmentConfig
 }
 
 export const formatCampaignSelect = {

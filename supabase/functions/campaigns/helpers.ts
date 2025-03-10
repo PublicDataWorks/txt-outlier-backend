@@ -33,25 +33,25 @@ export const validateSegments = async (
 }
 
 export const addReplyLabelToExcluded = (segments: CampaignSegments) => {
-  const MISSIVE_REPLY_LABEL_ID = Deno.env.get('MISSIVE_REPLY_LABEL_ID');
+  const MISSIVE_REPLY_LABEL_ID = Deno.env.get('MISSIVE_REPLY_LABEL_ID')
 
   if (!MISSIVE_REPLY_LABEL_ID) {
-    return segments;
+    return segments
   }
 
-  const updatedSegments = { ...segments };
+  const updatedSegments = { ...segments }
 
   if (!updatedSegments.excluded) {
-    updatedSegments.excluded = [{ id: MISSIVE_REPLY_LABEL_ID }];
+    updatedSegments.excluded = [{ id: MISSIVE_REPLY_LABEL_ID }]
   } else {
     const hasReplyLabel = updatedSegments.excluded.some(
-      (item) => !Array.isArray(item) && item.id === MISSIVE_REPLY_LABEL_ID
-    );
+      (item) => !Array.isArray(item) && item.id === MISSIVE_REPLY_LABEL_ID,
+    )
 
     if (!hasReplyLabel) {
-      updatedSegments.excluded = [...updatedSegments.excluded, { id: MISSIVE_REPLY_LABEL_ID }];
+      updatedSegments.excluded = [...updatedSegments.excluded, { id: MISSIVE_REPLY_LABEL_ID }]
     }
   }
 
-  return updatedSegments;
-};
+  return updatedSegments
+}

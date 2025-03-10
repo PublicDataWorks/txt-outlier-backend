@@ -6,7 +6,7 @@ import supabase from '../_shared/lib/supabase.ts'
 import { campaigns, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import { CreateCampaignSchema, formatCampaignSelect, RecipientCountSchema, UpdateCampaignSchema } from './dto.ts'
-import { and, asc, desc, eq, gt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
 import { addReplyLabelToExcluded, validateSegments } from './helpers.ts'
 
 const app = new Hono()

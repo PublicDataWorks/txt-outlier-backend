@@ -441,4 +441,5 @@ export default {
   reconcileTwilioStatus,
   handleFailedDeliveries,
   archiveBroadcastDoubleFailures,
+  labelConversationsWithReplies,
 } as const
