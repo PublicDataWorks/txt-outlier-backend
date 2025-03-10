@@ -822,7 +822,7 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
 })
 
 describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: false }, () => {
-  it('should return segments with correct recipient counts', async () => {
+  it('should return segments with id and name', async () => {
     const label1 = await createLabel({ name: 'Label A' })
     const label2 = await createLabel({ name: 'Label B' })
 
@@ -863,10 +863,12 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 2)
     assertEquals(data[0].id, label1.id)
     assertEquals(data[0].name, 'Label A')
-    assertEquals(data[0].recipient_count, '2')
     assertEquals(data[1].id, label2.id)
     assertEquals(data[1].name, 'Label B')
-    assertEquals(data[1].recipient_count, '1')
+
+    // Ensure only id and name are returned
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
+    assertEquals(Object.keys(data[1]).sort(), ['id', 'name'].sort())
   })
 
   it('should handle labels with no conversations', async () => {
@@ -879,7 +881,7 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Empty Label')
-    assertEquals(data[0].recipient_count, '0')
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
   })
 
   it('should handle labels with only archived conversations', async () => {
@@ -907,7 +909,9 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Archived Label')
-    assertEquals(data[0].recipient_count, '0')
+
+    // Ensure only id and name are returned
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
   })
 
   it('should handle labels with only unsubscribed or excluded authors', async () => {
@@ -945,7 +949,8 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Test Label')
-    assertEquals(data[0].recipient_count, '0')
+
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
   })
 })
 
