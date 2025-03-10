@@ -11,10 +11,15 @@ import {
   lookupTemplate,
   messageStatuses,
 } from '../drizzle/schema.ts'
-import { handleFailedDeliveriesCron, reconcileTwilioStatusCron } from '../scheduledcron/cron.ts'
+import {
+  ARCHIVE_BROADCAST_DOUBLE_FAILURES_CRON,
+  HANDLE_FAILED_DELIVERIES_CRON,
+  reconcileTwilioStatusCron,
+} from '../scheduledcron/cron.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
 import {
+  BROADCAST_DOUBLE_FAILURE_QUERY,
   FAILED_DELIVERED_QUERY,
   pgmqDelete,
   pgmqRead,
@@ -25,7 +30,12 @@ import {
 import NotFoundError from '../exception/NotFoundError.ts'
 import Sentry from '../lib/Sentry.ts'
 import { createNextBroadcast } from './BroadcastServiceUtils.ts'
-import { FIRST_MESSAGES_QUEUE, MISSIVE_API_RATE_LIMIT, SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
+import {
+  ARCHIVE_MESSAGE,
+  FIRST_MESSAGES_QUEUE,
+  MISSIVE_API_RATE_LIMIT,
+  SECOND_MESSAGES_QUEUE_NAME,
+} from '../constants.ts'
 import { cloneBroadcast } from '../misc/utils.ts'
 
 const makeBroadcast = async (): Promise<void> => {
@@ -200,7 +210,7 @@ const reconcileTwilioStatus = async (
       await Promise.all([
         await supabase.execute(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO),
         await supabase.execute(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO),
-        await supabase.execute(handleFailedDeliveriesCron()),
+        await supabase.execute(HANDLE_FAILED_DELIVERIES_CRON),
       ])
     } else {
       const pageToken = nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null
@@ -223,6 +233,7 @@ const handleFailedDeliveries = async () => {
   const failedDelivers = await supabase.execute(sql.raw(FAILED_DELIVERED_QUERY))
   if (!failedDelivers || failedDelivers.length === 0) {
     try {
+      await supabase.execute(ARCHIVE_BROADCAST_DOUBLE_FAILURES_CRON)
       await supabase.execute(UNSCHEDULE_COMMANDS.HANDLE_FAILED_DELIVERIES)
     } catch (e) {
       console.error(`Failed to unschedule handleFailedDeliveries: ${e}`)
@@ -310,10 +321,46 @@ const handleFailedDeliveries = async () => {
   }
 }
 
+const archiveBroadcastDoubleFailures = async () => {
+  const MAX_RUN_TIME = 60 * 1000
+  const startTime = Date.now()
+  const failedDelivers = await supabase.execute(BROADCAST_DOUBLE_FAILURE_QUERY)
+  if (!failedDelivers || failedDelivers.length === 0) {
+    await supabase.execute(UNSCHEDULE_COMMANDS.ARCHIVE_BROADCAST_DOUBLE_FAILURES)
+    return
+  }
+
+  for (const conversation of failedDelivers) {
+    const response = await MissiveUtils.createPost(
+      conversation.missive_conversation_id,
+      ARCHIVE_MESSAGE,
+      Deno.env.get('MISSIVE_ARCHIVE_LABEL_ID')!,
+    )
+    if (response.ok) {
+      console.info(
+        `Successfully archived conversation for ${conversation.recipient_phone_number} due to double failure.`,
+      )
+    } else {
+      console.error(
+        `[archiveBroadcastDoubleFailures] Failed to archive conversation. conversationId: ${conversation.missive_conversation_id}`,
+      )
+      Sentry.captureException(`Failed to archive conversation: ${conversation.missive_conversation_id}`)
+    }
+    const elapsedTime = Date.now() - startTime
+    if (elapsedTime > MAX_RUN_TIME) {
+      console.info(`Approaching time limit. Stopping.`)
+      break
+    }
+    // Respect rate limits for Missive API
+    await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))
+  }
+}
+
 export default {
   makeBroadcast,
   sendBroadcastMessage,
   sendNow,
   reconcileTwilioStatus,
   handleFailedDeliveries,
+  archiveBroadcastDoubleFailures,
 } as const

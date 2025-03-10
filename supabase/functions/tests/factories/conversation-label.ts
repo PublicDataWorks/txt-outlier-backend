@@ -4,14 +4,12 @@ import { createConversation } from './conversation.ts'
 
 export type CreateConversationLabelParams = {
   labelId: string
-  authorPhoneNumber: string
   isArchived?: boolean
   conversationId?: string
 }
 
 export const createConversationLabel = async ({
   labelId,
-  authorPhoneNumber,
   isArchived = false,
   conversationId,
 }: CreateConversationLabelParams) => {
@@ -22,7 +20,6 @@ export const createConversationLabel = async ({
     .insert(conversationsLabels)
     .values({
       labelId,
-      authorPhoneNumber,
       isArchived,
       conversationId: conversationId || conversation!.id,
     })

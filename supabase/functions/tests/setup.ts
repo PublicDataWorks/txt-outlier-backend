@@ -15,6 +15,7 @@ beforeEach(async () => {
     '../../migrations/20250228040858_add_campaign_support_to_message_statuses.sql',
     '../../migrations/20250303034658_drop_reply_to_broadcast_fkey.sql',
     '../../migrations/20250304080718_add_recipient_count_to_campaigns.sql',
+    '../../migrations/20250306085822_count_campaign_recipient_using_conversations_authors_table.sql',
   ]
 
   for (const filePath of migrationFiles) {
@@ -61,4 +62,5 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
   DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
   DROP TABLE IF EXISTS "campaigns" CASCADE;
+  DROP FUNCTION IF EXISTS queue_campaign_messages(INTEGER);
 `

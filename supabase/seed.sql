@@ -102,17 +102,15 @@ available_labels AS (
     FROM labels
     LIMIT 10  -- Use only first 10 labels
 )
-INSERT INTO conversations_labels (conversation_id, label_id, is_archived, author_phone_number) -- Include author_phone_number here
+INSERT INTO conversations_labels (conversation_id, label_id, is_archived)
 SELECT DISTINCT  -- DISTINCT to avoid duplicates
     c.id,
     l.id,
-    false,
-    ca.author_phone_number -- Populate author_phone_number during insert
+    false
 FROM numbered_conversations c
 CROSS JOIN generate_series(1, 3) n  -- Each conversation gets up to 3 labels
 JOIN available_labels l
     ON l.label_num = (((c.conv_num - 1) * 3 + n) % 10) + 1  -- Distribute labels across conversations
-JOIN conversations_authors ca ON c.id = ca.conversation_id -- Join with conversations_authors
 ON CONFLICT (conversation_id, label_id) DO NOTHING;
 -- Insert data for Campaign
 INSERT INTO campaigns (
@@ -152,7 +150,7 @@ SELECT
     -- Segments JSON with varying configurations
     CASE
         WHEN n % 3 = 0 THEN
-            '{"included": {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}, "excluded": null}'
+            '{"included": {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}}'
         WHEN n % 3 = 1 THEN
             '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}]}'
         ELSE
