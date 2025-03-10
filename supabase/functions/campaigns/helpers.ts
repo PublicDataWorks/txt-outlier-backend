@@ -1,13 +1,9 @@
 import supabase from '../_shared/lib/supabase.ts'
 import { inArray } from 'drizzle-orm'
 import { labels } from '../_shared/drizzle/schema.ts'
-import { SegmentConfig } from './dto.ts'
+import { CampaignSegments, SegmentConfig } from './dto.ts'
 
 const getAllSegmentIds = (config: SegmentConfig): string[] => {
-  if (!Array.isArray(config)) {
-    return [config.id]
-  }
-
   return config.flatMap((item) => {
     if (Array.isArray(item)) {
       return item.map((segment) => segment.id)
@@ -35,3 +31,27 @@ export const validateSegments = async (
 
   return existingSegments.length === allIds.size
 }
+
+export const addReplyLabelToExcluded = (segments: CampaignSegments) => {
+  const MISSIVE_REPLY_LABEL_ID = Deno.env.get('MISSIVE_REPLY_LABEL_ID');
+
+  if (!MISSIVE_REPLY_LABEL_ID) {
+    return segments;
+  }
+
+  const updatedSegments = { ...segments };
+
+  if (!updatedSegments.excluded) {
+    updatedSegments.excluded = [{ id: MISSIVE_REPLY_LABEL_ID }];
+  } else {
+    const hasReplyLabel = updatedSegments.excluded.some(
+      (item) => !Array.isArray(item) && item.id === MISSIVE_REPLY_LABEL_ID
+    );
+
+    if (!hasReplyLabel) {
+      updatedSegments.excluded = [...updatedSegments.excluded, { id: MISSIVE_REPLY_LABEL_ID }];
+    }
+  }
+
+  return updatedSegments;
+};

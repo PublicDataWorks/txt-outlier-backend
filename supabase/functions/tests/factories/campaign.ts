@@ -8,8 +8,8 @@ export type CreateCampaignParams = {
   firstMessage?: string
   secondMessage?: string | null
   runAt?: Date
-  includedSegments?: string[]
-  excludedSegments?: string[]
+  includedSegment?: string
+  excludedSegment?: string
 }
 
 export const createCampaign = async ({
@@ -17,11 +17,11 @@ export const createCampaign = async ({
   firstMessage,
   secondMessage = null,
   runAt,
-  includedSegments,
-  excludedSegments,
+  includedSegment,
+  excludedSegment,
 }: CreateCampaignParams = {}) => {
   // Create a default label if includedSegments is not provided
-  const defaultLabel = includedSegments ? null : await createLabel()
+  const defaultLabel = includedSegment ? null : await createLabel()
 
   const campaign = {
     title,
@@ -29,8 +29,8 @@ export const createCampaign = async ({
     secondMessage,
     runAt: runAt || new Date(Date.now() + 86400000), // tomorrow
     segments: {
-      included: [{ id: includedSegments || defaultLabel!.id }],
-      excluded: [{ id: includedSegments }],
+      included: [{ id: includedSegment || defaultLabel!.id }],
+      excluded: [{ id: excludedSegment }],
     },
   }
 

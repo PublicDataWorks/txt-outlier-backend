@@ -51,7 +51,7 @@ const ARCHIVE_BROADCAST_DOUBLE_FAILURES_CRON = sql.raw(`
       '* * * * *',
       $$
         SELECT net.http_post(
-          url:='${Deno.env.get('EDGE_FUNCTION_URL')!}archive-broadcast-double-failures/',
+          url:='${Deno.env.get('EDGE_FUNCTION_URL')!}archive-double-failures/',
           headers:='{
             "Content-Type": "application/json",
             "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}"

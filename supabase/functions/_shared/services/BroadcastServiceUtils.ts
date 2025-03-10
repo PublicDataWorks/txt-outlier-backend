@@ -24,4 +24,10 @@ const createNextBroadcast = async (
   })))
 }
 
-export { createNextBroadcast }
+interface ReconcileOptions {
+  broadcastId?: number | null
+  campaignId?: number | null
+  runAt: number
+}
+
+export { createNextBroadcast, ReconcileOptions }

@@ -6,8 +6,8 @@ import supabase from '../_shared/lib/supabase.ts'
 import { campaigns, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import { CreateCampaignSchema, formatCampaignSelect, RecipientCountSchema, UpdateCampaignSchema } from './dto.ts'
-import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
-import { validateSegments } from './helpers.ts'
+import { and, asc, desc, eq, gt, or, sql } from 'drizzle-orm'
+import { addReplyLabelToExcluded, validateSegments } from './helpers.ts'
 
 const app = new Hono()
 const FUNCTION_PATH = '/campaigns/'
@@ -100,6 +100,8 @@ app.post(FUNCTION_PATH, async (c) => {
     if (!segmentsValid) {
       return AppResponse.badRequest('One or more segment IDs are invalid')
     }
+
+    campaignData.segments = addReplyLabelToExcluded(campaignData.segments)
     const recipientCountResult = await supabase.execute(sql`
       SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
     `)
@@ -138,6 +140,8 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
       if (!segmentsValid) {
         return AppResponse.badRequest('One or more segment IDs are invalid')
       }
+
+      campaignData.segments = addReplyLabelToExcluded(campaignData.segments)
       campaignData.segments = sql`${campaignData.segments}::jsonb` as unknown as typeof campaignData.segments
       const recipientCountResult = await supabase.execute(sql`
         SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
@@ -149,7 +153,13 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
     const [updatedCampaign] = await supabase
       .update(campaigns)
       .set(campaignData)
-      .where(and(eq(campaigns.id, id), gt(campaigns.runAt, new Date())))
+      .where(
+        and(
+          eq(campaigns.id, id),
+          eq(campaigns.processed, false),
+          gt(campaigns.runAt, new Date()),
+        ),
+      )
       .returning(formatCampaignSelect)
 
     if (!updatedCampaign) {

@@ -10,14 +10,13 @@ const SegmentSchema = z.object({
 })
 
 const AndGroupSchema = z.array(SegmentSchema)
-
-const SegmentConfigSchema = z.union([
-  SegmentSchema,
-  z.array(z.union([
+// [A, [B,C], D] => A OR (B AND C) OR D
+const SegmentConfigSchema = z.array(
+  z.union([
     SegmentSchema,
     AndGroupSchema,
-  ])),
-])
+  ])
+)
 
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
 
@@ -52,6 +51,12 @@ export const RecipientCountSchema = z.object({
     excluded: SegmentConfigSchema.optional(),
   }),
 }).strict()
+
+
+export interface CampaignSegments {
+  included: SegmentConfig;
+  excluded?: SegmentConfig;
+}
 
 export const formatCampaignSelect = {
   id: campaigns.id,

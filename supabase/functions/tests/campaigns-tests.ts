@@ -40,6 +40,15 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(data.title, null)
     assertEquals(data.segments.included, [{ id: label.id }])
 
+    // Check that excluded segments in the response include the original ones
+    assertEquals(Array.isArray(data.segments.excluded), true)
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(data.segments.excluded.some((seg) => seg.id === label2.id), true)
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(data.segments.excluded.some((seg) => seg.id === label3.id), true)
+    // There should be at least 2 segments (possibly 3 with MISSIVE_REPLY_LABEL_ID)
+    assertEquals(data.segments.excluded.length >= 2, true)
+
     const [newCampaign] = await supabase
       .select()
       .from(campaigns)
@@ -52,8 +61,128 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(newCampaign.title, null)
     // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
     assertEquals(newCampaign.segments.included, [{ id: label.id }])
+
+    // Check that excluded segments in the database include the original ones
     // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
-    assertEquals(newCampaign.segments.excluded, [{ id: label2.id }, { id: label3.id }])
+    assertEquals(Array.isArray(newCampaign.segments.excluded), true)
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(newCampaign.segments.excluded.some((seg) => seg.id === label2.id), true)
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(newCampaign.segments.excluded.some((seg) => seg.id === label3.id), true)
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(newCampaign.segments.excluded.length >= 2, true)
+  })
+
+  it('should automatically add MISSIVE_REPLY_LABEL_ID to excluded segments', async () => {
+    const label = await createLabel({ name: 'Test Label' })
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Case 1: No excluded segments provided
+    const response1 = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test first message',
+        runAt: futureTimestamp,
+        segments: {
+          included: [{ id: label.id }],
+        },
+      },
+    })
+
+    assertEquals(response1.data.firstMessage, 'Test first message')
+    assertEquals(response1.data.segments.included, [{ id: label.id }])
+
+    assertEquals(Array.isArray(response1.data.segments.excluded), true)
+    assertEquals(response1.data.segments.excluded.length, 1)
+    assertEquals(typeof response1.data.segments.excluded[0].id, 'string')
+
+    const [campaign1] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(campaign1.segments.excluded.length, 1)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(response1.data.segments.excluded[0].id, campaign1.segments.excluded[0].id)
+
+    // Case 2: With other excluded segments
+    const excludeLabel = await createLabel({ name: 'Exclude Label' })
+    const response2 = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test second message',
+        runAt: futureTimestamp,
+        segments: {
+          included: [{ id: label.id }],
+          excluded: [{ id: excludeLabel.id }],
+        },
+      },
+    })
+
+    assertEquals(response2.data.firstMessage, 'Test second message')
+
+    // Verify an additional label is added to excluded segments in the response
+    assertEquals(response2.data.segments.excluded.length, 2)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(response2.data.segments.excluded.some((seg) => seg.id === excludeLabel.id), true)
+
+    const [campaign2] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(campaign2.segments.excluded.length, 2)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(campaign2.segments.excluded.some((seg) => seg.id === excludeLabel.id), true)
+
+    // @ts-ignore - Segments is stored as JSONB
+    const responseIds = new Set(response2.data.segments.excluded.map((seg) => seg.id))
+    // @ts-ignore - Segments is stored as JSONB
+    const dbIds = new Set(campaign2.segments.excluded.map((seg) => seg.id))
+    assertEquals(responseIds.size, dbIds.size)
+    for (const id of responseIds) {
+      assertEquals(dbIds.has(id), true)
+    }
+
+    // Case 3: With AND group in excluded segments
+    const excludeLabel2 = await createLabel({ name: 'Exclude Label 2' })
+    const response3 = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        firstMessage: 'Test third message',
+        runAt: futureTimestamp,
+        segments: {
+          included: [{ id: label.id }],
+          excluded: [
+            { id: excludeLabel.id },
+            [{ id: excludeLabel2.id }], // AND group with one segment
+          ],
+        },
+      },
+    })
+
+    assertEquals(response3.data.firstMessage, 'Test third message')
+
+    // Verify an additional label is added alongside the AND group in the response
+    assertEquals(response3.data.segments.excluded.length, 3)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(response3.data.segments.excluded.some((seg) => Array.isArray(seg)), true)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(response3.data.segments.excluded.filter((seg) => !Array.isArray(seg)).length, 2)
+
+    // Also verify in the database
+    const [campaign3] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(campaign3.segments.excluded.length, 3)
   })
 
   it('should create a campaign with all fields', async () => {
@@ -669,6 +798,84 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
     // The original campaign should be unchanged
     assertEquals(unchangedCampaign.firstMessage, 'Original message')
   })
+
+  it('should automatically add MISSIVE_REPLY_LABEL_ID to excluded segments on update', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const label = await createLabel({ name: 'Test Label' })
+    const excludeLabel = await createLabel({ name: 'Exclude Label' })
+
+    // Create a campaign using the factory function
+    const campaign = await createCampaign({
+      firstMessage: 'Original message',
+      runAt: new Date(futureTimestamp * 1000),
+      includedSegment: label.id,
+    })
+
+    // Update with new excluded segments
+    const response = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        segments: {
+          included: [{ id: label.id }],
+          excluded: [{ id: excludeLabel.id }],
+        },
+      },
+    })
+
+    // Verify the response contains the updated segments
+    assertEquals(response.data.segments.included, [{ id: label.id }])
+
+    // Verify an additional label is added to excluded segments in the response
+    assertEquals(Array.isArray(response.data.segments.excluded), true)
+    assertEquals(response.data.segments.excluded.length, 2)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(response.data.segments.excluded.some((seg) => seg.id === excludeLabel.id), true)
+
+    // Verify in the database
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(updatedCampaign.segments.excluded.length, 2)
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(updatedCampaign.segments.excluded.some((seg) => seg.id === excludeLabel.id), true)
+
+    // Test with empty excluded array
+    const campaign2 = await createCampaign({
+      firstMessage: 'Empty excluded array',
+      runAt: new Date(futureTimestamp * 1000),
+      includedSegment: label.id,
+    })
+
+    // Update with empty excluded array
+    const response2 = await client.functions.invoke(`${FUNCTION_NAME}${campaign2.id}/`, {
+      method: 'PATCH',
+      body: {
+        segments: {
+          included: [{ id: label.id }],
+          excluded: [], // Empty array
+        },
+      },
+    })
+
+    // Verify a label is added to excluded segments in the response
+    assertEquals(Array.isArray(response2.data.segments.excluded), true)
+    assertEquals(response2.data.segments.excluded.length, 1)
+
+    // Verify in the database
+    const [updatedCampaign2] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign2.id))
+      .limit(1)
+
+    // @ts-ignore - Segments is stored as JSONB
+    assertEquals(updatedCampaign2.segments.excluded.length, 1)
+  })
 })
 
 describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
@@ -1031,7 +1238,7 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
       method: 'POST',
       body: {
         segments: {
-          included: { id: label1.id },
+          included: [{ id: label1.id }],
         },
       },
     })
@@ -1058,8 +1265,8 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
       method: 'POST',
       body: {
         segments: {
-          included: { id: label1.id },
-          excluded: { id: label2.id },
+          included: [{ id: label1.id }],
+          excluded: [{ id: label2.id }],
         },
       },
     })
@@ -1071,7 +1278,7 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
       method: 'POST',
       body: {
         segments: {
-          included: { id: label3.id },
+          included: [{ id: label3.id }],
         },
       },
     })
@@ -1085,7 +1292,7 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
       method: 'POST',
       body: {
         segments: {
-          included: { id: 'not-a-uuid' },
+          included: [{ id: 'not-a-uuid' }],
         },
       },
     })
@@ -1093,6 +1300,23 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
     assertEquals(invalidResponse.error.context.status, 400)
     const errorData = await invalidResponse.error.context.json()
     assertEquals(errorData.message.includes('Invalid segment ID format'), true)
+  })
+
+  it('should return 400 for not an array', async () => {
+    const label = await createLabel({ name: 'Test Label 3' })
+
+    const invalidResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
+      method: 'POST',
+      body: {
+        segments: {
+          included: { id: label.id },
+        },
+      },
+    })
+
+    assertEquals(invalidResponse.error.context.status, 400)
+    const errorData = await invalidResponse.error.context.json()
+    assertEquals(errorData.message.includes(' Expected array, received object'), true)
   })
 
   it('should return 400 for missing segments', async () => {

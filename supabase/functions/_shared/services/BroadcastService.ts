@@ -32,7 +32,7 @@ import {
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
 import Sentry from '../lib/Sentry.ts'
-import { createNextBroadcast } from './BroadcastServiceUtils.ts'
+import { createNextBroadcast, ReconcileOptions } from './BroadcastServiceUtils.ts'
 import {
   ARCHIVE_MESSAGE,
   FIRST_MESSAGES_QUEUE,
@@ -58,7 +58,7 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers + broadcast.delay + 900))
+    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers + broadcast.delay + 1800))
     await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
   })
@@ -160,13 +160,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   }
 }
 
-const reconcileTwilioStatus = async (
-  { broadcastId, campaignId, runAt }: {
-    broadcastId?: number | null
-    campaignId?: number | null
-    runAt: number
-  },
-) => {
+const reconcileTwilioStatus = async ({ broadcastId, campaignId, runAt }: ReconcileOptions) => {
   const id = broadcastId || campaignId
 
   if (!id) {
