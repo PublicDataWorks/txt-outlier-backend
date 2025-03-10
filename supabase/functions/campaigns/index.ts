@@ -5,9 +5,20 @@ import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { campaigns, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
-import { CreateCampaignSchema, formatCampaignSelect, RecipientCountSchema, UpdateCampaignSchema } from './dto.ts'
+import {
+  FileBasedCampaignSchema,
+  formatCampaignSelect,
+  RecipientCountSchema,
+  SegmentBasedCampaignSchema,
+  UpdateCampaignSchema,
+} from './dto.ts'
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
-import { validateSegments } from './helpers.ts'
+import {
+  handleFileBasedCampaign,
+  handleSegmentBasedCampaign,
+  parseFileBasedFormData,
+  validateSegments,
+} from './helpers.ts'
 
 const app = new Hono()
 const FUNCTION_PATH = '/campaigns/'
@@ -94,30 +105,45 @@ app.post(`${FUNCTION_PATH}recipient-count/`, async (c) => {
 
 app.post(FUNCTION_PATH, async (c) => {
   try {
-    const body = await c.req.json()
-    const campaignData = CreateCampaignSchema.parse(body)
-    const segmentsValid = await validateSegments(campaignData.segments.included, campaignData.segments.excluded)
-    if (!segmentsValid) {
-      return AppResponse.badRequest('One or more segment IDs are invalid')
+    const contentType = c.req.header('content-type') || ''
+
+    // Handle file upload (multipart/form-data)
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await c.req.formData()
+      const file = formData.get('file') as File | null
+
+      if (!file) {
+        return AppResponse.badRequest('File is required for file-based campaigns')
+      }
+
+      const parsedFormData = parseFileBasedFormData(formData)
+      const campaignData = FileBasedCampaignSchema.parse(parsedFormData)
+      const result = await handleFileBasedCampaign(campaignData, file)
+
+      if (result.error) {
+        return AppResponse.badRequest(result.error)
+      }
+
+      return AppResponse.ok(result.campaign!)
+    } // Handle JSON request (segment-based campaign)
+    else {
+      const body = await c.req.json()
+      const campaignData = SegmentBasedCampaignSchema.parse(body)
+      const result = await handleSegmentBasedCampaign(campaignData)
+
+      if (result.error) {
+        return AppResponse.badRequest(result.error)
+      }
+
+      return AppResponse.ok(result.campaign!)
     }
-    const recipientCountResult = await supabase.execute(sql`
-      SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
-    `)
-    const recipientCount = recipientCountResult[0]?.recipient_count || 0
-
-    console.log('Creating new campaign:', { ...campaignData, recipient_count: recipientCount })
-    const [newCampaign] = await supabase
-      .insert(campaigns)
-      .values({ ...campaignData, segments: sql`${campaignData.segments}::jsonb`, recipientCount })
-      .returning(formatCampaignSelect)
-
-    return AppResponse.ok(newCampaign)
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessage = `Validation error in campaigns: ${error.errors.map((e) => ` [${e.path}] - ${e.message}`)}`
+      const errorMessage = `Validation error: ${error.errors.map((err) => `[${err.path}] ${err.message}`).join(', ')}`
       console.error(errorMessage)
       return AppResponse.badRequest(errorMessage)
     }
+
     console.error('Error creating new campaign:', error)
     Sentry.captureException(error)
     return AppResponse.internalServerError()
