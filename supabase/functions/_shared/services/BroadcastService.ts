@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 
 import supabase from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
@@ -8,8 +8,11 @@ import {
   BroadcastSegment,
   broadcastsSegments,
   campaigns,
+  conversationsAuthors,
+  conversationsLabels,
   lookupTemplate,
   messageStatuses,
+  twilioMessages,
 } from '../drizzle/schema.ts'
 import {
   ARCHIVE_BROADCAST_DOUBLE_FAILURES_CRON,
@@ -351,6 +354,87 @@ const archiveBroadcastDoubleFailures = async () => {
       console.info(`Approaching time limit. Stopping.`)
       break
     }
+    // Respect rate limits for Missive API
+    await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))
+  }
+}
+
+// One-time function to label existing conversations with replies.
+// TODO: Remove this function after execution.
+const labelConversationsWithReplies = async () => {
+  const MAX_RUN_TIME = 60 * 1000
+  const startTime = Date.now()
+  const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')!
+  const REPLY_LABEL_ID = Deno.env.get('MISSIVE_REPLY_LABEL_ID')!
+
+  if (!REPLY_LABEL_ID) {
+    console.error('Reply label ID not found. Aborting.')
+    Sentry.captureException('Reply label ID not found. Aborting.')
+    return
+  }
+
+  const repliesResult = await supabase
+    .select({
+      conversationId: conversationsAuthors.conversationId,
+    })
+    .from(twilioMessages)
+    .innerJoin(
+      conversationsAuthors,
+      eq(twilioMessages.fromField, conversationsAuthors.authorPhoneNumber),
+    )
+    .leftJoin(
+      conversationsLabels,
+      and(
+        eq(conversationsAuthors.conversationId, conversationsLabels.conversationId),
+        eq(conversationsLabels.labelId, REPLY_LABEL_ID),
+      ),
+    )
+    .where(
+      and(
+        ne(twilioMessages.fromField, BROADCAST_PHONE_NUMBER),
+        isNull(conversationsLabels.id),
+      ),
+    )
+    .groupBy(conversationsAuthors.conversationId)
+    .limit(2)
+
+  if (!repliesResult || repliesResult.length === 0) {
+    console.info('No conversations with replies found to label.')
+    return
+  }
+
+  for (const conversation of repliesResult) {
+    console.log(`Labeling conversation ${conversation.conversationId} with reply label.`)
+    const response = await MissiveUtils.createPost(
+      conversation.conversationId,
+      '',
+      REPLY_LABEL_ID,
+    )
+
+    if (response.ok) {
+      console.info(
+        `Successfully labeled conversation ${conversation.conversationId} with reply label.`,
+      )
+
+      await supabase
+        .insert(conversationsLabels)
+        .values({
+          conversationId: conversation.conversationId,
+          labelId: REPLY_LABEL_ID,
+        })
+    } else {
+      console.error(
+        `[labelConversationsWithReplies] Failed to label conversation. conversationId: ${conversation.conversationId}`,
+      )
+      Sentry.captureException(`Failed to label conversation: ${conversation.conversationId}`)
+    }
+
+    const elapsedTime = Date.now() - startTime
+    if (elapsedTime > MAX_RUN_TIME) {
+      console.info(`Approaching time limit. Stopping.`)
+      break
+    }
+
     // Respect rate limits for Missive API
     await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))
   }
