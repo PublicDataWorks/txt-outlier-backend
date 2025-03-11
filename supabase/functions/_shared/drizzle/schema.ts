@@ -96,6 +96,7 @@ export const authors = pgTable('authors', {
   phoneNumber: text('phone_number').primaryKey().notNull(),
   unsubscribed: boolean('unsubscribed').default(false).notNull(),
   exclude: boolean('exclude').default(false),
+  addedViaFileUpload: boolean('added_via_file_upload').default(false),
 })
 
 export const comments = pgTable('comments', {
@@ -382,7 +383,7 @@ export const campaigns = pgTable('campaigns', {
   firstMessage: text('first_message').notNull(),
   secondMessage: text('second_message'),
   segments: jsonb('segments'),
-  fileUrl: text('file_url'),
+  recipientFileUrl: text('recipient_file_url'),
   runAt: timestamp('run_at', { withTimezone: true }).notNull(),
   delay: integer('delay').default(600).notNull(),
   recipientCount: integer('recipient_count').default(0),
@@ -392,7 +393,7 @@ export const campaigns = pgTable('campaigns', {
   twilioPaging: text('twilio_paging'),
 })
 
-export const fileRecipients = pgTable('file_recipients', {
+export const campaignFileRecipients = pgTable('campaign_file_recipients', {
   id: serial('id').primaryKey().notNull(),
   phoneNumber: text('phone_number').notNull(),
   campaignId: integer('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),

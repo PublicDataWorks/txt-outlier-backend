@@ -12,13 +12,15 @@ import {
   SegmentBasedCampaignSchema,
   UpdateCampaignSchema,
 } from './dto.ts'
-import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
+import { asc, desc, gt, sql } from 'drizzle-orm'
 import {
-  handleFileBasedCampaign,
-  handleSegmentBasedCampaign,
+  handleFileBasedCampaignCreate,
+  handleFileBasedCampaignUpdate,
+  handleSegmentBasedCampaignCreate,
+  handleSegmentBasedCampaignUpdate,
   parseFileBasedFormData,
-  validateSegments,
 } from './helpers.ts'
+import BadRequestError from '../_shared/exception/BadRequestError.ts'
 
 const app = new Hono()
 const FUNCTION_PATH = '/campaigns/'
@@ -107,41 +109,36 @@ app.post(FUNCTION_PATH, async (c) => {
   try {
     const contentType = c.req.header('content-type') || ''
 
-    // Handle file upload (multipart/form-data)
     if (contentType.includes('multipart/form-data')) {
       const formData = await c.req.formData()
       const file = formData.get('file') as File | null
-
       if (!file) {
         return AppResponse.badRequest('File is required for file-based campaigns')
       }
 
       const parsedFormData = parseFileBasedFormData(formData)
       const campaignData = FileBasedCampaignSchema.parse(parsedFormData)
-      const result = await handleFileBasedCampaign(campaignData, file)
-
-      if (result.error) {
-        return AppResponse.badRequest(result.error)
-      }
-
-      return AppResponse.ok(result.campaign!)
+      console.log('Creating new file-based campaign:', campaignData)
+      const newCampaign = await handleFileBasedCampaignCreate(campaignData, file)
+      return AppResponse.ok(newCampaign)
     } // Handle JSON request (segment-based campaign)
     else {
       const body = await c.req.json()
       const campaignData = SegmentBasedCampaignSchema.parse(body)
-      const result = await handleSegmentBasedCampaign(campaignData)
-
-      if (result.error) {
-        return AppResponse.badRequest(result.error)
-      }
-
-      return AppResponse.ok(result.campaign!)
+      console.log('Creating new segment-based campaign:', campaignData)
+      const newCampaign = await handleSegmentBasedCampaignCreate(campaignData)
+      return AppResponse.ok(newCampaign)
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessage = `Validation error: ${error.errors.map((err) => `[${err.path}] ${err.message}`).join(', ')}`
       console.error(errorMessage)
       return AppResponse.badRequest(errorMessage)
+    }
+
+    if (error instanceof BadRequestError) {
+      console.error(`Bad request: ${error.message}`)
+      return AppResponse.badRequest(error.message)
     }
 
     console.error('Error creating new campaign:', error)
@@ -156,37 +153,38 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
     if (isNaN(id)) {
       return AppResponse.badRequest('Invalid campaign ID')
     }
-    const body = await c.req.json()
-    const campaignData = UpdateCampaignSchema.parse(body)
-    if (campaignData.segments) {
-      const segmentsValid = await validateSegments(campaignData.segments.included, campaignData.segments.excluded)
 
-      if (!segmentsValid) {
-        return AppResponse.badRequest('One or more segment IDs are invalid')
+    const contentType = c.req.header('content-type') || ''
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await c.req.formData()
+      const file = formData.get('file') as File | null
+
+      if (!file) {
+        return AppResponse.badRequest('File is required for file-based campaigns')
       }
-      campaignData.segments = sql`${campaignData.segments}::jsonb` as unknown as typeof campaignData.segments
-      const recipientCountResult = await supabase.execute(sql`
-        SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
-      `)
-      // @ts-ignore - Adding field not in the Zod schema
-      campaignData.recipientCount = Number(recipientCountResult[0]?.recipient_count || 0)
-    }
 
-    const [updatedCampaign] = await supabase
-      .update(campaigns)
-      .set(campaignData)
-      .where(and(eq(campaigns.id, id), gt(campaigns.runAt, new Date())))
-      .returning(formatCampaignSelect)
+      const parsedFormData = parseFileBasedFormData(formData)
+      const campaignData = UpdateCampaignSchema.parse(parsedFormData)
+      console.log('Updating file-based campaign:', campaignData)
+      const updatedCampaign = await handleFileBasedCampaignUpdate(id, campaignData, file)
 
-    if (!updatedCampaign) {
-      return AppResponse.badRequest('Campaign not found or cannot be edited')
+      return AppResponse.ok(updatedCampaign)
+    } else {
+      const body = await c.req.json()
+      const campaignData = UpdateCampaignSchema.parse(body)
+      console.log('Updating segment-based campaign:', campaignData)
+      const updatedCampaign = await handleSegmentBasedCampaignUpdate(id, campaignData)
+      return AppResponse.ok(updatedCampaign)
     }
-    return AppResponse.ok(updatedCampaign)
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessage = `Validation error in campaigns: ${error.errors.map((e) => ` [${e.path}] - ${e.message}`)}`
       console.error(errorMessage)
       return AppResponse.badRequest(errorMessage)
+    }
+    if (error instanceof BadRequestError) {
+      console.error(`Bad request: ${error.message}`)
+      return AppResponse.badRequest(error.message)
     }
     console.log('Error updating campaign:', error)
     Sentry.captureException(error)

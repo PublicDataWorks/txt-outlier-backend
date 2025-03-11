@@ -63,6 +63,6 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "broadcast_settings" CASCADE;
   DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
   DROP TABLE IF EXISTS "campaigns" CASCADE;
-  DROP TABLE IF EXISTS "file_recipients" CASCADE;
+  DROP TABLE IF EXISTS "campaign_file_recipients" CASCADE;
   DROP FUNCTION IF EXISTS queue_campaign_messages(INTEGER);
 `

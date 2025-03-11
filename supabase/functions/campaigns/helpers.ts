@@ -1,12 +1,8 @@
 import supabase from '../_shared/lib/supabase.ts'
-import { inArray, sql } from 'drizzle-orm'
-import { campaigns, fileRecipients, labels } from '../_shared/drizzle/schema.ts'
-import {
-  FileBasedCampaign,
-  formatCampaignSelect,
-  SegmentBasedCampaign,
-  SegmentConfig,
-} from './dto.ts'
+import { and, eq, gt, inArray, sql } from 'drizzle-orm'
+import { authors, campaigns, campaignFileRecipients, labels } from '../_shared/drizzle/schema.ts'
+import { FileBasedCampaign, formatCampaignSelect, SegmentBasedCampaign, SegmentConfig } from './dto.ts'
+import BadRequestError from '../_shared/exception/BadRequestError.ts'
 
 const getAllSegmentIds = (config: SegmentConfig): string[] => {
   if (!Array.isArray(config)) {
@@ -41,56 +37,39 @@ export const validateSegments = async (
   return existingSegments.length === allIds.size
 }
 
-export const handleSegmentBasedCampaign = async (campaignData: SegmentBasedCampaign) => {
-  try {
-    const segmentsValid = await validateSegments(campaignData.segments.included, campaignData.segments.excluded)
-
-    if (!segmentsValid) {
-      return { campaign: null, error: 'One or more segment IDs are invalid' }
-    }
-
-    // Get recipient count
-    const recipientCountResult = await supabase.execute(sql`
-      SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
-    `)
-
-    const recipientCount = recipientCountResult[0]?.recipient_count || 0
-
-    // Create the campaign
-    const [newCampaign] = await supabase
-      .insert(campaigns)
-      .values({
-        ...campaignData,
-        segments: sql`${campaignData.segments}::jsonb`,
-        recipientCount,
-      })
-      .returning(formatCampaignSelect)
-
-    return { campaign: newCampaign }
-  } catch (error) {
-    console.error('Error processing segment-based campaign:', error)
-    return { campaign: null, error: error.message || 'Error processing segment-based campaign' }
+export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBasedCampaign) => {
+  const segmentsValid = await validateSegments(campaignData.segments.included, campaignData.segments.excluded)
+  if (!segmentsValid) {
+    throw new BadRequestError('One or more segment IDs are invalid')
   }
+
+  const recipientCountResult = await supabase.execute(sql`
+    SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
+  `)
+
+  const recipientCount = recipientCountResult[0]?.recipient_count || 0
+  const [newCampaign] = await supabase
+    .insert(campaigns)
+    .values({
+      ...campaignData,
+      segments: sql`${campaignData.segments}::jsonb`,
+      recipientCount,
+    })
+    .returning(formatCampaignSelect)
+
+  return newCampaign
 }
 
-export const parseFileBasedFormData = (formData: FormData) => {
-  return {
-    title: formData.get('title')?.toString(),
-    firstMessage: formData.get('firstMessage')?.toString(),
-    secondMessage: formData.get('secondMessage')?.toString(),
-    runAt: formData.get('runAt') ? Number(formData.get('runAt')) : undefined,
-    delay: formData.get('delay') ? Number(formData.get('delay')) : undefined,
-  }
-}
-
-export const handleFileBasedCampaign = async (campaignData: FileBasedCampaign, file: File) => {
-  // Process the file to extract phone numbers - this will throw if invalid
+export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampaign, file: File) => {
   const phoneNumbers = await processPhoneNumberFile(file)
-  console.log('Phone numbers:', phoneNumbers)
+  const recipientFileUrl = 'await uploadFileToS3(file);'
 
-  // Mock file URL for now
-  const fileUrl = 'await uploadFileToS3(file);'
   return await supabase.transaction(async (tx) => {
+    await tx
+      .insert(authors)
+      .values(phoneNumbers.map((phone) => ({ phoneNumber: phone, addedViaFileUpload: true })))
+      .onConflictDoNothing()
+
     const [newCampaign] = await tx
       .insert(campaigns)
       .values({
@@ -100,12 +79,12 @@ export const handleFileBasedCampaign = async (campaignData: FileBasedCampaign, f
         runAt: campaignData.runAt,
         delay: campaignData.delay,
         segments: null,
-        fileUrl,
+        recipientFileUrl,
         recipientCount: phoneNumbers.length,
       })
       .returning(formatCampaignSelect)
     await tx
-      .insert(fileRecipients)
+      .insert(campaignFileRecipients)
       .values(
         phoneNumbers.map((phone) => ({
           phoneNumber: phone,
@@ -118,7 +97,7 @@ export const handleFileBasedCampaign = async (campaignData: FileBasedCampaign, f
 
 async function processPhoneNumberFile(file: File): Promise<string[]> {
   if (!file.name.endsWith('.csv') && file.type !== 'text/csv' && file.type !== 'application/vnd.ms-excel') {
-    throw new Error('Please upload a CSV file with phone numbers')
+    throw new BadRequestError('Please upload a CSV file with phone numbers')
   }
 
   const content = await file.text()
@@ -128,8 +107,118 @@ async function processPhoneNumberFile(file: File): Promise<string[]> {
     .map((number) => number.replace(/[\s\-\(\)\.]/g, ''))
 
   if (phoneNumbers.length === 0) {
-    throw new Error('No phone numbers found in the CSV file')
+    throw new BadRequestError('No phone numbers found in the CSV file')
   }
 
   return phoneNumbers
 }
+
+export const handleFileBasedCampaignUpdate = async (
+  campaignId: number,
+  campaignData: Partial<FileBasedCampaign>,
+  file: File,
+) => {
+  const phoneNumbers = await processPhoneNumberFile(file)
+  const recipientFileUrl = 'await uploadFileToS3(file);'
+  return await supabase.transaction(async (tx) => {
+    await tx
+      .insert(authors)
+      .values(phoneNumbers.map((phone) => ({ phoneNumber: phone, addedViaFileUpload: true })))
+      .onConflictDoNothing({ target: authors.phoneNumber })
+
+    const [updatedCampaign] = await tx
+      .update(campaigns)
+      .set({
+        ...campaignData,
+        segments: null,
+        recipientFileUrl,
+        recipientCount: phoneNumbers.length,
+      })
+      .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
+      .returning(formatCampaignSelect)
+
+    if (!updatedCampaign) {
+      throw new BadRequestError('Campaign not found or cannot be edited')
+    }
+
+    await tx
+      .delete(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    await tx
+      .insert(campaignFileRecipients)
+      .values(
+        phoneNumbers.map((phone) => ({
+          phoneNumber: phone,
+          campaignId: campaignId,
+        })),
+      )
+
+    return updatedCampaign
+  })
+}
+
+export const handleSegmentBasedCampaignUpdate = async (
+  campaignId: number,
+  campaignData: Partial<SegmentBasedCampaign>
+) => {
+  if (campaignData.segments) {
+    const segmentsValid = await validateSegments(
+      campaignData.segments.included,
+      campaignData.segments.excluded
+    )
+
+    if (!segmentsValid) {
+      throw new BadRequestError('One or more segment IDs are invalid')
+    }
+
+    const segments = sql`${campaignData.segments}::jsonb`
+    const recipientCountResult = await supabase.execute(sql`
+      SELECT get_campaign_recipient_count(${segments}::jsonb) as recipient_count
+    `)
+
+    const recipientCount = Number(recipientCountResult[0]?.recipient_count || 0)
+
+    // Update the campaign with the segments and recipient count
+    const [updatedCampaign] = await supabase
+      .update(campaigns)
+      .set({
+        ...campaignData,
+        segments,
+        recipientCount,
+        recipientFileUrl: null,
+      })
+      .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
+      .returning(formatCampaignSelect)
+
+    if (!updatedCampaign) {
+      throw new BadRequestError('Campaign not found or cannot be edited')
+    }
+
+    await supabase
+      .delete(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    return updatedCampaign
+  } else {
+    const [updatedCampaign] = await supabase
+      .update(campaigns)
+      .set(campaignData)
+      .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
+      .returning(formatCampaignSelect)
+
+    if (!updatedCampaign) {
+      throw new BadRequestError('Campaign not found or cannot be edited')
+    }
+
+    return updatedCampaign
+  }
+}
+
+export const parseFileBasedFormData = (formData: FormData) => ({
+  title: formData.get('title')?.toString(),
+  firstMessage: formData.get('firstMessage')?.toString(),
+  secondMessage: formData.get('secondMessage')?.toString(),
+  runAt: formData.get('runAt') ? Number(formData.get('runAt')) : undefined,
+  delay: formData.get('delay') ? Number(formData.get('delay')) : undefined,
+})
