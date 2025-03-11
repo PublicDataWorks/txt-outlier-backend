@@ -12,6 +12,7 @@ import { createLabel } from './factories/label.ts'
 import { createAuthor } from './factories/author.ts'
 import { createConversationLabel } from './factories/conversation-label.ts'
 import { createConversation } from './factories/conversation.ts'
+import { createConversationAuthor } from './factories/conversation-author.ts'
 
 const FUNCTION_NAME = 'campaigns/'
 
@@ -665,7 +666,6 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .where(eq(campaigns.id, campaign.id))
       .limit(1)
 
-    // The original campaign should be unchanged
     assertEquals(unchangedCampaign.firstMessage, 'Original message')
   })
 })
@@ -821,15 +821,17 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
 })
 
 describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: false }, () => {
-  it('should return segments with correct recipient counts', async () => {
+  it('should return segments with id and name', async () => {
     const label1 = await createLabel({ name: 'Label A' })
     const label2 = await createLabel({ name: 'Label B' })
 
-    const activeAuthor1 = await createAuthor('+1234567890', { unsubscribed: false, exclude: false })
-    const activeAuthor2 = await createAuthor('+1234567891', { unsubscribed: false, exclude: false })
-    const unsubscribedAuthor = await createAuthor('+1234567892', { unsubscribed: true, exclude: false })
-    const excludedAuthor = await createAuthor('+1234567893', { unsubscribed: false, exclude: true })
+    // Create authors
+    const author1 = await createAuthor('+1234567890', { unsubscribed: false, exclude: false })
+    const author2 = await createAuthor('+1234567891', { unsubscribed: false, exclude: false })
+    const author3 = await createAuthor('+1234567892', { unsubscribed: true, exclude: false })
+    const author4 = await createAuthor('+1234567893', { unsubscribed: false, exclude: true })
 
+    // Create conversations
     const conversation1 = await createConversation()
     const conversation2 = await createConversation()
     const conversation3 = await createConversation()
@@ -837,37 +839,21 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     const conversation5 = await createConversation()
     const conversation6 = await createConversation()
 
-    await createConversationLabel({
-      labelId: label1.id,
-      authorPhoneNumber: activeAuthor1.phoneNumber,
-      conversationId: conversation1.id,
-    })
-    await createConversationLabel({
-      labelId: label1.id,
-      authorPhoneNumber: activeAuthor2.phoneNumber,
-      conversationId: conversation2.id,
-    })
-    await createConversationLabel({
-      labelId: label1.id,
-      authorPhoneNumber: unsubscribedAuthor.phoneNumber,
-      conversationId: conversation3.id,
-    })
-    await createConversationLabel({
-      labelId: label1.id,
-      authorPhoneNumber: excludedAuthor.phoneNumber,
-      conversationId: conversation4.id,
-    })
-    await createConversationLabel({
-      labelId: label2.id,
-      authorPhoneNumber: activeAuthor1.phoneNumber,
-      conversationId: conversation5.id,
-    })
-    await createConversationLabel({
-      labelId: label2.id,
-      authorPhoneNumber: activeAuthor2.phoneNumber,
-      conversationId: conversation6.id,
-      isArchived: true,
-    })
+    // Create conversation-label relationships
+    await createConversationLabel({ labelId: label1.id, conversationId: conversation1.id })
+    await createConversationLabel({ labelId: label1.id, conversationId: conversation2.id })
+    await createConversationLabel({ labelId: label1.id, conversationId: conversation3.id })
+    await createConversationLabel({ labelId: label1.id, conversationId: conversation4.id })
+    await createConversationLabel({ labelId: label2.id, conversationId: conversation5.id })
+    await createConversationLabel({ labelId: label2.id, conversationId: conversation6.id, isArchived: true })
+
+    await createConversationAuthor({ conversationId: conversation1.id, authorPhoneNumber: author1.phoneNumber })
+    await createConversationAuthor({ conversationId: conversation2.id, authorPhoneNumber: author2.phoneNumber })
+    await createConversationAuthor({ conversationId: conversation3.id, authorPhoneNumber: author3.phoneNumber }) // unsubscribed
+    await createConversationAuthor({ conversationId: conversation4.id, authorPhoneNumber: author4.phoneNumber }) // excluded
+
+    await createConversationAuthor({ conversationId: conversation5.id, authorPhoneNumber: author1.phoneNumber })
+    await createConversationAuthor({ conversationId: conversation6.id, authorPhoneNumber: author2.phoneNumber })
 
     const { data } = await client.functions.invoke(`${FUNCTION_NAME}segments/`, {
       method: 'GET',
@@ -876,10 +862,12 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 2)
     assertEquals(data[0].id, label1.id)
     assertEquals(data[0].name, 'Label A')
-    assertEquals(data[0].recipient_count, '2')
     assertEquals(data[1].id, label2.id)
     assertEquals(data[1].name, 'Label B')
-    assertEquals(data[1].recipient_count, '1')
+
+    // Ensure only id and name are returned
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
+    assertEquals(Object.keys(data[1]).sort(), ['id', 'name'].sort())
   })
 
   it('should handle labels with no conversations', async () => {
@@ -892,7 +880,7 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Empty Label')
-    assertEquals(data[0].recipient_count, '0')
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
   })
 
   it('should handle labels with only archived conversations', async () => {
@@ -900,11 +888,17 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     const author = await createAuthor('+1234567890', { unsubscribed: false, exclude: false })
     const conversation = await createConversation()
 
+    // Create the conversation-label relationship (but archived)
     await createConversationLabel({
       labelId: label.id,
-      authorPhoneNumber: author.phoneNumber,
       conversationId: conversation.id,
       isArchived: true,
+    })
+
+    // Create the conversation-author relationship
+    await createConversationAuthor({
+      conversationId: conversation.id,
+      authorPhoneNumber: author.phoneNumber,
     })
 
     const { data } = await client.functions.invoke(`${FUNCTION_NAME}segments/`, {
@@ -914,7 +908,9 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Archived Label')
-    assertEquals(data[0].recipient_count, '0')
+
+    // Ensure only id and name are returned
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
   })
 
   it('should handle labels with only unsubscribed or excluded authors', async () => {
@@ -925,15 +921,24 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     const conversation1 = await createConversation()
     const conversation2 = await createConversation()
 
+    // Create conversation-label relationships
     await createConversationLabel({
       labelId: label.id,
-      authorPhoneNumber: unsubscribedAuthor.phoneNumber,
       conversationId: conversation1.id,
     })
     await createConversationLabel({
       labelId: label.id,
-      authorPhoneNumber: excludedAuthor.phoneNumber,
       conversationId: conversation2.id,
+    })
+
+    // Create conversation-author relationships
+    await createConversationAuthor({
+      conversationId: conversation1.id,
+      authorPhoneNumber: unsubscribedAuthor.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation2.id,
+      authorPhoneNumber: excludedAuthor.phoneNumber,
     })
 
     const { data } = await client.functions.invoke(`${FUNCTION_NAME}segments/`, {
@@ -943,7 +948,8 @@ describe('GET /campaigns/segments/', { sanitizeOps: false, sanitizeResources: fa
     assertEquals(data.length, 1)
     assertEquals(data[0].id, label.id)
     assertEquals(data[0].name, 'Test Label')
-    assertEquals(data[0].recipient_count, '0')
+
+    assertEquals(Object.keys(data[0]).sort(), ['id', 'name'].sort())
   })
 })
 
@@ -966,37 +972,58 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
     const conversation5 = await createConversation()
     const conversation6 = await createConversation()
 
+    // Create conversation-label relationships
     await createConversationLabel({
       labelId: label1.id,
-      authorPhoneNumber: author1.phoneNumber,
       conversationId: conversation1.id,
     })
     await createConversationLabel({
       labelId: label1.id,
-      authorPhoneNumber: author2.phoneNumber,
       conversationId: conversation2.id,
     })
     await createConversationLabel({
       labelId: label1.id,
-      authorPhoneNumber: author3.phoneNumber,
       conversationId: conversation3.id,
     })
 
     await createConversationLabel({
       labelId: label2.id,
-      authorPhoneNumber: author3.phoneNumber,
       conversationId: conversation4.id,
     })
     await createConversationLabel({
       labelId: label2.id,
-      authorPhoneNumber: author4.phoneNumber,
       conversationId: conversation5.id,
     })
 
     await createConversationLabel({
       labelId: label3.id,
-      authorPhoneNumber: author5.phoneNumber,
       conversationId: conversation6.id,
+    })
+
+    // Create conversation-author relationships
+    await createConversationAuthor({
+      conversationId: conversation1.id,
+      authorPhoneNumber: author1.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation2.id,
+      authorPhoneNumber: author2.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation3.id,
+      authorPhoneNumber: author3.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation4.id,
+      authorPhoneNumber: author3.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation5.id,
+      authorPhoneNumber: author4.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation6.id,
+      authorPhoneNumber: author5.phoneNumber,
     })
 
     const singleSegmentResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {
@@ -1091,27 +1118,43 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
     const conversation3 = await createConversation()
     const conversation4 = await createConversation()
 
+    // Create conversation-label relationships
     await createConversationLabel({
       labelId: label1.id,
-      authorPhoneNumber: author1.phoneNumber,
       conversationId: conversation1.id,
     })
     await createConversationLabel({
       labelId: label2.id,
-      authorPhoneNumber: author1.phoneNumber,
       conversationId: conversation2.id,
     })
-
     await createConversationLabel({
       labelId: label1.id,
-      authorPhoneNumber: author2.phoneNumber,
       conversationId: conversation3.id,
     })
-
     await createConversationLabel({
       labelId: label2.id,
-      authorPhoneNumber: author3.phoneNumber,
       conversationId: conversation4.id,
+    })
+
+    // Create conversation-author relationships
+    // Author1 has both label1 and label2
+    await createConversationAuthor({
+      conversationId: conversation1.id,
+      authorPhoneNumber: author1.phoneNumber,
+    })
+    await createConversationAuthor({
+      conversationId: conversation2.id,
+      authorPhoneNumber: author1.phoneNumber,
+    })
+
+    await createConversationAuthor({
+      conversationId: conversation3.id,
+      authorPhoneNumber: author2.phoneNumber,
+    })
+
+    await createConversationAuthor({
+      conversationId: conversation4.id,
+      authorPhoneNumber: author3.phoneNumber,
     })
 
     const andGroupResponse = await client.functions.invoke(`${FUNCTION_NAME}recipient-count/`, {

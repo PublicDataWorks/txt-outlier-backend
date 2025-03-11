@@ -27,6 +27,7 @@ export type RequestBody = {
   latest_message?: {
     id: string
     references: string[]
+    to_fields: TwilioRequestAuthor[]
   }
   message?: TwilioRequestMessage
 }

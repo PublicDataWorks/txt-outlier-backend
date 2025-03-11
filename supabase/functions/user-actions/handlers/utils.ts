@@ -225,8 +225,9 @@ export const upsertAuthor = async (
 export const upsertLabel = async (
   // deno-lint-ignore no-explicit-any
   tx: PostgresJsTransaction<any, any>,
-  requestConvo: RequestConversation,
+  requestBody: RequestBody,
 ) => {
+  const requestConvo = requestBody.conversation
   const requestLabels = new Set<Label>()
   const requestConversationsLabels = new Set<ConversationLabel>()
   const labelIds: string[] = []
@@ -240,18 +241,9 @@ export const upsertLabel = async (
       shareWithOrganization: label.share_with_organization,
       visibility: label.visibility,
     })
-    requestConvo.authors.forEach((author) => {
-      if (author.phone_number) {
-        requestConversationsLabels.add({
-          conversationId: requestConvo.id,
-          labelId: label.id,
-          authorPhoneNumber: author.phone_number,
-        })
-      }
-    })
+    requestConversationsLabels.add({ conversationId: requestConvo.id, labelId: label.id })
     labelIds.push(label.id)
   }
-
   if (requestLabels.size > 0) {
     await tx.insert(labels).values([...requestLabels]).onConflictDoUpdate({
       target: labels.id,
@@ -265,6 +257,7 @@ export const upsertLabel = async (
       },
     })
   }
+
   if (labelIds.length == 0) {
     await tx.update(conversationsLabels).set({ isArchived: true })
       .where(and(
@@ -276,11 +269,9 @@ export const upsertLabel = async (
         eq(conversationsLabels.conversationId, requestConvo.id!),
         notInArray(conversationsLabels.labelId, labelIds),
       ))
-    if (requestConversationsLabels.size > 0) {
-      await tx.insert(conversationsLabels).values([
-        ...requestConversationsLabels,
-      ]).onConflictDoNothing()
-    }
+    await tx.insert(conversationsLabels).values([
+      ...requestConversationsLabels,
+    ]).onConflictDoNothing()
   }
 }
 
