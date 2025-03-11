@@ -67,6 +67,7 @@ export const formatCampaignSelect = {
   firstMessage: campaigns.firstMessage,
   secondMessage: campaigns.secondMessage,
   segments: campaigns.segments,
+  recipientFileUrl: campaigns.recipientFileUrl,
   delay: campaigns.delay,
   recipientCount: campaigns.recipientCount,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
