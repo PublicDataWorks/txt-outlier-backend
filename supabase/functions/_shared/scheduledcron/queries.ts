@@ -129,13 +129,11 @@ const FAILED_DELIVERED_QUERY = `
   LIMIT 330;
 `
 
-const BROADCAST_DOUBLE_FAILURE_QUERY = sql.raw(`
+const broadcast_double_failure_query = (broadcastId: number) => sql.raw(`
   WITH LatestBroadcast AS (
     SELECT id
     FROM broadcasts
-    WHERE editable = false
-    ORDER BY run_at DESC
-    LIMIT 1
+    WHERE editable = false AND id = ${broadcastId}
   )
   SELECT
     bsms.recipient_phone_number,
@@ -152,10 +150,11 @@ const BROADCAST_DOUBLE_FAILURE_QUERY = sql.raw(`
   LIMIT 40;
 `)
 
+const unschedule_reconcile_twilio = (broadcastId: number) => sql.raw(`
+  SELECT cron.unschedule('reconcile-twilio-status-${broadcastId}');
+`)
+
 const UNSCHEDULE_COMMANDS = {
-  DELAY_INVOKE_BROADCAST: sql.raw(`SELECT cron.unschedule('delay-invoke-broadcast');`),
-  RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('reconcile-twilio-status');`),
-  DELAY_RECONCILE_TWILIO: sql.raw(`SELECT cron.unschedule('delay-reconcile-twilio-status');`),
   HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('handle-failed-deliveries');`),
   ARCHIVE_BROADCAST_DOUBLE_FAILURES: sql.raw(`SELECT cron.unschedule('archive-broadcast-double-failures');`),
 } as const
@@ -175,7 +174,7 @@ interface BroadcastDashBoardQueryReturn {
 }
 
 export {
-  BROADCAST_DOUBLE_FAILURE_QUERY,
+  broadcast_double_failure_query,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
   pgmqDelete,
@@ -184,4 +183,5 @@ export {
   queueBroadcastMessages,
   selectBroadcastDashboard,
   UNSCHEDULE_COMMANDS,
+  unschedule_reconcile_twilio,
 }

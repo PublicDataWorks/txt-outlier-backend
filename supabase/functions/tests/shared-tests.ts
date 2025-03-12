@@ -2,7 +2,6 @@ import { describe, it } from 'jsr:@std/testing/bdd'
 import { assert, assertEquals, assertNotEquals } from 'jsr:@std/assert'
 import './setup.ts'
 import DateUtils from '../_shared/misc/DateUtils.ts'
-import { dateToCron } from '../_shared/scheduledcron/helpers.ts'
 import { createBroadcastSetting } from './factories/broadcast-settings.ts'
 import { formatInTimeZone } from 'date-fns-tz'
 
@@ -112,7 +111,7 @@ describe('DateUtils', () => {
     it('should wrap around to next week when no remaining times this week', async () => {
       const now = new Date()
       const nowInDetroit = formatInTimeZone(now, DETROIT_TIMEZONE, 'yyyy-MM-dd HH:mm:ss eee')
-      const [_, currentTime, todayDay] = nowInDetroit.split(' ')
+      const [_, _currentTime, todayDay] = nowInDetroit.split(' ')
 
       // Get the day order and find yesterday's day
       const dayOrder = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
@@ -161,75 +160,6 @@ describe('DateUtils', () => {
       const resultDate = new Date(formatInTimeZone(resultInDetroit, DETROIT_TIMEZONE, 'yyyy-MM-dd'))
       const diffInDays = Math.round((resultDate.getTime() - nowDate.getTime()) / (24 * 60 * 60 * 1000))
       assertEquals(diffInDays, 6)
-    })
-  })
-})
-
-describe('dateToCron', () => {
-  it('should convert date to cron expression', () => {
-    const testCases = [
-      {
-        date: new Date('2024-03-19T14:30:00'), // Tuesday, March 19, 2024, 14:30
-        expected: '30 14 19 3 2',
-      },
-      {
-        date: new Date('2024-01-01T00:00:00'), // Monday, January 1, 2024, 00:00
-        expected: '0 0 1 1 1',
-      },
-      {
-        date: new Date('2024-12-31T23:59:00'), // Tuesday, December 31, 2024, 23:59
-        expected: '59 23 31 12 2',
-      },
-      {
-        date: new Date('2024-02-29T12:15:00'), // Thursday, February 29, 2024 (leap year), 12:15
-        expected: '15 12 29 2 4',
-      },
-      {
-        date: new Date('2024-03-24T00:30:00'), // Sunday, March 24, 2024, 00:30
-        expected: '30 0 24 3 0',
-      },
-    ]
-
-    testCases.forEach(({ date, expected }) => {
-      const result = dateToCron(date)
-      assertEquals(
-        result,
-        expected,
-        `Date ${date.toISOString()} should convert to cron expression "${expected}"`,
-      )
-    })
-  })
-
-  it('should handle UTC dates correctly', () => {
-    // Create a specific UTC date
-    const utcDate = new Date(Date.UTC(2024, 2, 19, 14, 30)) // March 19, 2024, 14:30 UTC
-    const result = dateToCron(utcDate)
-
-    assertEquals(result, '30 14 19 3 2', 'Should handle UTC date correctly')
-  })
-
-  it('should handle month conversion correctly (0-based to 1-based)', () => {
-    const january = new Date('2024-01-01T00:00:00')
-    const december = new Date('2024-12-01T00:00:00')
-
-    assertEquals(dateToCron(january).split(' ')[3], '1', 'January should be 1')
-    assertEquals(dateToCron(december).split(' ')[3], '12', 'December should be 12')
-  })
-
-  it('should handle day of week correctly (0-6, Sunday-Saturday)', () => {
-    const testDays = [
-      { date: new Date('2024-03-24T00:00:00'), day: '0', name: 'Sunday' },
-      { date: new Date('2024-03-25T00:00:00'), day: '1', name: 'Monday' },
-      { date: new Date('2024-03-26T00:00:00'), day: '2', name: 'Tuesday' },
-      { date: new Date('2024-03-27T00:00:00'), day: '3', name: 'Wednesday' },
-      { date: new Date('2024-03-28T00:00:00'), day: '4', name: 'Thursday' },
-      { date: new Date('2024-03-29T00:00:00'), day: '5', name: 'Friday' },
-      { date: new Date('2024-03-30T00:00:00'), day: '6', name: 'Saturday' },
-    ]
-
-    testDays.forEach(({ date, day, name }) => {
-      const result = dateToCron(date).split(' ')[4]
-      assertEquals(result, day, `${name} should be ${day}`)
     })
   })
 })
