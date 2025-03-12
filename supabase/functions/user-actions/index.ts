@@ -25,7 +25,9 @@ Deno.serve(async (req: Request) => {
       throw new UnauthorizedError('Invalid signature')
     }
 
-    console.info(`Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}, ${requestBody.conversation?.id}`)
+    console.info(
+      `Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}, ${requestBody.conversation?.id}`,
+    )
     await insertHistory(requestBody)
     switch (requestBody.rule.type) {
       case RuleType.NewComment:
