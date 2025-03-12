@@ -126,14 +126,14 @@ const FAILED_DELIVERED_QUERY = `
   GROUP BY r.recipient_phone_number
   HAVING COUNT(*) = 3
     AND SUM(CASE WHEN r.twilio_sent_status = 'delivered' THEN 1 ELSE 0 END) = 0
-  LIMIT 330;
+  LIMIT 40;
 `
 
-const broadcast_double_failure_query = (broadcastId: number) => sql.raw(`
+const BROADCAST_DOUBLE_FAILURE_QUERY = sql.raw(`
   WITH LatestBroadcast AS (
     SELECT id
     FROM broadcasts
-    WHERE editable = false AND id = ${broadcastId}
+    WHERE editable = false AND run_at > NOW() - INTERVAL '7 days'
   )
   SELECT
     bsms.recipient_phone_number,
@@ -142,7 +142,8 @@ const broadcast_double_failure_query = (broadcastId: number) => sql.raw(`
   JOIN LatestBroadcast lb ON bsms.broadcast_id = lb.id
   JOIN conversations c ON bsms.missive_conversation_id = c.id
   WHERE
-    (c.shared_label_names IS NULL OR c.shared_label_names NOT ILIKE '%archive%')
+    (c.shared_label_names IS NULL OR
+     (c.shared_label_names NOT ILIKE '%archive%' AND c.shared_label_names NOT ILIKE '%undeliverable%'))
   GROUP BY bsms.recipient_phone_number, bsms.missive_conversation_id
   HAVING
     COUNT(*) = 2
@@ -150,14 +151,27 @@ const broadcast_double_failure_query = (broadcastId: number) => sql.raw(`
   LIMIT 40;
 `)
 
-const unschedule_reconcile_twilio = (broadcastId: number) => sql.raw(`
-  SELECT cron.unschedule('reconcile-twilio-status-${broadcastId}');
-`)
+const unschedule_reconcile_twilio_broadcast = (broadcastId: number) =>
+  sql.raw(`
+  SELECT cron.unschedule('reconcile-twilio-status-broadcast-${broadcastId}');
+  SELECT cron.unschedule('unschedule-broadcast-reconcile-${broadcastId}');
+ `)
 
-const UNSCHEDULE_COMMANDS = {
-  HANDLE_FAILED_DELIVERIES: sql.raw(`SELECT cron.unschedule('handle-failed-deliveries');`),
-  ARCHIVE_BROADCAST_DOUBLE_FAILURES: sql.raw(`SELECT cron.unschedule('archive-broadcast-double-failures');`),
-} as const
+const unschedule_reconcile_twilio_campaign = (campaignId: number) =>
+  sql.raw(`
+  SELECT cron.unschedule('reconcile-twilio-status-campaign-${campaignId}');
+  SELECT cron.unschedule('unschedule-campaign-reconcile-${campaignId}');
+ `)
+
+const UNSCHEDULE_HANDLE_FAILED_DELIVERIES = sql.raw(`
+  SELECT cron.unschedule('handle-failed-deliveries-daily');
+  SELECT cron.unschedule('unschedule-failed-deliveries-handler');
+ `)
+
+const UNSCHEDULE_ARCHIVE_DOUBLE_FAILURES = sql.raw(`
+  SELECT cron.unschedule('archive-double-failures-daily');
+  SELECT cron.unschedule('unschedule-archive-double-failures');
+`)
 
 interface BroadcastDashBoardQueryReturn {
   id: number
@@ -174,7 +188,7 @@ interface BroadcastDashBoardQueryReturn {
 }
 
 export {
-  broadcast_double_failure_query,
+  BROADCAST_DOUBLE_FAILURE_QUERY,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
   pgmqDelete,
@@ -182,6 +196,8 @@ export {
   pgmqSend,
   queueBroadcastMessages,
   selectBroadcastDashboard,
-  UNSCHEDULE_COMMANDS,
-  unschedule_reconcile_twilio,
+  UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
+  UNSCHEDULE_ARCHIVE_DOUBLE_FAILURES,
+  unschedule_reconcile_twilio_broadcast,
+  unschedule_reconcile_twilio_campaign,
 }
