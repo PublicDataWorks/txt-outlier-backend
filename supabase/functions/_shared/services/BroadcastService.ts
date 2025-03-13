@@ -179,8 +179,8 @@ const reconcileTwilioStatus = async ({ broadcastId, campaignId }: ReconcileOptio
   let dateSentBefore: Date | undefined = undefined
   if (!record?.twilioPaging) {
     const runAtMs = record.runAt!.getTime()
-    // Add recipient count in milliseconds (converting seconds to ms) + 60 min buffer
-    const estimatedCompletionMs = runAtMs + (record.recipientCount! * 2 + 3600 + record.delay) * 1000
+    // Add recipient count in milliseconds (converting seconds to ms) + 3 hours buffer
+    const estimatedCompletionMs = runAtMs + (record.recipientCount! * 2 + 3600 * 3 + record.delay) * 1000
     dateSentBefore = new Date(estimatedCompletionMs)
   }
 

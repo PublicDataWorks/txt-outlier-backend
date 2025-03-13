@@ -134,20 +134,27 @@ const BROADCAST_DOUBLE_FAILURE_QUERY = sql.raw(`
     SELECT id
     FROM broadcasts
     WHERE editable = false AND run_at > NOW() - INTERVAL '7 days'
+  ),
+  QualifiedPhoneNumbers AS (
+      SELECT
+          bsms.recipient_phone_number
+      FROM message_statuses bsms
+      JOIN LatestBroadcast lb ON bsms.broadcast_id = lb.id
+      LEFT JOIN conversations c ON bsms.missive_conversation_id = c.id
+      WHERE
+          c.shared_label_names IS NULL OR
+          c.shared_label_names = '' OR
+          (c.shared_label_names NOT ILIKE '%archive%' AND c.shared_label_names NOT ILIKE '%undeliverable%')
+      GROUP BY bsms.recipient_phone_number
+      HAVING
+          COUNT(*) = 2
+          AND SUM(CASE WHEN bsms.twilio_sent_status IN ('undelivered', 'failed') THEN 1 ELSE 0 END) = 2
   )
-  SELECT
-    bsms.recipient_phone_number,
-    bsms.missive_conversation_id
-  FROM message_statuses bsms
-  JOIN LatestBroadcast lb ON bsms.broadcast_id = lb.id
-  JOIN conversations c ON bsms.missive_conversation_id = c.id
-  WHERE
-    (c.shared_label_names IS NULL OR
-     (c.shared_label_names NOT ILIKE '%archive%' AND c.shared_label_names NOT ILIKE '%undeliverable%'))
-  GROUP BY bsms.recipient_phone_number, bsms.missive_conversation_id
-  HAVING
-    COUNT(*) = 2
-    AND SUM(CASE WHEN bsms.twilio_sent_status IN ('undelivered', 'failed') THEN 1 ELSE 0 END) = 2
+  SELECT DISTINCT ON (ms.recipient_phone_number)
+      ms.recipient_phone_number,
+      ms.missive_conversation_id
+  FROM message_statuses ms
+  JOIN QualifiedPhoneNumbers qpn ON ms.recipient_phone_number = qpn.recipient_phone_number
   LIMIT 40;
 `)
 

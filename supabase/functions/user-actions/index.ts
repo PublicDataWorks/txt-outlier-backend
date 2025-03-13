@@ -51,12 +51,14 @@ Deno.serve(async (req: Request) => {
         await handleConversationAssigneeChange(requestBody)
         break
       case RuleType.IncomingTwilioMessage:
+      case RuleType.IncomingSmsMessage:
         await handleTwilioMessage(requestBody)
         await handleBroadcastReply(requestBody)
         await handleResubscribe(requestBody)
         await LookupService.refreshLookupCache(requestBody.conversation.id, requestBody.message!.references)
         break
       case RuleType.OutgoingTwilioMessage:
+      case RuleType.OutgoingSmsMessage:
         await handleTwilioMessage(requestBody)
         await LookupService.refreshLookupCache(requestBody.conversation.id, requestBody.message!.references)
         await handleBroadcastOutgoing(requestBody)
