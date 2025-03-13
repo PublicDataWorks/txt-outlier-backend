@@ -11,6 +11,7 @@ import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Missive from '../_shared/lib/Missive.ts'
 import UnauthorizedError from '../_shared/exception/UnauthorizedError.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
+import Sentry from '../_shared/lib/Sentry.ts'
 
 Deno.serve(async (req: Request) => {
   let requestBody
@@ -68,7 +69,10 @@ Deno.serve(async (req: Request) => {
     if (requestBody) {
       await handleError(requestBody, error)
     }
-    // Sentry.captureException(error)
+    if (typeof error.message === 'string' && error.message.startsWith('write CONNECT_TIMEOUT')) {
+      Sentry.captureException(error)
+      return AppResponse.internalServerError()
+    }
   }
   return AppResponse.ok()
 })
