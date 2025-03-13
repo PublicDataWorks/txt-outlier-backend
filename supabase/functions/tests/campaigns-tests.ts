@@ -795,7 +795,6 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .where(eq(campaigns.id, campaign.id))
       .limit(1)
 
-    // The original campaign should be unchanged
     assertEquals(unchangedCampaign.firstMessage, 'Original message')
   })
 

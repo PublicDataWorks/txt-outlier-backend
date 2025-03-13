@@ -72,15 +72,6 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
         WHERE jobname = 'invoke-broadcast'
       `)
     assertEquals(invokeBroadcastJobs.length, 0)
-
-    const reconcileJobs = await supabase.execute(sql`
-        SELECT jobname, command, active, schedule
-        FROM cron.job
-        WHERE jobname = 'delay-reconcile-twilio-status'
-      `)
-    assertEquals(reconcileJobs.length, 1)
-    const job = reconcileJobs[0]
-    assertEquals(job.active, true)
   })
 
   it('should queue messages correctly', async () => {
@@ -133,80 +124,6 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
       sql.raw('SELECT COUNT(*) as count FROM pgmq.q_broadcast_first_messages'),
     )
     assertEquals(totalQueuedMessages[0].count, '2', 'Should have messages for all authors')
-  })
-
-  it('should create reconcile status cron jobs', async () => {
-    await createAuthors(2)
-    await createSegment({ name: 'Inactive' })
-
-    const runAt = new Date()
-    runAt.setHours(runAt.getHours() + 1)
-
-    const broadcast = await createBroadcast({
-      runAt,
-      editable: true,
-      firstMessage: 'Test first message',
-      secondMessage: 'Test second message',
-      noUsers: 5000,
-      delay: 600,
-    })
-
-    await createSegment({ broadcastId: broadcast.id! })
-
-    await client.functions.invoke(FUNCTION_NAME, {
-      method: 'POST',
-      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
-    })
-
-    const cronJobs = await supabase.execute(sql`
-        SELECT jobname, command, active
-        FROM cron.job
-        WHERE jobname = 'delay-reconcile-twilio-status'
-      `)
-
-    assertEquals(cronJobs.length, 1, 'Should have one reconcile status job')
-    const job = cronJobs[0]
-    assertEquals(job.active, true, 'Job should be active')
-
-    const command = job.command
-    assertEquals(command.includes('reconcile-twilio-status'), true, 'Should include reconcile-twilio-status')
-    assertEquals(command.includes(`"broadcastId": "${broadcast.id}"`), true, 'Should have correct broadcast ID')
-    assertEquals(command.includes('* * * * *'), true, 'Should have minute-ly schedule')
-    assertEquals(command.includes('net.http_post'), true, 'Should use HTTP POST')
-  })
-
-  it('should create cron job with correct delay', async () => {
-    await createAuthors(2)
-    await createSegment({ name: 'Inactive' })
-
-    const runAt = new Date()
-    runAt.setHours(runAt.getHours() + 1)
-
-    const broadcast = await createBroadcast({
-      runAt,
-      editable: true,
-      firstMessage: 'Test first message',
-      secondMessage: 'Test second message',
-      noUsers: 100,
-      delay: 300,
-    })
-
-    await createSegment({ broadcastId: broadcast.id! })
-
-    await client.functions.invoke(FUNCTION_NAME, {
-      method: 'POST',
-      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
-    })
-
-    const cronJobs = await supabase.execute(sql`
-        SELECT schedule
-        FROM cron.job
-        WHERE jobname = 'delay-reconcile-twilio-status'
-      `)
-
-    const schedule = cronJobs[0].schedule
-    const scheduleParts = schedule.split(' ')
-    assertEquals(scheduleParts.length, 5, 'Should have valid cron schedule format')
   })
 
   it('should create new broadcast when another broadcast is running', async () => {
@@ -293,14 +210,6 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
       where: gt(broadcasts.id, broadcast.id!),
     })
     assertEquals(newBroadcast, undefined, 'No new broadcast should be created')
-
-    // Verify no cron jobs were created
-    const cronJobs = await supabase.execute(sql`
-      SELECT COUNT(*) as count
-      FROM cron.job
-      WHERE jobname IN ('delay-invoke-broadcast', 'invoke-broadcast', 'delay-reconcile-twilio-status')
-    `)
-    assertEquals(cronJobs[0].count, '0', 'No cron jobs should be created')
   })
 
   it('should fail when run_at_utc is not provided', async () => {

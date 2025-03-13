@@ -14,11 +14,6 @@ import {
   messageStatuses,
   twilioMessages,
 } from '../drizzle/schema.ts'
-import {
-  ARCHIVE_BROADCAST_DOUBLE_FAILURES_CRON,
-  HANDLE_FAILED_DELIVERIES_CRON,
-  reconcileTwilioStatusCron,
-} from '../scheduledcron/cron.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
 import {
@@ -28,7 +23,10 @@ import {
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  UNSCHEDULE_COMMANDS,
+  UNSCHEDULE_ARCHIVE_DOUBLE_FAILURES,
+  UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
+  unschedule_reconcile_twilio_broadcast,
+  unschedule_reconcile_twilio_campaign,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
 import Sentry from '../lib/Sentry.ts'
@@ -40,6 +38,7 @@ import {
   SECOND_MESSAGES_QUEUE_NAME,
 } from '../constants.ts'
 import { cloneBroadcast } from '../misc/utils.ts'
+import BadRequestError from '../exception/BadRequestError.ts'
 
 const makeBroadcast = async (): Promise<void> => {
   // @ts-ignore: Property broadcasts exists at runtime
@@ -58,7 +57,6 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers + broadcast.delay + 1800))
     await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
   })
@@ -86,7 +84,6 @@ const sendNow = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    await tx.execute(reconcileTwilioStatusCron(broadcast.id, broadcast.noUsers * 2 + broadcast.delay + 300))
     const newBroadcastId: { id: number }[] = await tx
       .insert(broadcasts)
       .values(cloneBroadcast(broadcast))
@@ -160,23 +157,40 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   }
 }
 
-const reconcileTwilioStatus = async ({ broadcastId, campaignId, runAt }: ReconcileOptions) => {
+const reconcileTwilioStatus = async ({ broadcastId, campaignId }: ReconcileOptions) => {
   const id = broadcastId || campaignId
-
   if (!id) {
     throw new Error('Either broadcastId or campaignId must be provided')
   }
   const sourceTable = broadcastId ? broadcasts : campaigns
 
   const [record] = await supabase
-    .select({ twilioPaging: sourceTable.twilioPaging })
+    .select({
+      twilioPaging: sourceTable.twilioPaging,
+      recipientCount: broadcastId ? broadcasts.noUsers : campaigns.recipientCount,
+      delay: sourceTable.delay,
+      runAt: sourceTable.runAt,
+    })
     .from(sourceTable)
     .where(eq(sourceTable.id, id))
     .limit(1)
 
+  if (!record?.runAt) {
+    throw new BadRequestError('Broadcast has not been scheduled yet')
+  }
+
+  let dateSentBefore: Date | undefined = undefined
+  if (!record?.twilioPaging) {
+    const runAtMs = record.runAt!.getTime()
+    // Add recipient count in milliseconds (converting seconds to ms) + 3 hours buffer
+    const estimatedCompletionMs = runAtMs + (record.recipientCount! * 2 + 3600 * 3 + record.delay) * 1000
+    dateSentBefore = new Date(estimatedCompletionMs)
+  }
+
   const { messages, nextPageUrl } = await Twilio.getMessages(
-    new Date(runAt),
+    record.runAt!,
     record?.twilioPaging || undefined,
+    dateSentBefore,
   )
   try {
     for (const msg of messages) {
@@ -185,30 +199,34 @@ const reconcileTwilioStatus = async ({ broadcastId, campaignId, runAt }: Reconci
              FROM message_statuses
              WHERE broadcast_id = ${id}
              AND recipient_phone_number = ${msg.to}
-             AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+             AND (updated_at IS NULL OR updated_at < NOW() - INTERVAL '30 minutes')
              ORDER BY id DESC LIMIT 1)`
         : sql`(SELECT id
              FROM message_statuses
              WHERE campaign_id = ${id}
              AND recipient_phone_number = ${msg.to}
-             AND (twilio_sent_status IS NULL OR twilio_id IS NULL)
+             AND (updated_at IS NULL OR updated_at < NOW() - INTERVAL '30 minutes')
              ORDER BY id DESC LIMIT 1)`
 
       await supabase
         .update(messageStatuses)
         .set({
+          // @ts-ignore - Ignoring type mismatch between MessageStatus and subquery result
           twilioSentStatus: msg.status,
           twilioId: msg.sid,
+          // @ts-ignore - Ignoring type mismatch between MessageStatus and subquery result
           twilioSentAt: msg.dateSent,
         })
         .where(eq(messageStatuses.id, subquery))
+        .returning({ id: messageStatuses.id })
+      console.log(`Updated message status for ${msg.to} with status ${msg.status}, sid: ${msg.sid}.`)
     }
     if (!nextPageUrl) {
-      await Promise.all([
-        await supabase.execute(UNSCHEDULE_COMMANDS.DELAY_RECONCILE_TWILIO),
-        await supabase.execute(UNSCHEDULE_COMMANDS.RECONCILE_TWILIO),
-        await supabase.execute(HANDLE_FAILED_DELIVERIES_CRON),
-      ])
+      if (broadcastId) {
+        await supabase.execute(unschedule_reconcile_twilio_broadcast(broadcastId))
+      } else {
+        await supabase.execute(unschedule_reconcile_twilio_campaign(campaignId!))
+      }
     } else {
       const pageToken = nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null
       await supabase
@@ -224,17 +242,12 @@ const reconcileTwilioStatus = async ({ broadcastId, campaignId, runAt }: Reconci
 }
 
 const handleFailedDeliveries = async () => {
-  const MAX_RUN_TIME = 6 * 60 * 1000
+  const MAX_RUN_TIME = 60 * 1000
   const startTime = Date.now()
 
   const failedDelivers = await supabase.execute(sql.raw(FAILED_DELIVERED_QUERY))
   if (!failedDelivers || failedDelivers.length === 0) {
-    try {
-      await supabase.execute(ARCHIVE_BROADCAST_DOUBLE_FAILURES_CRON)
-      await supabase.execute(UNSCHEDULE_COMMANDS.HANDLE_FAILED_DELIVERIES)
-    } catch (e) {
-      console.error(`Failed to unschedule handleFailedDeliveries: ${e}`)
-    }
+    await supabase.execute(UNSCHEDULE_HANDLE_FAILED_DELIVERIES)
     return
   }
 
@@ -323,7 +336,7 @@ const archiveBroadcastDoubleFailures = async () => {
   const startTime = Date.now()
   const failedDelivers = await supabase.execute(BROADCAST_DOUBLE_FAILURE_QUERY)
   if (!failedDelivers || failedDelivers.length === 0) {
-    await supabase.execute(UNSCHEDULE_COMMANDS.ARCHIVE_BROADCAST_DOUBLE_FAILURES)
+    await supabase.execute(UNSCHEDULE_ARCHIVE_DOUBLE_FAILURES)
     return
   }
 

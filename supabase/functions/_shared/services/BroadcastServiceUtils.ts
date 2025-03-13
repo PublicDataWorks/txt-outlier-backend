@@ -25,9 +25,8 @@ const createNextBroadcast = async (
 }
 
 interface ReconcileOptions {
-  broadcastId?: number | null
-  campaignId?: number | null
-  runAt: number
+  broadcastId?: number
+  campaignId?: number
 }
 
 export { createNextBroadcast, ReconcileOptions }
