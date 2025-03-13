@@ -6,7 +6,7 @@ import { desc, eq } from 'drizzle-orm'
 import { client } from './utils.ts'
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { authors, campaigns, campaignFileRecipients } from '../_shared/drizzle/schema.ts'
+import { authors, campaignFileRecipients, campaigns } from '../_shared/drizzle/schema.ts'
 import { createCampaign } from './factories/campaign.ts'
 import { createLabel } from './factories/label.ts'
 import { createAuthor } from './factories/author.ts'
@@ -723,9 +723,7 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       },
     })
 
-    assertEquals(updateResponse.error, null)
-
-    // Verify in database that it's now segment-based
+    assertEquals(updateResponse.error, null) // Verify in database that it's now segment-based
     ;[campaign] = await supabase
       .select()
       .from(campaigns)

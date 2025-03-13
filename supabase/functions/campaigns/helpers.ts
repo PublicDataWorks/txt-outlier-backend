@@ -1,6 +1,8 @@
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+
 import supabase from '../_shared/lib/supabase.ts'
 import { and, eq, gt, inArray, sql } from 'drizzle-orm'
-import { authors, campaigns, campaignFileRecipients, labels } from '../_shared/drizzle/schema.ts'
+import { authors, campaignFileRecipients, campaigns, labels } from '../_shared/drizzle/schema.ts'
 import { FileBasedCampaign, formatCampaignSelect, SegmentBasedCampaign, SegmentConfig } from './dto.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 
@@ -62,7 +64,6 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
 
 export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampaign, file: File) => {
   const phoneNumbers = await processPhoneNumberFile(file)
-  const recipientFileUrl = 'await uploadFileToS3(file);'
 
   return await supabase.transaction(async (tx) => {
     await tx
@@ -79,7 +80,6 @@ export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampa
         runAt: campaignData.runAt,
         delay: campaignData.delay,
         segments: null,
-        recipientFileUrl,
         recipientCount: phoneNumbers.length,
       })
       .returning(formatCampaignSelect)
@@ -91,6 +91,11 @@ export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampa
           campaignId: newCampaign.id,
         })),
       )
+    const recipientFileUrl = await uploadRecipientFile(file, newCampaign.id)
+    await tx
+      .update(campaigns)
+      .set({ recipientFileUrl })
+      .where(eq(campaigns.id, newCampaign.id))
     return newCampaign
   })
 }
@@ -119,20 +124,19 @@ export const handleFileBasedCampaignUpdate = async (
   file: File,
 ) => {
   const phoneNumbers = await processPhoneNumberFile(file)
-  const recipientFileUrl = 'await uploadFileToS3(file);'
   return await supabase.transaction(async (tx) => {
     await tx
       .insert(authors)
       .values(phoneNumbers.map((phone) => ({ phoneNumber: phone, addedViaFileUpload: true })))
       .onConflictDoNothing({ target: authors.phoneNumber })
-
+    const recipientFileUrl = await uploadRecipientFile(file, campaignId)
     const [updatedCampaign] = await tx
       .update(campaigns)
       .set({
         ...campaignData,
         segments: null,
-        recipientFileUrl,
         recipientCount: phoneNumbers.length,
+        recipientFileUrl,
       })
       .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
       .returning(formatCampaignSelect)
@@ -160,12 +164,12 @@ export const handleFileBasedCampaignUpdate = async (
 
 export const handleSegmentBasedCampaignUpdate = async (
   campaignId: number,
-  campaignData: Partial<SegmentBasedCampaign>
+  campaignData: Partial<SegmentBasedCampaign>,
 ) => {
   if (campaignData.segments) {
     const segmentsValid = await validateSegments(
       campaignData.segments.included,
-      campaignData.segments.excluded
+      campaignData.segments.excluded,
     )
 
     if (!segmentsValid) {
@@ -222,3 +226,28 @@ export const parseFileBasedFormData = (formData: FormData) => ({
   runAt: formData.get('runAt') ? Number(formData.get('runAt')) : undefined,
   delay: formData.get('delay') ? Number(formData.get('delay')) : undefined,
 })
+
+async function uploadRecipientFile(file: File, campaignId: number) {
+  let fileName = `campaign-${campaignId}`
+
+  if (file.name.includes('.')) {
+    const extension = file.name.split('.').pop()
+    if (extension && extension.length > 0 && extension.length <= 10) {
+      fileName += `.${extension}`
+    }
+  }
+  const supabaseClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+
+  const { error } = await supabaseClient.storage
+    .from('campaign-recipients')
+    .upload(fileName, file, { upsert: true })
+
+  if (error) {
+    console.error('Error uploading file:', error)
+    throw new BadRequestError(`Failed to upload file: ${error.message}`)
+  }
+  const { data: { publicUrl } } = supabaseClient.storage
+    .from('campaign-recipients')
+    .getPublicUrl(fileName)
+  return publicUrl
+}
