@@ -51,8 +51,12 @@ export enum RuleType {
   ConversationClosed = 'conversation_closed',
   ConversationReopened = 'conversation_reopened',
   ConversationAssigneeChange = 'conversation_assignee_change',
+  // TODO: Missive changes this to incoming_sms_message, but we still keeps old value for monitoring, will remove later
   IncomingTwilioMessage = 'incoming_twilio_message',
+  IncomingSmsMessage = 'incoming_sms_message',
   OutgoingTwilioMessage = 'outgoing_twilio_message',
+  // TODO: Missive changes incoming_twilio_message but not outgoing_sms_message for now. Add it for monitoring, will remove later
+  OutgoingSmsMessage = 'outgoing_sms_message',
 }
 
 export type MentionUser = {

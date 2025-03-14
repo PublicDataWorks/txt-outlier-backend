@@ -26,7 +26,9 @@ Deno.serve(async (req: Request) => {
       throw new UnauthorizedError('Invalid signature')
     }
 
-    console.info(`Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}`)
+    console.info(
+      `Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}, ${requestBody.conversation?.id}`,
+    )
     await insertHistory(requestBody)
     switch (requestBody.rule.type) {
       case RuleType.NewComment:
@@ -50,12 +52,14 @@ Deno.serve(async (req: Request) => {
         await handleConversationAssigneeChange(requestBody)
         break
       case RuleType.IncomingTwilioMessage:
+      case RuleType.IncomingSmsMessage:
         await handleTwilioMessage(requestBody)
         await handleBroadcastReply(requestBody)
         await handleResubscribe(requestBody)
         await LookupService.refreshLookupCache(requestBody.conversation.id, requestBody.message!.references)
         break
       case RuleType.OutgoingTwilioMessage:
+      case RuleType.OutgoingSmsMessage:
         await handleTwilioMessage(requestBody)
         await LookupService.refreshLookupCache(requestBody.conversation.id, requestBody.message!.references)
         await handleBroadcastOutgoing(requestBody)
