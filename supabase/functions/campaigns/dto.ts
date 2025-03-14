@@ -46,7 +46,7 @@ export const FileBasedCampaignSchema = BaseCampaignSchema.strict()
 
 export const UpdateCampaignSchema = BaseCampaignSchema
   .extend({
-    segments: SegmentsSchema.optional(),
+    segments: SegmentsSchema.optional().nullable(),
   })
   .partial()
   .refine(
