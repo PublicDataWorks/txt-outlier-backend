@@ -20,10 +20,6 @@ import {
   pgmqRead,
   pgmqSend,
   queueBroadcastMessages,
-  UNSCHEDULE_ARCHIVE_DOUBLE_FAILURES,
-  UNSCHEDULE_HANDLE_FAILED_DELIVERIES,
-  unschedule_reconcile_twilio_broadcast,
-  unschedule_reconcile_twilio_campaign,
 } from '../scheduledcron/queries.ts'
 import NotFoundError from '../exception/NotFoundError.ts'
 import Sentry from '../lib/Sentry.ts'
@@ -220,9 +216,11 @@ const reconcileTwilioStatus = async ({ broadcastId, campaignId }: ReconcileOptio
     }
     if (!nextPageUrl) {
       if (broadcastId) {
-        await supabase.execute(unschedule_reconcile_twilio_broadcast(broadcastId))
+        await supabase.execute(sql.raw(`SELECT cron.unschedule('reconcile-twilio-status-broadcast-${broadcastId}');`))
+        await supabase.execute(sql.raw(`SELECT cron.unschedule('unschedule-broadcast-reconcile-${broadcastId}');`))
       } else {
-        await supabase.execute(unschedule_reconcile_twilio_campaign(campaignId!))
+        await supabase.execute(sql.raw(` SELECT cron.unschedule('reconcile-twilio-status-campaign-${campaignId}');`))
+        await supabase.execute(sql.raw(` SELECT cron.unschedule('unschedule-campaign-reconcile-${campaignId}');`))
       }
     } else {
       const pageToken = nextPageUrl ? new URL(nextPageUrl).searchParams.get('PageToken') : null
@@ -239,12 +237,13 @@ const reconcileTwilioStatus = async ({ broadcastId, campaignId }: ReconcileOptio
 }
 
 const handleFailedDeliveries = async () => {
-  const MAX_RUN_TIME = 60 * 1000
+  const MAX_RUN_TIME = 50 * 1000
   const startTime = Date.now()
 
   const failedDelivers = await supabase.execute(sql.raw(FAILED_DELIVERED_QUERY))
   if (!failedDelivers || failedDelivers.length === 0) {
-    await supabase.execute(UNSCHEDULE_HANDLE_FAILED_DELIVERIES)
+    await supabase.execute(sql.raw(`SELECT cron.unschedule('handle-failed-deliveries-daily');`))
+    await supabase.execute(sql.raw(`SELECT cron.unschedule('unschedule-failed-deliveries-handler');`))
     return
   }
 
@@ -329,11 +328,12 @@ const handleFailedDeliveries = async () => {
 }
 
 const archiveBroadcastDoubleFailures = async () => {
-  const MAX_RUN_TIME = 60 * 1000
+  const MAX_RUN_TIME = 50 * 1000
   const startTime = Date.now()
   const failedDelivers = await supabase.execute(BROADCAST_DOUBLE_FAILURE_QUERY)
   if (!failedDelivers || failedDelivers.length === 0) {
-    await supabase.execute(UNSCHEDULE_ARCHIVE_DOUBLE_FAILURES)
+    await supabase.execute(sql.raw(`SELECT cron.unschedule('archive-double-failures-daily');`))
+    await supabase.execute(sql.raw(`SELECT cron.unschedule('unschedule-archive-double-failures');`))
     return
   }
 
