@@ -73,7 +73,12 @@ Deno.serve(async (req: Request) => {
     if (requestBody) {
       await handleError(requestBody, error)
     }
-    if (typeof error.message === 'string' && error.message.startsWith('write CONNECT_TIMEOUT')) {
+    if (
+      typeof error.message === 'string' &&
+      (
+        error.message.startsWith('write CONNECT_TIMEOUT') || error.message.startsWith('deadlock detected')
+      )
+    ) {
       Sentry.captureException(error)
       return AppResponse.internalServerError()
     }
