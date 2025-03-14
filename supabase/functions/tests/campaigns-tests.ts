@@ -6,7 +6,7 @@ import { desc, eq } from 'drizzle-orm'
 import { client } from './utils.ts'
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { campaigns } from '../_shared/drizzle/schema.ts'
+import { authors, campaignFileRecipients, campaigns } from '../_shared/drizzle/schema.ts'
 import { createCampaign } from './factories/campaign.ts'
 import { createLabel } from './factories/label.ts'
 import { createAuthor } from './factories/author.ts'
@@ -16,7 +16,7 @@ import { createConversationAuthor } from './factories/conversation-author.ts'
 
 const FUNCTION_NAME = 'campaigns/'
 
-describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
+describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false }, () => {
   it('should create a new campaign with required fields', async () => {
     const label = await createLabel()
     const label2 = await createLabel()
@@ -173,7 +173,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     const includeError = await invalidIncluded.error.context.json()
     assertEquals(
       includeError.message,
-      'Validation error in campaigns:  [segments,included,0,id] - Invalid segment ID format. Must be a UUID.',
+      'Validation error: [segments,included,0,id] Invalid segment ID format. Must be a UUID.',
     )
 
     // Test invalid excludedSegments
@@ -193,7 +193,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
     const excludeError = await invalidExcluded.error.context.json()
     assertEquals(
       excludeError.message,
-      'Validation error in campaigns:  [segments,excluded,0,id] - Invalid segment ID format. Must be a UUID.',
+      'Validation error: [segments,excluded,0,id] Invalid segment ID format. Must be a UUID.',
     )
 
     // Verify no campaigns were created
@@ -216,7 +216,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     assertEquals(error.context.status, 400)
     const errorData = await error.context.json()
-    assertEquals(errorData.message.includes('[firstMessage] - Required'), true)
+    assertEquals(errorData.message.includes('[firstMessage] Required'), true)
   })
 
   it('should return 400 when runAt is missing', async () => {
@@ -229,7 +229,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     assertEquals(error.context.status, 400)
     const errorData = await error.context.json()
-    assertEquals(errorData.message.includes('[runAt] - Required'), true)
+    assertEquals(errorData.message.includes('[runAt] Required'), true)
   })
 
   it('should return 400 when runAt is not a valid timestamp', async () => {
@@ -243,7 +243,7 @@ describe('POST', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     assertEquals(error.context.status, 400)
     const errorData = await error.context.json()
-    assertEquals(errorData.message.includes('[runAt] - Expected number, received string'), true)
+    assertEquals(errorData.message.includes('[runAt] Expected number, received string'), true)
   })
 
   it('should return 400 when runAt is in the past', async () => {
@@ -667,6 +667,81 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .limit(1)
 
     assertEquals(unchangedCampaign.firstMessage, 'Original message')
+  })
+
+  it('should convert file-based campaign to segment-based', async () => {
+    // First create a file-based campaign
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Create initial CSV file
+    const phoneNumbers = ['+18881234567', '+18889876543']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'file-campaign.csv', { type: 'text/csv' })
+
+    // Create form data
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Campaign')
+    formData.append('firstMessage', 'File message')
+    formData.append('runAt', futureTimestamp.toString())
+
+    const createResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    const campaignId = createResponse.data.id
+
+    // Verify it's a file-based campaign
+    let [campaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1)
+
+    assertEquals(campaign.recipientFileUrl !== null, true)
+    assertEquals(campaign.segments, null)
+
+    // Check file recipients
+    const initialFileRecipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(initialFileRecipients.length, 2)
+
+    // Now convert to segment-based
+    const label = await createLabel()
+
+    const updateResponse = await client.functions.invoke(`${FUNCTION_NAME}${campaignId}/`, {
+      method: 'PATCH',
+      body: {
+        title: 'Now Segment-Based',
+        segments: {
+          included: [{ id: label.id }],
+        },
+      },
+    })
+
+    assertEquals(updateResponse.error, null) // Verify in database that it's now segment-based
+    ;[campaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1)
+
+    assertEquals(campaign.title, 'Now Segment-Based')
+    assertEquals(campaign.recipientFileUrl, null)
+    // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
+    assertEquals(campaign.segments.included[0].id, label.id)
+
+    // Verify file recipients were deleted
+    const updatedFileRecipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(updatedFileRecipients.length, 0)
   })
 })
 
@@ -1191,5 +1266,459 @@ describe('POST /campaigns/recipient-count/', { sanitizeOps: false, sanitizeResou
     assertEquals(nullExcludedResponse.error.context.status, 400)
     const errorData = await nullExcludedResponse.error.context.json()
     assertEquals(errorData.message.includes('excluded'), true)
+  })
+})
+
+describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
+  it('should create a campaign from file upload', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const phoneNumbers = ['+11234567890', '+19876543210', '+15551234567']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'test-numbers.csv', { type: 'text/csv' })
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Upload Test')
+    formData.append('firstMessage', 'Hello from file upload test')
+    formData.append('secondMessage', 'Follow-up message')
+    formData.append('runAt', futureTimestamp.toString())
+    formData.append('delay', '1800')
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    assertEquals(response.error, null)
+
+    assertEquals(response.data.title, 'File Upload Test')
+    assertEquals(response.data.firstMessage, 'Hello from file upload test')
+    assertEquals(response.data.secondMessage, 'Follow-up message')
+    assertEquals(response.data.runAt, futureTimestamp)
+    assertEquals(response.data.delay, 1800)
+    assertEquals(response.data.recipientCount, 3)
+
+    // Verify in database
+    const [savedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(savedCampaign.title, 'File Upload Test')
+    assertEquals(savedCampaign.firstMessage, 'Hello from file upload test')
+    assertEquals(savedCampaign.secondMessage, 'Follow-up message')
+    assertEquals(Math.floor(savedCampaign.runAt.getTime() / 1000), futureTimestamp)
+    assertEquals(savedCampaign.delay, 1800)
+    assertEquals(savedCampaign.recipientCount, 3)
+    assertEquals(savedCampaign.segments, null)
+
+    const recipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, savedCampaign.id))
+
+    assertEquals(recipients.length, 3)
+
+    for (const phoneNumber of phoneNumbers) {
+      const [author] = await supabase
+        .select()
+        .from(authors)
+        .where(eq(authors.phoneNumber, phoneNumber))
+        .limit(1)
+
+      assertEquals(author !== undefined, true)
+      assertEquals(author.addedViaFileUpload, true)
+    }
+  })
+
+  it('should return 400 when file is missing', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const formData = new FormData()
+    formData.append('title', 'Missing File Test')
+    formData.append('firstMessage', 'This should fail')
+    formData.append('runAt', futureTimestamp.toString())
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message, 'File is required for file-based campaigns')
+  })
+
+  it('should return 400 for invalid file format', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Create a text file that's not a CSV
+    const txtContent = 'This is not a CSV file with phone numbers'
+    const file = new File([txtContent], 'invalid.txt', { type: 'text/plain' })
+
+    // Create form data
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('firstMessage', 'Invalid file test')
+    formData.append('runAt', futureTimestamp.toString())
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message, 'Please upload a CSV file with phone numbers')
+  })
+
+  it('should return 400 for empty CSV file', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Create an empty CSV file
+    const file = new File([''], 'empty.csv', { type: 'text/csv' })
+
+    // Create form data
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('firstMessage', 'Empty file test')
+    formData.append('runAt', futureTimestamp.toString())
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message, 'No phone numbers found in the CSV file')
+  })
+
+  it('should update a file-based campaign', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const initialPhoneNumbers = ['+11234567890', '+19876543210']
+    const initialCsvContent = initialPhoneNumbers.join('\n')
+    const initialFile = new File([initialCsvContent], 'initial.csv', { type: 'text/csv' })
+
+    const initialFormData = new FormData()
+    initialFormData.append('file', initialFile)
+    initialFormData.append('title', 'Initial File Campaign')
+    initialFormData.append('firstMessage', 'Initial message')
+    initialFormData.append('runAt', futureTimestamp.toString())
+
+    const createResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: initialFormData,
+    })
+
+    const campaignId = createResponse.data.id
+
+    const updatedPhoneNumbers = ['+15551234567', '+15559876543', '+15550001111']
+    const updatedCsvContent = updatedPhoneNumbers.join('\n')
+    const updatedFile = new File([updatedCsvContent], 'updated.csv', { type: 'text/csv' })
+
+    const updateFormData = new FormData()
+    updateFormData.append('file', updatedFile)
+    updateFormData.append('title', 'Updated File Campaign')
+    updateFormData.append('firstMessage', 'Updated message')
+
+    const updateResponse = await client.functions.invoke(`${FUNCTION_NAME}${campaignId}/`, {
+      method: 'PATCH',
+      body: updateFormData,
+    })
+
+    assertEquals(updateResponse.error, null)
+
+    assertEquals(updateResponse.data.title, 'Updated File Campaign')
+    assertEquals(updateResponse.data.firstMessage, 'Updated message')
+    assertEquals(updateResponse.data.recipientCount, 3)
+
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1)
+
+    assertEquals(updatedCampaign.title, 'Updated File Campaign')
+    assertEquals(updatedCampaign.firstMessage, 'Updated message')
+    assertEquals(updatedCampaign.recipientCount, 3)
+
+    // Check if file recipients were updated
+    const recipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(recipients.length, 3)
+
+    // Verify the phone numbers match the updated list
+    const recipientPhoneNumbers = recipients.map((r) => r.phoneNumber).sort()
+    assertEquals(recipientPhoneNumbers, updatedPhoneNumbers.sort())
+
+    // Check if new phone numbers were added to authors table
+    for (const phoneNumber of updatedPhoneNumbers) {
+      const [author] = await supabase
+        .select()
+        .from(authors)
+        .where(eq(authors.phoneNumber, phoneNumber))
+        .limit(1)
+
+      assertEquals(author !== undefined, true)
+      assertEquals(author.addedViaFileUpload, true)
+    }
+  })
+
+  it('should convert segment-based campaign to file-based', async () => {
+    // First create a segment-based campaign
+    const label = await createLabel()
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const createResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Segment Campaign',
+        firstMessage: 'Segment message',
+        runAt: futureTimestamp,
+        segments: {
+          included: [{ id: label.id }],
+        },
+      },
+    })
+
+    const campaignId = createResponse.data.id
+
+    // Now update to file-based
+    const phoneNumbers = ['+17771234567', '+17779876543']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'convert.csv', { type: 'text/csv' })
+
+    const updateFormData = new FormData()
+    updateFormData.append('file', file)
+    updateFormData.append('title', 'Converted to File')
+    updateFormData.append('firstMessage', 'Now file-based')
+
+    const updateResponse = await client.functions.invoke(`${FUNCTION_NAME}${campaignId}/`, {
+      method: 'PATCH',
+      body: updateFormData,
+    })
+
+    assertEquals(updateResponse.error, null)
+
+    // Verify in database
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1)
+
+    assertEquals(updatedCampaign.title, 'Converted to File')
+    assertEquals(updatedCampaign.firstMessage, 'Now file-based')
+    assertEquals(updatedCampaign.segments, null)
+    assertEquals(updatedCampaign.recipientCount, 2)
+
+    // Check if file recipients were created
+    const recipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(recipients.length, 2)
+  })
+
+  it('should return 400 when updating with missing file', async () => {
+    // Create a file-based campaign first
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const initialPhoneNumbers = ['+16661234567']
+    const initialCsvContent = initialPhoneNumbers.join('\n')
+    const initialFile = new File([initialCsvContent], 'initial.csv', { type: 'text/csv' })
+
+    const initialFormData = new FormData()
+    initialFormData.append('file', initialFile)
+    initialFormData.append('firstMessage', 'Initial message')
+    initialFormData.append('runAt', futureTimestamp.toString())
+
+    const createResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: initialFormData,
+    })
+
+    const campaignId = createResponse.data.id
+
+    // Try to update without file
+    const updateFormData = new FormData()
+    updateFormData.append('title', 'Missing File Update')
+    updateFormData.append('firstMessage', 'This should fail')
+
+    const updateResponse = await client.functions.invoke(`${FUNCTION_NAME}${campaignId}/`, {
+      method: 'PATCH',
+      body: updateFormData,
+    })
+
+    assertEquals(updateResponse.error.context.status, 400)
+    const errorData = await updateResponse.error.context.json()
+    assertEquals(errorData.message, 'File is required for file-based campaigns')
+  })
+})
+
+describe('DELETE', { sanitizeOps: false, sanitizeResources: false }, () => {
+  it('should delete an upcoming campaign', async () => {
+    // Create a campaign to delete
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const campaign = await createCampaign({
+      title: 'Campaign to Delete',
+      firstMessage: 'This campaign will be deleted',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    // Delete the campaign
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(data.message, 'Campaign deleted successfully')
+    assertEquals(data.id, campaign.id)
+
+    // Verify campaign is deleted from the database
+    const [deletedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(deletedCampaign, undefined)
+  })
+
+  it('should delete a file-based campaign and its file', async () => {
+    // Create a file-based campaign
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const phoneNumbers = ['+11234567890', '+19876543210']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'delete-test.csv', { type: 'text/csv' })
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Campaign to Delete')
+    formData.append('firstMessage', 'This file campaign will be deleted')
+    formData.append('runAt', futureTimestamp.toString())
+
+    const createResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    const campaignId = createResponse.data.id
+
+    // Verify file recipients were created
+    const initialRecipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(initialRecipients.length, 2)
+
+    // Delete the campaign
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaignId}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(data.message, 'Campaign deleted successfully')
+    assertEquals(data.id, campaignId)
+
+    // Verify campaign is deleted
+    const [deletedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1)
+
+    assertEquals(deletedCampaign, undefined)
+
+    // Verify file recipients are deleted
+    const deletedRecipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(deletedRecipients.length, 0)
+  })
+
+  it('should return 400 for non-existent campaign', async () => {
+    const nonExistentId = 999999
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${nonExistentId}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or is not an upcoming campaign')
+  })
+
+  it('should return 400 for invalid campaign ID', async () => {
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}invalid-id/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Invalid campaign ID')
+  })
+
+  it('should return 400 for past campaigns', async () => {
+    // Create a past campaign
+    const pastTimestamp = Math.floor(Date.now() / 1000) - 86400 // 1 day ago
+    const pastCampaign = await createCampaign({
+      title: 'Past Campaign',
+      firstMessage: 'This is a past campaign',
+      runAt: new Date(pastTimestamp * 1000),
+    })
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${pastCampaign.id}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or is not an upcoming campaign')
+
+    // Verify campaign still exists
+    const [stillExistsCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, pastCampaign.id))
+      .limit(1)
+
+    assertEquals(stillExistsCampaign !== undefined, true)
+  })
+
+  it('should return 400 for processed campaigns', async () => {
+    // Create a future campaign but mark it as processed
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const processedCampaign = await createCampaign({
+      title: 'Processed Campaign',
+      firstMessage: 'This campaign is already processed',
+      runAt: new Date(futureTimestamp * 1000),
+      processed: true,
+    })
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${processedCampaign.id}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or is not an upcoming campaign')
+
+    // Verify campaign still exists
+    const [stillExistsCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, processedCampaign.id))
+      .limit(1)
+
+    assertEquals(stillExistsCampaign !== undefined, true)
   })
 })

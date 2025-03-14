@@ -96,6 +96,7 @@ export const authors = pgTable('authors', {
   phoneNumber: text('phone_number').primaryKey().notNull(),
   unsubscribed: boolean('unsubscribed').default(false).notNull(),
   exclude: boolean('exclude').default(false),
+  addedViaFileUpload: boolean('added_via_file_upload').default(false),
 })
 
 export const comments = pgTable('comments', {
@@ -381,7 +382,8 @@ export const campaigns = pgTable('campaigns', {
   title: text('title'),
   firstMessage: text('first_message').notNull(),
   secondMessage: text('second_message'),
-  segments: jsonb('segments').notNull(),
+  segments: jsonb('segments'),
+  recipientFileUrl: text('recipient_file_url'),
   runAt: timestamp('run_at', { withTimezone: true }).notNull(),
   delay: integer('delay').default(600).notNull(),
   recipientCount: integer('recipient_count').default(0),
@@ -389,6 +391,19 @@ export const campaigns = pgTable('campaigns', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   processed: boolean('processed').notNull().default(false),
   twilioPaging: text('twilio_paging'),
+})
+
+export const campaignFileRecipients = pgTable('campaign_file_recipients', {
+  id: serial('id').primaryKey().notNull(),
+  phoneNumber: text('phone_number').notNull(),
+  campaignId: integer('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  processed: boolean('processed').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => {
+  return {
+    idxCampaignId: index('idx_file_recipients_campaign_id').on(table.campaignId),
+    uniquePhonePerCampaign: uniqueIndex('unique_phone_per_campaign').on(table.phoneNumber, table.campaignId),
+  }
 })
 
 export type Rule = typeof rules.$inferInsert
@@ -412,3 +427,4 @@ export type Broadcast = typeof broadcasts.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
+export type Campaign = typeof campaigns.$inferInsert

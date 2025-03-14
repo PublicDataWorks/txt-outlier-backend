@@ -9,7 +9,7 @@ export type CreateCampaignParams = {
   secondMessage?: string | null
   runAt?: Date
   includedSegments?: string[]
-  excludedSegments?: string[]
+  processed?: boolean
 }
 
 export const createCampaign = async ({
@@ -18,7 +18,7 @@ export const createCampaign = async ({
   secondMessage = null,
   runAt,
   includedSegments,
-  excludedSegments,
+  processed = false,
 }: CreateCampaignParams = {}) => {
   // Create a default label if includedSegments is not provided
   const defaultLabel = includedSegments ? null : await createLabel()
@@ -30,8 +30,8 @@ export const createCampaign = async ({
     runAt: runAt || new Date(Date.now() + 86400000), // tomorrow
     segments: {
       included: [{ id: includedSegments || defaultLabel!.id }],
-      excluded: [{ id: includedSegments }],
     },
+    processed,
   }
 
   const [result] = await supabase
