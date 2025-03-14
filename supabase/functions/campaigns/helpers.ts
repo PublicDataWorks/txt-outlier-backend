@@ -6,6 +6,8 @@ import { authors, campaignFileRecipients, campaigns, labels } from '../_shared/d
 import { FileBasedCampaign, formatCampaignSelect, SegmentBasedCampaign, SegmentConfig } from './dto.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 
+const RECIPIENT_FILE_BUCKET_NAME = 'campaign-recipients'
+
 const getAllSegmentIds = (config: SegmentConfig): string[] => {
   if (!Array.isArray(config)) {
     return [config.id]
@@ -239,7 +241,7 @@ async function uploadRecipientFile(file: File, campaignId: number) {
   const supabaseClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   const { error } = await supabaseClient.storage
-    .from('campaign-recipients')
+    .from(RECIPIENT_FILE_BUCKET_NAME)
     .upload(fileName, file, { upsert: true })
 
   if (error) {
@@ -247,7 +249,26 @@ async function uploadRecipientFile(file: File, campaignId: number) {
     throw new BadRequestError(`Failed to upload file: ${error.message}`)
   }
   const { data: { publicUrl } } = supabaseClient.storage
-    .from('campaign-recipients')
+    .from(RECIPIENT_FILE_BUCKET_NAME)
     .getPublicUrl(fileName)
   return publicUrl
+}
+
+export async function deleteRecipientFile(fileUrl: string) {
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+
+  const url = new URL(fileUrl)
+  const pathParts = url.pathname.split('/')
+  const fileName = pathParts[pathParts.length - 1]
+
+  const { error } = await supabaseClient.storage
+    .from(RECIPIENT_FILE_BUCKET_NAME)
+    .remove([fileName])
+
+  if (error) {
+    console.error('Error deleting file:', error)
+  }
 }

@@ -104,6 +104,85 @@ const selectBroadcastDashboard = (limit: number, cursor?: number, broadcastId?: 
   `
 }
 
+function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
+  return sql`
+    WITH past_campaigns AS (
+      SELECT
+        id,
+        title,
+        first_message AS "firstMessage",
+        second_message AS "secondMessage",
+        segments,
+        EXTRACT(EPOCH FROM run_at) AS "runAt",
+        delay,
+        recipient_count AS "recipientCount"
+      FROM campaigns
+      WHERE run_at <= NOW()
+      ORDER BY run_at DESC
+      LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+    ),
+    first_message_counts AS (
+      SELECT
+        campaign_id,
+        COUNT(DISTINCT recipient_phone_number) AS total_first
+      FROM message_statuses
+      WHERE is_second = FALSE
+      AND campaign_id IN (SELECT id FROM past_campaigns)
+      GROUP BY campaign_id
+    ),
+    second_message_counts AS (
+      SELECT
+        campaign_id,
+        COUNT(DISTINCT recipient_phone_number) AS total_second
+      FROM message_statuses
+      WHERE is_second = TRUE
+      AND campaign_id IN (SELECT id FROM past_campaigns)
+      GROUP BY campaign_id
+    ),
+    successful_deliveries AS (
+      SELECT
+        campaign_id,
+        COUNT(DISTINCT (recipient_phone_number, is_second)) AS total_success
+      FROM message_statuses
+      WHERE twilio_sent_status IN ('delivered', 'sent')
+      AND campaign_id IN (SELECT id FROM past_campaigns)
+      GROUP BY campaign_id
+    ),
+    failed_deliveries AS (
+      SELECT
+        campaign_id,
+        COUNT(DISTINCT (recipient_phone_number, is_second)) AS total_failed
+      FROM message_statuses
+      WHERE twilio_sent_status IN ('undelivered', 'failed')
+      AND campaign_id IN (SELECT id FROM past_campaigns)
+      GROUP BY campaign_id
+    ),
+    unsubscribes AS (
+      SELECT
+        ms.campaign_id,
+        COUNT(DISTINCT ms.recipient_phone_number) AS total_unsub
+      FROM unsubscribed_messages um
+      JOIN message_statuses ms ON um.reply_to = ms.id
+      WHERE ms.campaign_id IN (SELECT id FROM past_campaigns)
+      GROUP BY ms.campaign_id
+    )
+    SELECT
+      pc.*,
+      COALESCE(fmc.total_first, 0) AS "firstMessageCount",
+      COALESCE(smc.total_second, 0) AS "secondMessageCount",
+      COALESCE(sd.total_success, 0) AS "successfulDeliveries",
+      COALESCE(fd.total_failed, 0) AS "failedDeliveries",
+      COALESCE(u.total_unsub, 0) AS "unsubscribes"
+    FROM past_campaigns pc
+    LEFT JOIN first_message_counts fmc ON pc.id = fmc.campaign_id
+    LEFT JOIN second_message_counts smc ON pc.id = smc.campaign_id
+    LEFT JOIN successful_deliveries sd ON pc.id = sd.campaign_id
+    LEFT JOIN failed_deliveries fd ON pc.id = fd.campaign_id
+    LEFT JOIN unsubscribes u ON pc.id = u.campaign_id
+    ORDER BY pc."runAt" DESC
+  `
+}
+
 const FAILED_DELIVERED_QUERY = `
   WITH RankedMessages AS (
     SELECT
@@ -178,6 +257,7 @@ export {
   BROADCAST_DOUBLE_FAILURE_QUERY,
   type BroadcastDashBoardQueryReturn,
   FAILED_DELIVERED_QUERY,
+  getPastCampaignsWithStatsQuery,
   pgmqDelete,
   pgmqRead,
   pgmqSend,

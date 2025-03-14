@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { campaigns, labels } from '../_shared/drizzle/schema.ts'
+import { campaignFileRecipients, campaigns, labels } from '../_shared/drizzle/schema.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import {
   FileBasedCampaignSchema,
@@ -12,8 +12,9 @@ import {
   SegmentBasedCampaignSchema,
   UpdateCampaignSchema,
 } from './dto.ts'
-import { asc, desc, gt, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, lte, sql } from 'drizzle-orm'
 import {
+  deleteRecipientFile,
   handleFileBasedCampaignCreate,
   handleFileBasedCampaignUpdate,
   handleSegmentBasedCampaignCreate,
@@ -21,6 +22,7 @@ import {
   parseFileBasedFormData,
 } from './helpers.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
+import { getPastCampaignsWithStatsQuery } from '../_shared/scheduledcron/queries.ts'
 
 const app = new Hono()
 const FUNCTION_PATH = '/campaigns/'
@@ -50,19 +52,22 @@ app.get(FUNCTION_PATH, async (c) => {
       .where(gt(campaigns.runAt, currentDate))
       .orderBy(asc(campaigns.runAt))
 
-    // Then get paginated past campaigns
-    const pastCampaigns = await supabase
-      .select(formatCampaignSelect)
-      .from(campaigns)
-      .where(sql`${campaigns.runAt} <= ${currentDate}`)
-      .orderBy(desc(campaigns.runAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize)
+    // TODO: add tests
+    const pastCampaignsResults = await supabase.execute(getPastCampaignsWithStatsQuery(page, pageSize))
+    // @ts-ignore Any type
+    const pastCampaigns = pastCampaignsResults.map((campaign) => ({
+      ...campaign,
+      firstMessageCount: Number(campaign.firstMessageCount),
+      secondMessageCount: Number(campaign.secondMessageCount),
+      successfulDeliveries: Number(campaign.successfulDeliveries),
+      failedDeliveries: Number(campaign.failedDeliveries),
+      unsubscribes: Number(campaign.unsubscribes),
+    }))
 
     const [{ count }] = await supabase
       .select({ count: sql<number>`count(*)` })
       .from(campaigns)
-      .where(sql`${campaigns.runAt} <= ${currentDate}`)
+      .where(lte(campaigns.runAt, currentDate))
 
     return AppResponse.ok({
       upcoming: upcomingCampaigns,
@@ -187,6 +192,44 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
       return AppResponse.badRequest(error.message)
     }
     console.log('Error updating campaign:', error)
+    Sentry.captureException(error)
+    return AppResponse.internalServerError()
+  }
+})
+
+app.delete(`${FUNCTION_PATH}:id/`, async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    if (isNaN(id)) {
+      return AppResponse.badRequest('Invalid campaign ID')
+    }
+
+    const currentDate = new Date()
+
+    const [existingCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), gt(campaigns.runAt, currentDate), eq(campaigns.processed, false)))
+      .limit(1)
+
+    if (!existingCampaign) {
+      return AppResponse.badRequest('Campaign not found or is not an upcoming campaign')
+    }
+
+    if (existingCampaign.recipientFileUrl) {
+      await deleteRecipientFile(existingCampaign.recipientFileUrl)
+      await supabase
+        .delete(campaignFileRecipients)
+        .where(eq(campaignFileRecipients.campaignId, id))
+    }
+
+    await supabase
+      .delete(campaigns)
+      .where(eq(campaigns.id, id))
+
+    return AppResponse.ok({ message: 'Campaign deleted successfully', id })
+  } catch (error) {
+    console.error('Error deleting campaign:', error)
     Sentry.captureException(error)
     return AppResponse.internalServerError()
   }

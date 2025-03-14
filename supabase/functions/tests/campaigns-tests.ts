@@ -1563,3 +1563,162 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     assertEquals(errorData.message, 'File is required for file-based campaigns')
   })
 })
+
+describe('DELETE', { sanitizeOps: false, sanitizeResources: false }, () => {
+  it('should delete an upcoming campaign', async () => {
+    // Create a campaign to delete
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const campaign = await createCampaign({
+      title: 'Campaign to Delete',
+      firstMessage: 'This campaign will be deleted',
+      runAt: new Date(futureTimestamp * 1000),
+    })
+
+    // Delete the campaign
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(data.message, 'Campaign deleted successfully')
+    assertEquals(data.id, campaign.id)
+
+    // Verify campaign is deleted from the database
+    const [deletedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(deletedCampaign, undefined)
+  })
+
+  it('should delete a file-based campaign and its file', async () => {
+    // Create a file-based campaign
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const phoneNumbers = ['+11234567890', '+19876543210']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'delete-test.csv', { type: 'text/csv' })
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Campaign to Delete')
+    formData.append('firstMessage', 'This file campaign will be deleted')
+    formData.append('runAt', futureTimestamp.toString())
+
+    const createResponse = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    const campaignId = createResponse.data.id
+
+    // Verify file recipients were created
+    const initialRecipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(initialRecipients.length, 2)
+
+    // Delete the campaign
+    const { data } = await client.functions.invoke(`${FUNCTION_NAME}${campaignId}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(data.message, 'Campaign deleted successfully')
+    assertEquals(data.id, campaignId)
+
+    // Verify campaign is deleted
+    const [deletedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1)
+
+    assertEquals(deletedCampaign, undefined)
+
+    // Verify file recipients are deleted
+    const deletedRecipients = await supabase
+      .select()
+      .from(campaignFileRecipients)
+      .where(eq(campaignFileRecipients.campaignId, campaignId))
+
+    assertEquals(deletedRecipients.length, 0)
+  })
+
+  it('should return 400 for non-existent campaign', async () => {
+    const nonExistentId = 999999
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${nonExistentId}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or is not an upcoming campaign')
+  })
+
+  it('should return 400 for invalid campaign ID', async () => {
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}invalid-id/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Invalid campaign ID')
+  })
+
+  it('should return 400 for past campaigns', async () => {
+    // Create a past campaign
+    const pastTimestamp = Math.floor(Date.now() / 1000) - 86400 // 1 day ago
+    const pastCampaign = await createCampaign({
+      title: 'Past Campaign',
+      firstMessage: 'This is a past campaign',
+      runAt: new Date(pastTimestamp * 1000),
+    })
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${pastCampaign.id}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or is not an upcoming campaign')
+
+    // Verify campaign still exists
+    const [stillExistsCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, pastCampaign.id))
+      .limit(1)
+
+    assertEquals(stillExistsCampaign !== undefined, true)
+  })
+
+  it('should return 400 for processed campaigns', async () => {
+    // Create a future campaign but mark it as processed
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const processedCampaign = await createCampaign({
+      title: 'Processed Campaign',
+      firstMessage: 'This campaign is already processed',
+      runAt: new Date(futureTimestamp * 1000),
+      processed: true,
+    })
+
+    const { error } = await client.functions.invoke(`${FUNCTION_NAME}${processedCampaign.id}/`, {
+      method: 'DELETE',
+    })
+
+    assertEquals(error.context.status, 400)
+    const errorData = await error.context.json()
+    assertEquals(errorData.message, 'Campaign not found or is not an upcoming campaign')
+
+    // Verify campaign still exists
+    const [stillExistsCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, processedCampaign.id))
+      .limit(1)
+
+    assertEquals(stillExistsCampaign !== undefined, true)
+  })
+})
