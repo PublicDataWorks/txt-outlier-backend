@@ -11,6 +11,7 @@ import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Missive from '../_shared/lib/Missive.ts'
 import UnauthorizedError from '../_shared/exception/UnauthorizedError.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
+import Sentry from '../_shared/lib/Sentry.ts'
 
 Deno.serve(async (req: Request) => {
   let requestBody
@@ -25,7 +26,9 @@ Deno.serve(async (req: Request) => {
       throw new UnauthorizedError('Invalid signature')
     }
 
-    console.info(`Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}`)
+    console.info(
+      `Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}, ${requestBody.conversation?.id}`,
+    )
     await insertHistory(requestBody)
     switch (requestBody.rule.type) {
       case RuleType.NewComment:
@@ -49,12 +52,14 @@ Deno.serve(async (req: Request) => {
         await handleConversationAssigneeChange(requestBody)
         break
       case RuleType.IncomingTwilioMessage:
+      case RuleType.IncomingSmsMessage:
         await handleTwilioMessage(requestBody)
         await handleBroadcastReply(requestBody)
         await handleResubscribe(requestBody)
         await LookupService.refreshLookupCache(requestBody.conversation.id, requestBody.message!.references)
         break
       case RuleType.OutgoingTwilioMessage:
+      case RuleType.OutgoingSmsMessage:
         await handleTwilioMessage(requestBody)
         await LookupService.refreshLookupCache(requestBody.conversation.id, requestBody.message!.references)
         await handleBroadcastOutgoing(requestBody)
@@ -68,7 +73,10 @@ Deno.serve(async (req: Request) => {
     if (requestBody) {
       await handleError(requestBody, error)
     }
-    // Sentry.captureException(error)
+    if (typeof error.message === 'string' && error.message.startsWith('write CONNECT_TIMEOUT')) {
+      Sentry.captureException(error)
+      return AppResponse.internalServerError()
+    }
   }
   return AppResponse.ok()
 })
