@@ -113,7 +113,7 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
         first_message AS "firstMessage",
         second_message AS "secondMessage",
         segments,
-        EXTRACT(EPOCH FROM run_at) AS "runAt",
+        EXTRACT(EPOCH FROM run_at)::INTEGER AS "runAt",
         delay,
         recipient_count AS "recipientCount"
       FROM campaigns
@@ -202,6 +202,13 @@ const FAILED_DELIVERED_QUERY = `
   JOIN authors a ON a.phone_number = r.recipient_phone_number
   WHERE r.rn <= 3
     AND a.exclude = FALSE
+    AND NOT EXISTS (
+      SELECT 1 FROM conversations_labels cl
+      WHERE
+        cl.conversation_id = r.missive_conversation_id
+        AND cl.label_id = ${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}
+        AND cl.is_archived = FALSE
+    )
   GROUP BY r.recipient_phone_number
   HAVING COUNT(*) = 3
     AND SUM(CASE WHEN r.twilio_sent_status = 'delivered' THEN 1 ELSE 0 END) = 0

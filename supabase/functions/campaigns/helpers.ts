@@ -3,7 +3,13 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import supabase from '../_shared/lib/supabase.ts'
 import { and, eq, gt, inArray, sql } from 'drizzle-orm'
 import { authors, campaignFileRecipients, campaigns, labels } from '../_shared/drizzle/schema.ts'
-import { FileBasedCampaign, formatCampaignSelect, SegmentBasedCampaign, SegmentConfig } from './dto.ts'
+import {
+  FileBasedCampaign,
+  formatCampaignSelect,
+  SegmentBasedCampaign,
+  SegmentConfig,
+  UpdateCampaignData,
+} from './dto.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 
 const RECIPIENT_FILE_BUCKET_NAME = 'campaign-recipients'
@@ -166,7 +172,7 @@ export const handleFileBasedCampaignUpdate = async (
 
 export const handleSegmentBasedCampaignUpdate = async (
   campaignId: number,
-  campaignData: Partial<SegmentBasedCampaign>,
+  campaignData: UpdateCampaignData,
 ) => {
   if (campaignData.segments) {
     const segmentsValid = await validateSegments(
