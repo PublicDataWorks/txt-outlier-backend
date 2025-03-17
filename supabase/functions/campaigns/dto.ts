@@ -19,16 +19,15 @@ const SegmentConfigSchema = z.union([
   ])),
 ])
 
-export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
+const SegmentsSchema = z.object({
+  included: SegmentConfigSchema,
+  excluded: SegmentConfigSchema.optional(),
+})
 
-export const CreateCampaignSchema = z.object({
+const BaseCampaignSchema = z.object({
   title: z.string().optional(),
   firstMessage: z.string().nonempty('First message is required'),
   secondMessage: z.string().nullable().optional(),
-  segments: z.object({
-    included: SegmentConfigSchema,
-    excluded: SegmentConfigSchema.optional(),
-  }),
   delay: z.number().int().positive('Delay must be a positive integer').optional(),
   runAt: z.number()
     .int('Must be a Unix timestamp')
@@ -37,9 +36,18 @@ export const CreateCampaignSchema = z.object({
       (date) => date > new Date(),
       'Run time must be in the future',
     ),
+})
+
+export const SegmentBasedCampaignSchema = BaseCampaignSchema.extend({
+  segments: SegmentsSchema,
 }).strict()
 
-export const UpdateCampaignSchema = CreateCampaignSchema
+export const FileBasedCampaignSchema = BaseCampaignSchema.strict()
+
+export const UpdateCampaignSchema = BaseCampaignSchema
+  .extend({
+    segments: SegmentsSchema.optional().nullable(),
+  })
   .partial()
   .refine(
     (data) => Object.keys(data).length > 0,
@@ -63,3 +71,6 @@ export const formatCampaignSelect = {
   recipientCount: campaigns.recipientCount,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
 }
+export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
+export type SegmentBasedCampaign = z.infer<typeof SegmentBasedCampaignSchema>
+export type FileBasedCampaign = z.infer<typeof FileBasedCampaignSchema>
