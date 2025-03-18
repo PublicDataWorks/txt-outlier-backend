@@ -17,6 +17,9 @@ beforeEach(async () => {
     '../../migrations/20250304080718_add_recipient_count_to_campaigns.sql',
     '../../migrations/20250306085822_count_campaign_recipient_using_conversations_authors_table.sql',
     '../../migrations/20250310074006_add_file_based_campaigns.sql',
+    '../../migrations/20250312074137_add_daily_broadcast_reconciliation_function.sql',
+    '../../migrations/20250317043943_campaign_should_not_run_reconcile_status.sql',
+    '../../migrations/20250318043746_add_reply_to_campaign_to_twilio_messages.sql',
   ]
 
   for (const filePath of migrationFiles) {

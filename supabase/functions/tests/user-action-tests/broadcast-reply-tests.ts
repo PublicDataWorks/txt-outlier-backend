@@ -45,7 +45,7 @@ describe(
 
       const incomingMessages = await supabase.select().from(twilioMessages)
       assertEquals(incomingMessages.length, 1)
-      assert(incomingMessages[0].isBroadcastReply)
+      assert(incomingMessages[0].isReply)
     })
   },
 )
