@@ -13,6 +13,7 @@ import { createAuthor } from './factories/author.ts'
 import { createConversationLabel } from './factories/conversation-label.ts'
 import { createConversation } from './factories/conversation.ts'
 import { createConversationAuthor } from './factories/conversation-author.ts'
+import { createCampaignMessageStatus } from './factories/message-status.ts'
 
 const FUNCTION_NAME = 'campaigns/'
 
@@ -809,34 +810,6 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(data.past.pagination.totalPages, 1)
   })
 
-  it('should return campaigns with all fields correctly formatted', async () => {
-    const futureDate = new Date(Math.floor((Date.now() + 86400000) / 1000) * 1000)
-
-    const campaign = await createCampaign({
-      title: 'Test Campaign',
-      firstMessage: 'First message',
-      secondMessage: 'Second message',
-      runAt: futureDate,
-    })
-
-    const { data } = await client.functions.invoke(FUNCTION_NAME, {
-      method: 'GET',
-    })
-
-    assertEquals(data.upcoming.length, 1)
-    const returnedCampaign = data.upcoming[0]
-
-    assertEquals(returnedCampaign.id, campaign.id)
-    assertEquals(returnedCampaign.title, 'Test Campaign')
-    assertEquals(returnedCampaign.firstMessage, 'First message')
-    assertEquals(returnedCampaign.secondMessage, 'Second message')
-    assertEquals(returnedCampaign.runAt, Math.floor(futureDate.getTime() / 1000))
-
-    assertEquals(data.past.items.length, 0)
-    assertEquals(data.past.pagination.totalItems, 0)
-    assertEquals(data.past.pagination.page, 1)
-  })
-
   it('should handle campaigns with null fields', async () => {
     const futureDate = new Date(Math.floor((Date.now() + 86400000) / 1000) * 1000)
     const campaign = await createCampaign({
@@ -892,6 +865,106 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     assertEquals(data.past.items.length, 0)
     assertEquals(data.past.pagination.totalItems, 0)
+  })
+
+  it('should convert string statistics to numbers for past campaigns', async () => {
+    const pastTimestamp = Math.floor(Date.now() / 1000) - 86400
+    const pastCampaign = await createCampaign({
+      title: 'Past Stats Campaign',
+      firstMessage: 'Testing stats conversion',
+      runAt: new Date(pastTimestamp * 1000),
+      processed: true,
+    })
+
+    const author1 = await createAuthor('+12345678901', { unsubscribed: false, exclude: false })
+    const author2 = await createAuthor('+12345678902', { unsubscribed: false, exclude: false })
+    const conversation = await createConversation()
+
+    await createConversationAuthor({
+      conversationId: conversation.id,
+      authorPhoneNumber: author1.phoneNumber,
+    })
+
+    await createConversationAuthor({
+      conversationId: conversation.id,
+      authorPhoneNumber: author2.phoneNumber,
+    })
+
+    await createCampaignMessageStatus({
+      recipientPhoneNumber: author1.phoneNumber,
+      campaignId: pastCampaign.id,
+      missiveConversationId: conversation.id,
+      isSecond: false,
+      twilioSentStatus: 'delivered',
+      message: 'First test message',
+    })
+
+    await createCampaignMessageStatus({
+      recipientPhoneNumber: author1.phoneNumber,
+      campaignId: pastCampaign.id,
+      missiveConversationId: conversation.id,
+      isSecond: true,
+      twilioSentStatus: 'delivered',
+      message: 'Second test message',
+    })
+
+    await createCampaignMessageStatus({
+      recipientPhoneNumber: author2.phoneNumber,
+      campaignId: pastCampaign.id,
+      missiveConversationId: conversation.id,
+      isSecond: false,
+      twilioSentStatus: 'failed',
+      message: 'Failed test message',
+    })
+
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'GET',
+    })
+
+    // @ts-ignore Any type
+    const testCampaign = data.past.items.find((c) => c.id === pastCampaign.id)
+
+    assertEquals(testCampaign !== undefined, true)
+
+    assertEquals(typeof testCampaign.firstMessageCount, 'number')
+    assertEquals(typeof testCampaign.secondMessageCount, 'number')
+    assertEquals(typeof testCampaign.successfulDeliveries, 'number')
+    assertEquals(typeof testCampaign.failedDeliveries, 'number')
+    assertEquals(typeof testCampaign.unsubscribes, 'number')
+
+    assertEquals(testCampaign.firstMessageCount, 2)
+    assertEquals(testCampaign.secondMessageCount, 1)
+    assertEquals(testCampaign.successfulDeliveries, 2)
+    assertEquals(testCampaign.failedDeliveries, 1)
+    assertEquals(testCampaign.unsubscribes, 0)
+  })
+
+  it('should return campaigns with all fields correctly formatted', async () => {
+    const futureDate = new Date(Math.floor((Date.now() + 86400000) / 1000) * 1000)
+
+    const campaign = await createCampaign({
+      title: 'Test Campaign',
+      firstMessage: 'First message',
+      secondMessage: 'Second message',
+      runAt: futureDate,
+    })
+
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'GET',
+    })
+
+    assertEquals(data.upcoming.length, 1)
+    const returnedCampaign = data.upcoming[0]
+
+    assertEquals(returnedCampaign.id, campaign.id)
+    assertEquals(returnedCampaign.title, 'Test Campaign')
+    assertEquals(returnedCampaign.firstMessage, 'First message')
+    assertEquals(returnedCampaign.secondMessage, 'Second message')
+    assertEquals(returnedCampaign.runAt, Math.floor(futureDate.getTime() / 1000))
+
+    assertEquals(data.past.items.length, 0)
+    assertEquals(data.past.pagination.totalItems, 0)
+    assertEquals(data.past.pagination.page, 1)
   })
 })
 

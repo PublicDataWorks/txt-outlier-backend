@@ -16,7 +16,7 @@ type CreateBroadcastSentMessageParams = {
   twilioId?: string
 }
 
-export const createMessageStatus = async ({
+export const createBroadcastMessageStatus = async ({
   isSecond = false,
   broadcastId,
   recipient,
@@ -45,8 +45,42 @@ export const createMessageStatus = async ({
 
   const [result] = await supabase
     .insert(messageStatuses)
-    // @ts-expect-error Type mismatch
+    // @ts-ignore Type mismatch
     .values(sentMessage)
     .returning()
+  return result
+}
+
+type CreateCampaignMessageStatusParams = {
+  recipientPhoneNumber: string
+  campaignId: number
+  missiveConversationId: string
+  isSecond?: boolean
+  twilioSentStatus?: 'delivered' | 'delivery_unknown' | 'undelivered' | 'failed' | 'received' | 'sent'
+  message?: string
+}
+
+export const createCampaignMessageStatus = async ({
+  recipientPhoneNumber,
+  campaignId,
+  missiveConversationId,
+  isSecond = false,
+  twilioSentStatus = 'delivered',
+  message,
+}: CreateCampaignMessageStatusParams) => {
+  const [result] = await supabase
+    .insert(messageStatuses)
+    .values({
+      recipientPhoneNumber,
+      campaignId,
+      missiveId: crypto.randomUUID(),
+      missiveConversationId,
+      isSecond,
+      twilioSentStatus,
+      message: message ||
+        (isSecond ? `Second message ${faker.lorem.sentence()}` : `First message ${faker.lorem.sentence()}`),
+    })
+    .returning()
+
   return result
 }

@@ -69,8 +69,9 @@ export const formatCampaignSelect = {
   segments: campaigns.segments,
   delay: campaigns.delay,
   recipientCount: campaigns.recipientCount,
-  runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::integer`,
+  runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::INTEGER`,
 }
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>
 export type SegmentBasedCampaign = z.infer<typeof SegmentBasedCampaignSchema>
 export type FileBasedCampaign = z.infer<typeof FileBasedCampaignSchema>
+export type UpdateCampaignData = z.infer<typeof UpdateCampaignSchema>

@@ -52,7 +52,6 @@ app.get(FUNCTION_PATH, async (c) => {
       .where(gt(campaigns.runAt, currentDate))
       .orderBy(asc(campaigns.runAt))
 
-    // TODO: add tests
     const pastCampaignsResults = await supabase.execute(getPastCampaignsWithStatsQuery(page, pageSize))
     // @ts-ignore Any type
     const pastCampaigns = pastCampaignsResults.map((campaign) => ({
