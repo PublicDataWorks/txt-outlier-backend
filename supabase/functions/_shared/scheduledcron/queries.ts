@@ -217,7 +217,7 @@ const FAILED_DELIVERED_QUERY = `
       SELECT 1 FROM conversations_labels cl
       WHERE
         cl.conversation_id = r.missive_conversation_id
-        AND cl.label_id = ${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}
+        AND cl.label_id = '${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}'
         AND cl.is_archived = FALSE
     )
   GROUP BY r.recipient_phone_number
