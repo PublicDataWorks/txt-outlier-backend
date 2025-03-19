@@ -165,6 +165,15 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
       JOIN message_statuses ms ON um.reply_to = ms.id
       WHERE ms.campaign_id IN (SELECT id FROM past_campaigns)
       GROUP BY ms.campaign_id
+    ),
+    replies AS (
+      SELECT
+        reply_to_campaign AS campaign_id,
+        COUNT(*) AS total_replies
+      FROM twilio_messages
+      WHERE reply_to_campaign IS NOT NULL
+        AND reply_to_campaign IN (SELECT id FROM past_campaigns)
+      GROUP BY reply_to_campaign
     )
     SELECT
       pc.*,
@@ -172,13 +181,15 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
       COALESCE(smc.total_second, 0) AS "secondMessageCount",
       COALESCE(sd.total_success, 0) AS "successfulDeliveries",
       COALESCE(fd.total_failed, 0) AS "failedDeliveries",
-      COALESCE(u.total_unsub, 0) AS "unsubscribes"
+      COALESCE(u.total_unsub, 0) AS "unsubscribes",
+      COALESCE(r.total_replies, 0) AS "no_of_replies"
     FROM past_campaigns pc
     LEFT JOIN first_message_counts fmc ON pc.id = fmc.campaign_id
     LEFT JOIN second_message_counts smc ON pc.id = smc.campaign_id
     LEFT JOIN successful_deliveries sd ON pc.id = sd.campaign_id
     LEFT JOIN failed_deliveries fd ON pc.id = fd.campaign_id
     LEFT JOIN unsubscribes u ON pc.id = u.campaign_id
+    LEFT JOIN replies r ON pc.id = r.campaign_id
     ORDER BY pc."runAt" DESC
   `
 }
@@ -206,7 +217,7 @@ const FAILED_DELIVERED_QUERY = `
       SELECT 1 FROM conversations_labels cl
       WHERE
         cl.conversation_id = r.missive_conversation_id
-        AND cl.label_id = ${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}
+        AND cl.label_id = '${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}'
         AND cl.is_archived = FALSE
     )
   GROUP BY r.recipient_phone_number

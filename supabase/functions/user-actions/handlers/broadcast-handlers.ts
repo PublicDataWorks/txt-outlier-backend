@@ -79,13 +79,12 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
 
     const sentMessage = await findRecentBroadcastOrCampaignMessage(phoneNumber, deliveredDate)
     if (sentMessage.length > 0) {
-      // Update Twilio message with broadcast reply info
-      // TODO: rename isBroadcastReply and replyToBroadcast
       await supabase
         .update(twilioMessages)
         .set({
-          isBroadcastReply: true,
+          isReply: true,
           replyToBroadcast: sentMessage[0].broadcastId || sentMessage[0].campaignId,
+          replyToCampaign: sentMessage[0].broadcastId || sentMessage[0].campaignId,
         })
         .where(eq(twilioMessages.id, requestMessage.id))
 

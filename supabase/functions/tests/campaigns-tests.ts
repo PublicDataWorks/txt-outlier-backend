@@ -14,6 +14,7 @@ import { createConversationLabel } from './factories/conversation-label.ts'
 import { createConversation } from './factories/conversation.ts'
 import { createConversationAuthor } from './factories/conversation-author.ts'
 import { createCampaignMessageStatus } from './factories/message-status.ts'
+import { createTwilioMessage } from './factories/twilio-message.ts'
 
 const FUNCTION_NAME = 'campaigns/'
 
@@ -965,6 +966,56 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
     assertEquals(data.past.items.length, 0)
     assertEquals(data.past.pagination.totalItems, 0)
     assertEquals(data.past.pagination.page, 1)
+  })
+
+  it('should include reply counts for past campaigns', async () => {
+    const pastTimestamp = Math.floor(Date.now() / 1000) - 86400
+    const pastCampaign = await createCampaign({
+      title: 'Campaign with Replies',
+      firstMessage: 'Test message for replies',
+      runAt: new Date(pastTimestamp * 1000),
+      processed: true,
+    })
+
+    const fromPhone = '+12345678901'
+    const toPhone = '+19876543210'
+
+    await createAuthor(fromPhone, { unsubscribed: false, exclude: false })
+    await createAuthor(toPhone, { unsubscribed: false, exclude: false })
+
+    await createTwilioMessage({
+      preview: 'Reply 1',
+      fromField: fromPhone,
+      toField: toPhone,
+      isReply: true,
+      replyToCampaign: pastCampaign.id,
+    })
+
+    await createTwilioMessage({
+      preview: 'Reply 2',
+      fromField: fromPhone,
+      toField: toPhone,
+      isReply: true,
+      replyToCampaign: pastCampaign.id,
+    })
+
+    await createTwilioMessage({
+      preview: 'Reply 3',
+      fromField: fromPhone,
+      toField: toPhone,
+      isReply: true,
+      replyToCampaign: pastCampaign.id,
+    })
+
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'GET',
+    })
+
+    // @ts-ignore Any type
+    const testCampaign = data.past.items.find((c) => c.id === pastCampaign.id)
+
+    assertEquals(testCampaign !== undefined, true)
+    assertEquals(testCampaign.no_of_replies, '3')
   })
 })
 
