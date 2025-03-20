@@ -148,7 +148,8 @@ The following edge functions are utilized within the broadcast and campaign syst
 
 - Ensure that the system time is synchronized with the server hosting the application to prevent timing discrepancies.
 - Monitor the queues and scheduled jobs to ensure smooth operation and timely processing of messages.
-- Regularly review and update the segment queries to ensure they exclude the appropriate phone numbers (`excluded`, `unsubscribe`, `added_via_file_upload`).
+- Regularly review and update the segment queries to ensure they exclude the appropriate phone numbers (excluded, unsubscribe, added_via_file_upload). Note: The added_via_file_upload field should always be excluded in broadcast segment queries because these authors were recipients added through campaign file uploads and were not intended to be part of broadcasts. Including them in broadcasts could lead to unintended message delivery and potential compliance issues.
+-
 
 ## Related Repositories
 
