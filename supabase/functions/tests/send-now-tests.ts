@@ -131,4 +131,59 @@ describe('SEND-NOW BROADCAST', { sanitizeOps: false, sanitizeResources: false },
     const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
     assertEquals(error, null)
   })
+
+  it('should successfully send broadcast when runAt is null', async () => {
+    await createAuthors(2)
+    await createSegment({ name: 'Inactive' })
+
+    const broadcast = await createBroadcast({
+      runAt: null,
+      editable: true,
+      firstMessage: 'Test null runAt message',
+      secondMessage: 'Test null runAt second message',
+      noUsers: 1000,
+      delay: 300,
+    })
+
+    await createSegment({ broadcastId: broadcast.id! })
+
+    // Act: Call the send-now function
+    const response = await client.functions.invoke(FUNCTION_NAME, { method: 'GET' })
+
+    // Assert: Verify the broadcast was sent
+    assertEquals(response.error, null, 'Should not return an error')
+
+    // @ts-ignore: Property broadcasts exists at runtime
+    const updatedBroadcast = await supabase.query.broadcasts.findFirst({
+      where: eq(broadcasts.id, broadcast.id!),
+    })
+
+    assertEquals(updatedBroadcast.editable, false, 'Original broadcast should not be editable')
+    assertEquals(
+      updatedBroadcast.runAt instanceof Date || typeof updatedBroadcast.runAt === 'string',
+      true,
+      'Run time should be set even though it was initially null',
+    )
+
+    // Check that a new broadcast was created
+    // @ts-ignore: Property broadcasts exists at runtime
+    const newBroadcast = await supabase.query.broadcasts.findFirst({
+      where: and(
+        gt(broadcasts.id, broadcast.id!),
+        eq(broadcasts.editable, true),
+      ),
+    })
+
+    assertEquals(!!newBroadcast, true, 'New broadcast should exist')
+
+    // Verify messages were queued
+    const queuedMessages = await supabase.execute(
+      sql.raw('SELECT COUNT(*) as count FROM pgmq.q_broadcast_first_messages'),
+    )
+    assertEquals(
+      parseInt(queuedMessages[0].count) >= 2,
+      true,
+      'Should have queued messages for all authors',
+    )
+  })
 })

@@ -5,7 +5,7 @@ import supabase from '../../_shared/lib/supabase.ts'
 
 export type CreateBroadcastParams = {
   noUsers?: number
-  runAt?: Date
+  runAt?: Date | null
   firstMessage?: string
   secondMessage?: string
   editable?: boolean
