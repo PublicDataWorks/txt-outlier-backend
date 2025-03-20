@@ -71,9 +71,11 @@ const sendNow = async (): Promise<void> => {
   if (!broadcast) {
     throw new Error('Unable to retrieve next broadcast.')
   }
-  const diffInMinutes = DateUtils.diffInMinutes(broadcast.runAt)
-  if (0 <= diffInMinutes && diffInMinutes <= 90) {
-    throw new NotFoundError('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+  if (broadcast.runAt) {
+    const diffInMinutes = DateUtils.diffInMinutes(broadcast.runAt)
+    if (0 <= diffInMinutes && diffInMinutes <= 90) {
+      throw new NotFoundError('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
+    }
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
