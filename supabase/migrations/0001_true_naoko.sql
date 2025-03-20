@@ -140,11 +140,11 @@ BEGIN
             SELECT 1
             FROM cron.job
             WHERE jobname = 'send-first-messages'
-            AND schedule = '1 seconds'
+            AND schedule = '2 seconds'
         ) THEN
             PERFORM cron.schedule(
                 'send-first-messages',
-                '1 seconds',
+                '2 seconds',
                 format('SELECT net.http_post(
                     url:=''%ssend-messages/'',
                     body:=''{"isSecond": false}''::jsonb,
@@ -196,11 +196,11 @@ BEGIN
             SELECT 1
             FROM cron.job
             WHERE jobname = 'send-second-messages'
-            AND schedule = '1 seconds'
+            AND schedule = '2 seconds'
         ) THEN
             PERFORM cron.schedule(
                 'send-second-messages',
-                '1 seconds',
+                '2 seconds',
                 format('SELECT net.http_post(
                     url:=''%ssend-messages/'',
                     body:=''{"isSecond": true}''::jsonb,
