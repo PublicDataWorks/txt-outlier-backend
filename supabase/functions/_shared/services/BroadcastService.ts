@@ -96,7 +96,8 @@ const sendNow = async (): Promise<void> => {
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  const results = await supabase.execute(pgmqRead(queueName, 60))
+  // We see a lot 429 and 503 errors from Missive API.
+  const results = await supabase.execute(pgmqRead(queueName, 180))
   if (results.length === 0) {
     return
   }
@@ -143,9 +144,11 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     if (results[0].read_ct > 2 && response?.status !== 429) {
       // TODO: Insert somewhere to handle failed deliveries
       await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
-      Sentry.captureException(
-        `Message deleted from ${queueName}. Status code: ${response?.status}. ${JSON.stringify(messageMetadata)}`,
-      )
+      const errorMsg = `Message deleted from ${queueName}. Status code: ${response?.status}. ${
+        JSON.stringify(messageMetadata)
+      }`
+      console.error(errorMsg)
+      Sentry.captureException(errorMsg)
     }
   }
 }
