@@ -13,6 +13,7 @@ import { authors, Broadcast, broadcasts, messageStatuses } from '../drizzle/sche
 import { BroadcastDashBoardQueryReturn, pgmqDelete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
+import DubLinkShortener from "../lib/DubLinkShortener.ts";
 
 const getAll = async (
   limit = 5, // Limit past batches
@@ -54,6 +55,14 @@ const patch = async (
   id: number,
   broadcast: BroadcastUpdate,
 ): Promise<UpcomingBroadcastResponse | undefined> => {
+  await DubLinkShortener.cleanupUnusedLinks(id, broadcast.firstMessage, broadcast.secondMessage)
+  if (broadcast.firstMessage) {
+    broadcast.firstMessage = await DubLinkShortener.shortenLinksInMessage(broadcast.firstMessage, id)
+  }
+  if (broadcast.secondMessage) {
+    broadcast.secondMessage = await DubLinkShortener.shortenLinksInMessage(broadcast.secondMessage, id)
+  }
+
   return await supabase.transaction(async (tx) => {
     const result: Broadcast[] = await tx.update(broadcasts)
       .set({
