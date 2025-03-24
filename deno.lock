@@ -10,7 +10,8 @@
       "npm:@supabase/realtime-js@2.11.2": "npm:@supabase/realtime-js@2.11.2",
       "npm:@supabase/storage-js@2.7.1": "npm:@supabase/storage-js@2.7.1",
       "npm:date-fns-tz": "npm:date-fns-tz@3.2.0_date-fns@4.1.0",
-      "npm:drizzle-orm@0.28.5": "npm:drizzle-orm@0.28.5"
+      "npm:drizzle-orm@0.28.5": "npm:drizzle-orm@0.28.5",
+      "npm:dub": "npm:dub@0.61.0_zod@3.23.8"
     },
     "jsr": {
       "@supabase/supabase-js@2.48.1": {
@@ -93,6 +94,12 @@
         "integrity": "sha512-6r6Iw4c38NAmW6TiKH3TUpGUQ1YdlEoLJOQptn8XPx3Z63+vFNKfAiANqrIiYZiMjKR9+NYAL219nFrmo1duXA==",
         "dependencies": {}
       },
+      "dub@0.61.0_zod@3.23.8": {
+        "integrity": "sha512-O5Co3rJgNizBs70lKkZvLAUrKnhFFvh2u9+NbTmGjIguxWak2BEl2aeY+DdmdPPLNXd6MXWiva9Xm/HWKxVRDA==",
+        "dependencies": {
+          "zod": "zod@3.23.8"
+        }
+      },
       "tr46@0.0.3": {
         "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==",
         "dependencies": {}
@@ -110,6 +117,10 @@
       },
       "ws@8.18.0": {
         "integrity": "sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==",
+        "dependencies": {}
+      },
+      "zod@3.23.8": {
+        "integrity": "sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==",
         "dependencies": {}
       }
     }
@@ -400,13 +411,16 @@
     "https://deno.land/x/postgresjs@v3.4.3/src/queue.js": "15e6345adb6708bf3b99ad39fc2231c2fb61de5f6cba4b7a7a6be881482a4ec3",
     "https://deno.land/x/postgresjs@v3.4.3/src/result.js": "001ff5e0c8d634674f483d07fbcd620a797e3101f842d6c20ca3ace936260465",
     "https://deno.land/x/postgresjs@v3.4.3/src/subscribe.js": "6ac0679e186ab4e681c55252ff50ac4e567df47a7d1382e6e37928f3e9f1fff8",
-    "https://deno.land/x/postgresjs@v3.4.3/src/types.js": "471f4a6c35412aa202a7c177c0a7e5a7c3bd225f01bbde67c947894c1b8bf6ed"
+    "https://deno.land/x/postgresjs@v3.4.3/src/types.js": "471f4a6c35412aa202a7c177c0a7e5a7c3bd225f01bbde67c947894c1b8bf6ed",
+    "https://deno.land/x/sentry@8.53.0/index.mjs": "d013b4d284d111fa2e3db2df1d37bb2630b86fa6f7937fb9ccd7ea078fa888a1"
   },
   "workspace": {
     "dependencies": [
       "jsr:@hexagon/croner@8.1.2",
       "jsr:@hono/hono@4.6.20",
+      "npm:date-fns-tz",
       "npm:drizzle-orm@0.28.5",
+      "npm:dub",
       "npm:twilio@^5.4.3"
     ]
   }
