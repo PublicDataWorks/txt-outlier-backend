@@ -48,10 +48,7 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
   // deno-lint-ignore no-explicit-any
   const postData: any = {
     posts: {
-      'username': 'TXT Outlier',
-      notification: {
-        title: 'System',
-        body: `Admins action`,
+      'username': 'Admin'
       },
       text: postBody,
       conversation: conversationId,
