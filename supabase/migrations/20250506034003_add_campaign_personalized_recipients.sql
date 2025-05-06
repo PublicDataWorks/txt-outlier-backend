@@ -14,7 +14,7 @@ DECLARE
   v_campaign_title TEXT;
 BEGIN
   -- Create a unique campaign name based on timestamp
-  v_campaign_title := 'Personalized Campaign ' || to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS');
+  v_campaign_title := 'Personalized Campaign';
 
   -- Create a single campaign record for all messages in this batch
   INSERT INTO campaigns (
@@ -25,7 +25,7 @@ BEGIN
     recipient_count
   ) VALUES (
     v_campaign_title,
-    'Personalized campaign messages',
+    'Personalized campaign',
     NOW() - interval '1 minute',  -- Set to 1 minute in the past for safety
     TRUE,   -- Mark as processed since we handle it differently
     (SELECT COUNT(*) FROM new_rows)
@@ -37,7 +37,7 @@ BEGIN
     'broadcast_first_messages',
     ARRAY(
       SELECT jsonb_build_object(
-        'recipient_phone_number', CASE 
+        'recipient_phone_number', CASE
           WHEN LEFT(phone_number, 1) = '+' THEN phone_number
           ELSE '+' || phone_number
         END,

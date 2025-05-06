@@ -136,10 +136,10 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   } else {
     const errorMessage = `
         [sendBroadcastMessage] Failed to send broadcast message.
+        ${JSON.stringify(await response.json())}
         Message: ${JSON.stringify(results[0])},
         isSecond: ${isSecond},
         broadcast: ${messageMetadata.broadcast_id}
-        Missive's response = ${JSON.stringify(await response.json())}
       `
     console.error(errorMessage)
     Sentry.captureException(errorMessage)
