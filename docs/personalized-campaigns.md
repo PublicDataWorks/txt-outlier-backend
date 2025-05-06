@@ -1,4 +1,4 @@
-# Personalized Campaigns
+# Personalized Campaign Recipients
 
 This feature allows you to send one-time campaigns where each recipient receives a custom message tailored specifically for them.
 
@@ -20,13 +20,13 @@ phone_number,message
 
 For convenience, you can [download a sample CSV template](sample_personalized_campaign.csv) to get started quickly.
 
-**Note about phone numbers**: Phone numbers can be in any format - with or without the "+" prefix. The system will process both formats correctly.
+**Note about phone numbers**: Phone numbers can be in any format - with or without the "+" prefix. The system will automatically add the "+" prefix to any phone number that doesn't already have it.
 
 ### 2. Import the CSV Through Supabase Dashboard
 
 1. Log in to your Supabase dashboard
 2. Navigate to the Table Editor
-3. Find the `personalized_campaign_messages` table
+3. Find the `campaign_personalized_recipients` table
 4. Click "Import" and select your CSV file
 5. Make sure the column names match exactly: `phone_number` and `message`
 6. Complete the import
@@ -34,10 +34,11 @@ For convenience, you can [download a sample CSV template](sample_personalized_ca
 ### 3. Automatic Processing
 
 - The system will automatically:
-  - Create a campaign record with a timestamp-based name
-  - Send each message to the queue for processing
-  - Remove the record from the table after successful queuing
-  - Track the message in the standard message tracking system
+  - Create a single campaign record with a timestamp-based name for all messages imported at once
+  - Format phone numbers with a leading "+" sign if not already present
+  - Send all messages to the queue for processing as a batch
+  - Remove the processed records from the table
+  - Track all messages in the standard message tracking system under the same campaign
 
 ### Important Notes
 
@@ -51,8 +52,6 @@ For convenience, you can [download a sample CSV template](sample_personalized_ca
 
 If messages aren't being sent:
 - Check that your CSV format is correct with exactly two columns
-- Verify phone numbers are in the expected format 
+- Verify phone numbers are in the expected format
 - Check the Supabase logs for any errors
 - Make sure the migration has been applied properly
-
-Need help? Contact the development team for assistance.

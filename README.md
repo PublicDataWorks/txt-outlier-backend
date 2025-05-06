@@ -130,8 +130,8 @@ The following edge functions are utilized within the broadcast and campaign syst
    function.
 4. **outlier_on_broadcast_second_messages_delete**: Trigger that runs when a message is removed from
    `broadcast_second_messages`.
-5. **trigger_process_personalized_campaign_messages**: Trigger that activates when new records are inserted into the
-   `personalized_campaign_messages` table, automatically creating a campaign and queuing personalized messages.
+5. **trigger_process_campaign_personalized_recipient_batch**: Statement-level trigger that activates when new records are inserted into the
+   `campaign_personalized_recipients` table, automatically creating a single campaign for all records and queuing personalized messages in a batch.
 
 #### Scheduled Jobs
 
@@ -146,10 +146,8 @@ The following edge functions are utilized within the broadcast and campaign syst
 1. **queue_broadcast_messages**: Function to queue messages for broadcasting.
 2. **check_and_run_campaigns**: PostgreSQL function that checks the `run_at` field of the `campaign` table and enqueues
    messages to `broadcast_first_messages`.
-3. **process_personalized_campaign_messages**: Function that processes personalized campaign messages and queues them
+3. **process_campaign_personalized_recipient_batch**: Function that processes batches of personalized campaign recipients and queues messages
    for sending.
-4. **manually_process_personalized_campaign**: Helper function to manually trigger processing of personalized campaign
-   messages.
 
 ### Operational Flow
 
@@ -169,9 +167,9 @@ The following edge functions are utilized within the broadcast and campaign syst
 
 #### Initiating a Personalized Campaign
 
-1. Insert records into the `personalized_campaign_messages` table with a common `campaign_name`.
-2. The `trigger_process_personalized_campaign_messages` trigger activates automatically.
-3. The trigger creates a new campaign record in the `campaigns` table if one doesn't exist for this campaign name.
+1. Insert records into the `campaign_personalized_recipients` table.
+2. The `trigger_process_campaign_personalized_recipient` trigger activates automatically.
+3. The trigger creates a new campaign record in the `campaigns` table.
 4. The trigger then queues all personalized messages directly to `broadcast_first_messages`.
 5. Each recipient receives their custom message instead of a standard campaign message.
 
@@ -220,7 +218,7 @@ The following edge functions are utilized within the broadcast and campaign syst
   from admins, updating the `unsubscribe` field and notifying the team.
 - **Personalized Campaigns**: The personalized campaign feature allows for one-time campaigns where each recipient
   receives a custom message. This is implemented through database triggers that automatically process and queue messages
-  when records are inserted into the `personalized_campaign_messages` table.
+  when records are inserted into the `campaign_personalized_recipients` table.
   See [Personalized Campaigns Documentation](docs/personalized-campaigns.md) for usage instructions.
 
 ### Developer Notes
