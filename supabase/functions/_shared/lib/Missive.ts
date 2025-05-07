@@ -5,6 +5,7 @@ import Sentry from './Sentry.ts'
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const GET_MESSAGE_URL = 'https://public.missiveapp.com/v1/messages/'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
+const LABELS_URL = 'https://public.missiveapp.com/v1/shared_labels'
 const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')!
 const MISSIVE_ORGANIZATION_ID = Deno.env.get('MISSIVE_ORGANIZATION_ID')!
 const MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES')!
@@ -27,7 +28,6 @@ const sendMessage = async (message: string, toPhone: string, isSecond: boolean, 
     },
   }
 
-  // Add label to the conversation if sharedLabelId is provided
   if (sharedLabelId) {
     body.drafts.add_shared_labels = [sharedLabelId]
   }
@@ -126,10 +126,62 @@ const verifySignature = async (req: Request, requestBody: any): Promise<boolean>
   )
 }
 
+const createLabel = async (labelName: string) => {
+  try {
+    const response = await fetch(LABELS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`
+      },
+      body: JSON.stringify({
+        shared_labels: {
+          name: labelName,
+          organization: MISSIVE_ORGANIZATION_ID
+        }
+      })
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const label = data.shared_labels[0] || data.shared_labels
+      return label.id
+    }
+  } catch (error) {
+    console.error(`Error creating label: ${error.message}`)
+  }
+}
+
+const findLabelByName = async (labelName: string) => {
+  try {
+    const response = await fetch(LABELS_URL, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const label = data.shared_labels.find(
+        (l: any) => l.name.toLowerCase() === labelName.toLowerCase()
+      )
+      
+      return label?.id
+    }
+  } catch (error) {
+    console.error(`Error finding label: ${error.message}`)
+  }
+}
+
 export default {
   sendMessage,
   createPost,
   verifySignature,
   getMissiveMessage,
+  createLabel,
+  findLabelByName,
   CREATE_MESSAGE_URL,
+  LABELS_URL,
 } as const
