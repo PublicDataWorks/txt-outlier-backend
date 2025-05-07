@@ -168,7 +168,7 @@ The following edge functions are utilized within the broadcast and campaign syst
 #### Initiating a Personalized Campaign
 
 1. Insert records into the `campaign_personalized_recipients` table.
-2. The `trigger_process_campaign_personalized_recipient` trigger activates automatically.
+2. The `trigger_process_campaign_personalized_recipient_batch` trigger activates automatically.
 3. The trigger creates a new campaign record in the `campaigns` table.
 4. The trigger then queues all personalized messages directly to `broadcast_first_messages`.
 5. Each recipient receives their custom message instead of a standard campaign message.
