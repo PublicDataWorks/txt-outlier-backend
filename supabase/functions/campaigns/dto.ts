@@ -29,6 +29,7 @@ const BaseCampaignSchema = z.object({
   firstMessage: z.string().nonempty('First message is required'),
   secondMessage: z.string().nullable().optional(),
   delay: z.number().int().positive('Delay must be a positive integer').optional(),
+  campaignLabelName: z.string().optional().nullable(),
   runAt: z.number()
     .int('Must be a Unix timestamp')
     .transform((timestamp) => new Date(timestamp * 1000))
@@ -69,6 +70,7 @@ export const formatCampaignSelect = {
   segments: campaigns.segments,
   delay: campaigns.delay,
   recipientCount: campaigns.recipientCount,
+  labelId: campaigns.labelId,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::INTEGER`,
 }
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>

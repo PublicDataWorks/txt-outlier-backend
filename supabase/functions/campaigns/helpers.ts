@@ -233,6 +233,7 @@ export const parseFileBasedFormData = (formData: FormData) => ({
   secondMessage: formData.get('secondMessage')?.toString(),
   runAt: formData.get('runAt') ? Number(formData.get('runAt')) : undefined,
   delay: formData.get('delay') ? Number(formData.get('delay')) : undefined,
+  campaignLabelName: formData.get('campaignLabelName')?.toString(),
 })
 
 async function uploadRecipientFile(file: File, campaignId: number) {

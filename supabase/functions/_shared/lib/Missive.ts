@@ -11,9 +11,9 @@ const MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES = Deno.env.get('MISSIVE_SECRET_BR
 const MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES')!
 const MISSIVE_SECRET_NON_BROADCAST = Deno.env.get('MISSIVE_SECRET_NON_BROADCAST')!
 
-const sendMessage = async (message: string, toPhone: string, isSecond: boolean) => {
+const sendMessage = async (message: string, toPhone: string, isSecond: boolean, sharedLabelId?: string) => {
   const startTime = Date.now()
-  const body = {
+  const body: any = {
     drafts: {
       'body': message,
       'to_fields': [
@@ -25,6 +25,11 @@ const sendMessage = async (message: string, toPhone: string, isSecond: boolean) 
       },
       'send': true, // Send right away
     },
+  }
+
+  // Add label to the conversation if sharedLabelId is provided
+  if (sharedLabelId) {
+    body.drafts.add_shared_labels = [sharedLabelId]
   }
   const apiToken = isSecond ? MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES : MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES
   const response = await fetch(CREATE_MESSAGE_URL, {
