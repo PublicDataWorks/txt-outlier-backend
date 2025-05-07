@@ -109,6 +109,7 @@ app.post(`${FUNCTION_PATH}recipient-count/`, async (c) => {
   }
 })
 
+// This API handles both segment-based and file-based campaign creation
 app.post(FUNCTION_PATH, async (c) => {
   try {
     const contentType = c.req.header('content-type') || ''
@@ -151,6 +152,7 @@ app.post(FUNCTION_PATH, async (c) => {
   }
 })
 
+// This API handles both segment-based and file-based campaign updates
 app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
   try {
     const id = Number(c.req.param('id'))
@@ -160,6 +162,7 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
 
     const contentType = c.req.header('content-type') || ''
     if (contentType.includes('multipart/form-data')) {
+      // TODO: This requires a new file upload
       const formData = await c.req.formData()
       const file = formData.get('file') as File | null
 
