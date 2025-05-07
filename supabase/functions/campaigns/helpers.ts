@@ -160,11 +160,6 @@ export const handleFileBasedCampaignUpdate = async (
 ) => {
   const phoneNumbers = await processPhoneNumberFile(file)
 
-  let labelId: string | undefined;
-  if (campaignData.campaignLabelName) {
-    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName);
-  }
-
   const updatedCampaign = await supabase.transaction(async (tx) => {
     await tx
       .insert(authors)
@@ -181,7 +176,6 @@ export const handleFileBasedCampaignUpdate = async (
         delay: campaignData.delay,
         segments: null,
         recipientCount: phoneNumbers.length,
-        labelId,
       })
       .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
       .returning(formatCampaignSelect)
@@ -224,10 +218,6 @@ export const handleSegmentBasedCampaignUpdate = async (
   campaignId: number,
   campaignData: UpdateCampaignData,
 ) => {
-  let labelId;
-  if (campaignData.campaignLabelName) {
-    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName);
-  }
 
   if (campaignData.segments) {
     const segmentsValid = await validateSegments(
@@ -257,7 +247,6 @@ export const handleSegmentBasedCampaignUpdate = async (
         segments,
         recipientCount,
         recipientFileUrl: null,
-        labelId,
       })
       .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
       .returning(formatCampaignSelect)
@@ -280,7 +269,6 @@ export const handleSegmentBasedCampaignUpdate = async (
         secondMessage: campaignData.secondMessage,
         runAt: campaignData.runAt,
         delay: campaignData.delay,
-        labelId,
       })
       .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
       .returning(formatCampaignSelect)

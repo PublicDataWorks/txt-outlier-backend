@@ -50,6 +50,7 @@ export const UpdateCampaignSchema = BaseCampaignSchema
     segments: SegmentsSchema.optional().nullable(),
   })
   .partial()
+  .omit({ campaignLabelName: true })
   .refine(
     (data) => Object.keys(data).length > 0,
     'At least one field must be provided for update',

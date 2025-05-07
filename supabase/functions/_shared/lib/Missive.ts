@@ -30,6 +30,7 @@ const sendMessage = async (message: string, toPhone: string, isSecond: boolean, 
 
   if (sharedLabelId) {
     body.drafts.add_shared_labels = [sharedLabelId]
+    body.drafts.organization = MISSIVE_ORGANIZATION_ID
   }
   const apiToken = isSecond ? MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES : MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES
   const response = await fetch(CREATE_MESSAGE_URL, {
@@ -164,10 +165,11 @@ const findLabelByName = async (labelName: string) => {
 
     if (response.ok) {
       const data = await response.json()
+      console.log(`Label data: ${JSON.stringify(data)}`)
       const label = data.shared_labels.find(
         (l: any) => l.name.toLowerCase() === labelName.toLowerCase()
       )
-      
+
       return label?.id
     }
   } catch (error) {

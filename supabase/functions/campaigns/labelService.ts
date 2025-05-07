@@ -15,6 +15,7 @@ const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<st
   // First, check our database
   const dbLabel = await findLabelInDatabase(campaignLabelName)
   if (dbLabel) {
+    console.log(`Label found in database: ${campaignLabelName} ${dbLabel.id}`)
     return dbLabel.id
   }
 
@@ -24,12 +25,16 @@ const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<st
     const labelId = await Missive.createLabel(campaignLabelName)
     if (labelId) {
       // Successfully created the label
+      console.log(`Label created in Missive: ${campaignLabelName} ${labelId}`)
       return labelId
     }
 
     // Creation failed, label might already exist
     const existingLabelId = await Missive.findLabelByName(campaignLabelName)
-    if (existingLabelId) return existingLabelId
+    if (existingLabelId) {
+      console.log(`Label found in Missive: ${campaignLabelName} ${labelId}`)
+      return existingLabelId
+    }
 
   } catch (error) {
     console.error(`Error handling label: ${error.message}`)

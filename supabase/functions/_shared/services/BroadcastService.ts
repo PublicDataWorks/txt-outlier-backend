@@ -106,7 +106,8 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   const messageMetadata = results[0].message
   console.log(`Sending broadcast message. isSecond: ${isSecond}, messageMetadata: ${JSON.stringify(messageMetadata)}`)
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
-  const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
+  const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond, messageMetadata.label_id || undefined)
+
   if (response.ok) {
     let secondMessageQueueId = undefined
     if (!isSecond && messageMetadata.second_message) {
