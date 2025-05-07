@@ -27,16 +27,16 @@ For convenience, you can [download a sample CSV template](sample_personalized_ca
 1. Log in to your Supabase dashboard
 2. Navigate to the Table Editor
 3. Find the `campaign_personalized_recipients` table
-4. Click "Import" and select your CSV file
+4. Click "Insert" -> "Import data from CSV" and select your CSV file
 5. Make sure the column names match exactly: `phone_number` and `message`
 6. Complete the import
 
 ### 3. Automatic Processing
 
 - The system will automatically:
-  - Create a single campaign record with a timestamp-based name for all messages imported at once
+  - Create a single campaign record for all messages imported at once
   - Format phone numbers with a leading "+" sign if not already present
-  - Send all messages to the queue for processing as a batch
+  - Send all messages to the [queue](https://supabase.com/dashboard/project/<projectId>/integrations/queues/queues) for processing as a batch
   - Remove the processed records from the table
   - Track all messages in the standard message tracking system under the same campaign
 
@@ -53,5 +53,4 @@ For convenience, you can [download a sample CSV template](sample_personalized_ca
 If messages aren't being sent:
 - Check that your CSV format is correct with exactly two columns
 - Verify phone numbers are in the expected format
-- Check the Supabase logs for any errors
-- Make sure the migration has been applied properly
+- Check the [Supabase PostgreSQL logs](https://supabase.com/dashboard/project/<projectId>/logs/postgres-logs) or [send-messages function logs](https://supabase.com/dashboard/project/<projectId>/functions/send-messages/logs) for any errors
