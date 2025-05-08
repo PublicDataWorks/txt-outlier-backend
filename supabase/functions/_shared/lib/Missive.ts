@@ -48,7 +48,8 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
   // deno-lint-ignore no-explicit-any
   const postData: any = {
     posts: {
-      'username': 'Admin'
+    'username': "SMS",
+    "username_icon": "https://avatars.githubusercontent.com/u/6352330?s=200&v=4",
       },
       text: postBody,
       conversation: conversationId,
