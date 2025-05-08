@@ -6,7 +6,7 @@ import { desc, eq } from 'drizzle-orm'
 import { client } from './utils.ts'
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { authors, campaignFileRecipients, campaigns } from '../_shared/drizzle/schema.ts'
+import { authors, campaignFileRecipients, campaigns, labels } from '../_shared/drizzle/schema.ts'
 import { createCampaign } from './factories/campaign.ts'
 import { createLabel } from './factories/label.ts'
 import { createAuthor } from './factories/author.ts'
@@ -56,6 +56,159 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
     assertEquals(newCampaign.segments.included, [{ id: label.id }])
     // @ts-ignore - Segments is stored as JSONB, TypeScript doesn't know its structure
     assertEquals(newCampaign.segments.excluded, [{ id: label2.id }, { id: label3.id }])
+  })
+
+  it('should create a campaign with existing campaignLabelName', async () => {
+    // First create a label to reference
+    const testLabel = await createLabel({ name: 'Test Campaign Label' })
+    const segmentLabel = await createLabel()
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Create a campaign using the campaignLabelName that matches an existing label
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with existing label',
+        firstMessage: 'Test message with existing label',
+        runAt: futureTimestamp,
+        campaignLabelName: 'Test Campaign Label',
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    // Check the response contains the campaign data
+    assertEquals(data.title, 'Campaign with existing label')
+    assertEquals(data.firstMessage, 'Test message with existing label')
+    assertEquals(data.runAt, futureTimestamp)
+    assertEquals(data.labelId, testLabel.id)
+
+    // Now check the database record to verify the labelId was set correctly
+    const [campaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(campaign.labelId, testLabel.id)
+  })
+
+  it('should handle null, empty, and whitespace campaignLabelName', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const segmentLabel = await createLabel()
+
+    // Create a campaign with null campaignLabelName
+    const { data: nullLabelData } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with null label',
+        firstMessage: 'Test message with null label',
+        runAt: futureTimestamp,
+        campaignLabelName: null,
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    assertEquals(nullLabelData.title, 'Campaign with null label')
+    assertEquals(nullLabelData.labelId, null)
+
+    // Verify in database that labelId is null
+    const nullLabelCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(nullLabelCampaigns[0].labelId, null)
+
+    // Create a campaign with empty string campaignLabelName
+    const { data: emptyLabelData } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with empty label',
+        firstMessage: 'Test message with empty label',
+        runAt: futureTimestamp,
+        campaignLabelName: '',
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    assertEquals(emptyLabelData.title, 'Campaign with empty label')
+    assertEquals(emptyLabelData.labelId, null)
+
+    // Verify in database that labelId is null
+    const emptyLabelCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(emptyLabelCampaigns[0].labelId, null)
+
+    // Create a campaign with whitespace-only campaignLabelName
+    const { data: whitespaceLabelData } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with whitespace-only label',
+        firstMessage: 'Test message with whitespace-only label',
+        runAt: futureTimestamp,
+        campaignLabelName: '   ',
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    assertEquals(whitespaceLabelData.title, 'Campaign with whitespace-only label')
+    assertEquals(whitespaceLabelData.labelId, null)
+
+    // Verify in database that labelId is null
+    const whitespaceLabelCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(whitespaceLabelCampaigns[0].labelId, null)
+  })
+
+  it('should handle case-insensitivity and trimming for campaignLabelName', async () => {
+    // Create a label with mixed-case
+    const mixedCaseLabel = await createLabel({ name: 'MiXeD CaSe LaBeL' })
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const segmentLabel = await createLabel()
+
+    // Create a campaign using lowercase version of the same label name with spaces
+    const { data } = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with case-insensitive label',
+        firstMessage: 'Test message with case-insensitive label',
+        runAt: futureTimestamp,
+        campaignLabelName: '  mixed case label  ', // lowercase with extra spaces
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    // Check the response contains the campaign data
+    assertEquals(data.title, 'Campaign with case-insensitive label')
+    assertEquals(data.labelId, mixedCaseLabel.id)
+
+    // Verify in database that the correct labelId was set
+    const [campaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(campaign.labelId, mixedCaseLabel.id)
   })
 
   it('should create a campaign with all fields', async () => {
@@ -669,6 +822,73 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .limit(1)
 
     assertEquals(unchangedCampaign.firstMessage, 'Original message')
+  })
+
+  it('should not allow updating campaignLabelName field', async () => {
+    const now = new Date()
+    const futureTimestamp = Math.floor(now.getTime() / 1000) + 86400
+    const labelName = `Original Label ${Date.now()}`
+    const newLabelName = `New Label ${Date.now()}`
+
+    // Create a label for the campaign
+    const originalLabel = await createLabel({ name: labelName })
+
+    // Create a campaign with an initial label
+    const campaign = await createCampaign({
+      title: 'Original Campaign',
+      firstMessage: 'Original message',
+      runAt: new Date(futureTimestamp * 1000),
+      labelId: originalLabel.id,
+    })
+
+    // Create a new label we'll try to update to
+    const newLabel = await createLabel({ name: newLabelName })
+
+    // Attempt to update with campaignLabelName
+    const response = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        title: 'Updated Campaign',
+        campaignLabelName: newLabel.name, // This should be ignored due to omit() in schema
+      },
+    })
+
+    // Verify the request succeeded (since campaignLabelName is omitted, not an error)
+    assertEquals(response.error, null)
+    assertEquals(response.data.title, 'Updated Campaign')
+
+    // Verify the labelId was not changed in the database
+    const [updatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(updatedCampaign.title, 'Updated Campaign')
+    assertEquals(updatedCampaign.labelId, originalLabel.id) // Label ID should remain unchanged
+
+    // Now try with explicit null value
+    const nullResponse = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
+      method: 'PATCH',
+      body: {
+        firstMessage: 'Updated again',
+        campaignLabelName: null, // This should be ignored too
+      },
+    })
+
+    // Verify the request succeeded
+    assertEquals(nullResponse.error, null)
+    assertEquals(nullResponse.data.firstMessage, 'Updated again')
+
+    // Check that the label ID is still unchanged
+    const [nullUpdatedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaign.id))
+      .limit(1)
+
+    assertEquals(nullUpdatedCampaign.firstMessage, 'Updated again')
+    assertEquals(nullUpdatedCampaign.labelId, originalLabel.id) // Label ID should remain unchanged
   })
 
   it('should convert file-based campaign to segment-based', async () => {
@@ -1422,6 +1642,67 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     assertEquals(response.data.runAt, futureTimestamp)
     assertEquals(response.data.delay, 1800)
     assertEquals(response.data.recipientCount, 3)
+  })
+
+  it('should create a file-based campaign with existing campaignLabelName', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const labelName = `File Campaign Label ${Date.now()}`
+
+    // First create the label explicitly
+    const newLabel = await createLabel({ name: labelName })
+
+    // Create a CSV file with phone numbers
+    const phoneNumbers = ['+11234567890', '+19876543210']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'test-label-numbers.csv', { type: 'text/csv' })
+
+    // Create a form with a campaignLabelName
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Campaign with Label')
+    formData.append('firstMessage', 'Test message for file campaign with label')
+    formData.append('runAt', futureTimestamp.toString())
+    formData.append('campaignLabelName', labelName)
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    assertEquals(response.data.title, 'File Campaign with Label')
+    assertEquals(response.data.labelId, newLabel.id)
+
+    // Verify the campaign was actually saved to the database with the correct label ID
+    const [savedCampaign] = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(1)
+
+    assertEquals(savedCampaign.title, 'File Campaign with Label')
+    assertEquals(savedCampaign.labelId, newLabel.id)
+    assertEquals(savedCampaign.recipientCount, 2)
+  })
+
+  it('should verify campaign details in database', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    const phoneNumbers = ['+11234567890', '+19876543210', '+15551234567']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'test-numbers.csv', { type: 'text/csv' })
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Upload Test')
+    formData.append('firstMessage', 'Hello from file upload test')
+    formData.append('secondMessage', 'Follow-up message')
+    formData.append('runAt', futureTimestamp.toString())
+    formData.append('delay', '1800')
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
 
     // Verify in database
     const [savedCampaign] = await supabase

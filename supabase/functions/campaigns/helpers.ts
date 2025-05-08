@@ -54,9 +54,9 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
     throw new BadRequestError('One or more segment IDs are invalid')
   }
 
-  let labelId;
+  let labelId
   if (campaignData.campaignLabelName) {
-    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName);
+    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
   }
 
   const recipientCountResult = await supabase.execute(sql`
@@ -84,9 +84,9 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
 export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampaign, file: File) => {
   const phoneNumbers = await processPhoneNumberFile(file)
 
-  let labelId: string | undefined;
+  let labelId: string | undefined
   if (campaignData.campaignLabelName) {
-    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName);
+    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
   }
 
   const newCampaign = await supabase.transaction(async (tx) => {
@@ -218,7 +218,6 @@ export const handleSegmentBasedCampaignUpdate = async (
   campaignId: number,
   campaignData: UpdateCampaignData,
 ) => {
-
   if (campaignData.segments) {
     const segmentsValid = await validateSegments(
       campaignData.segments.included,

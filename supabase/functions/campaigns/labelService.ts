@@ -35,7 +35,6 @@ const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<st
       console.log(`Label found in Missive: ${campaignLabelName} ${existingLabelId}`)
       return existingLabelId
     }
-
   } catch (error) {
     console.error(`Error handling label: ${error.message}`)
   }
@@ -54,5 +53,5 @@ const findLabelInDatabase = async (name: string) => {
 
 export default {
   getLabelIdFromName,
-  findLabelInDatabase
+  findLabelInDatabase,
 }

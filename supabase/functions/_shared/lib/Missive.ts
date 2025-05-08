@@ -14,6 +14,7 @@ const MISSIVE_SECRET_NON_BROADCAST = Deno.env.get('MISSIVE_SECRET_NON_BROADCAST'
 
 const sendMessage = async (message: string, toPhone: string, isSecond: boolean, sharedLabelId?: string) => {
   const startTime = Date.now()
+  // deno-lint-ignore no-explicit-any
   const body: any = {
     drafts: {
       'body': message,
@@ -133,14 +134,14 @@ const createLabel = async (labelName: string) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`
+        'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`,
       },
       body: JSON.stringify({
         shared_labels: {
           name: labelName,
-          organization: MISSIVE_ORGANIZATION_ID
-        }
-      })
+          organization: MISSIVE_ORGANIZATION_ID,
+        },
+      }),
     })
 
     if (response.ok) {
@@ -160,15 +161,15 @@ const findLabelByName = async (labelName: string) => {
 
     // Continue fetching pages until we find the label or reach an empty page
     // Limit to 40 iterations (40*50 = 2000 labels max)
-    let iteration = 0;
+    let iteration = 0
     while (iteration < 40) {
-      iteration++;
+      iteration++
       const response = await fetch(`${GET_LABELS_URL}?limit=${limit}&offset=${offset}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`
-        }
+          'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`,
+        },
       })
 
       if (!response.ok) {
@@ -183,7 +184,8 @@ const findLabelByName = async (labelName: string) => {
       }
 
       const foundLabel = data.shared_labels.find(
-        (l: any) => l.name.toLowerCase() === labelName.toLowerCase()
+        // deno-lint-ignore no-explicit-any
+        (label: any) => label.name.toLowerCase() === labelName.toLowerCase(),
       )
 
       if (foundLabel) {
