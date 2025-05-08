@@ -153,67 +153,6 @@ async function processPhoneNumberFile(file: File): Promise<string[]> {
   return phoneNumbers
 }
 
-export const handleFileBasedCampaignUpdate = async (
-  campaignId: number,
-  campaignData: Partial<FileBasedCampaign>,
-  file: File,
-) => {
-  const phoneNumbers = await processPhoneNumberFile(file)
-
-  const updatedCampaign = await supabase.transaction(async (tx) => {
-    await tx
-      .insert(authors)
-      .values(phoneNumbers.map((phone) => ({ phoneNumber: phone, addedViaFileUpload: true })))
-      .onConflictDoNothing({ target: authors.phoneNumber })
-
-    const [updated] = await tx
-      .update(campaigns)
-      .set({
-        title: campaignData.title,
-        firstMessage: campaignData.firstMessage,
-        secondMessage: campaignData.secondMessage,
-        runAt: campaignData.runAt,
-        delay: campaignData.delay,
-        segments: null,
-        recipientCount: phoneNumbers.length,
-      })
-      .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
-      .returning(formatCampaignSelect)
-
-    if (!updated) {
-      throw new BadRequestError('Campaign not found or cannot be edited')
-    }
-
-    await tx
-      .delete(campaignFileRecipients)
-      .where(eq(campaignFileRecipients.campaignId, campaignId))
-
-    await tx
-      .insert(campaignFileRecipients)
-      .values(
-        phoneNumbers.map((phone) => ({
-          phoneNumber: phone,
-          campaignId: campaignId,
-        })),
-      )
-
-    return updated
-  })
-
-  // If this fails, the campaign is still created, just without the file URL
-  try {
-    const recipientFileUrl = await uploadRecipientFile(file, campaignId)
-    await supabase
-      .update(campaigns)
-      .set({ recipientFileUrl })
-      .where(eq(campaigns.id, campaignId))
-  } catch (error) {
-    console.error(`Failed to upload recipient file for campaign ${campaignId}:`, error)
-  }
-
-  return updatedCampaign
-}
-
 export const handleSegmentBasedCampaignUpdate = async (
   campaignId: number,
   campaignData: UpdateCampaignData,

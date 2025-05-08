@@ -60,6 +60,7 @@ app.get(FUNCTION_PATH, async (c) => {
       successfulDeliveries: Number(campaign.successfulDeliveries),
       failedDeliveries: Number(campaign.failedDeliveries),
       unsubscribes: Number(campaign.unsubscribes),
+      labelId: campaign.labelId,
     }))
 
     const [{ count }] = await supabase
