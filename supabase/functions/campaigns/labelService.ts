@@ -1,5 +1,5 @@
 import { labels } from '../_shared/drizzle/schema.ts'
-import { eq } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import supabase from '../_shared/lib/supabase.ts'
 import Missive from '../_shared/lib/Missive.ts'
 
@@ -9,7 +9,7 @@ import Missive from '../_shared/lib/Missive.ts'
  * If unsuccessful for any reason, returns undefined.
  */
 const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<string | undefined> => {
-  campaignLabelName = campaignLabelName?.trim()
+  campaignLabelName = campaignLabelName?.toLowerCase()?.trim()
   if (!campaignLabelName) return
 
   // First, check our database
@@ -32,7 +32,7 @@ const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<st
     // Creation failed, label might already exist
     const existingLabelId = await Missive.findLabelByName(campaignLabelName)
     if (existingLabelId) {
-      console.log(`Label found in Missive: ${campaignLabelName} ${labelId}`)
+      console.log(`Label found in Missive: ${campaignLabelName} ${existingLabelId}`)
       return existingLabelId
     }
 
@@ -42,10 +42,11 @@ const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<st
 }
 
 const findLabelInDatabase = async (name: string) => {
+  // Use case-insensitive search with TRIM to handle whitespace
   const [label] = await supabase
     .select({ id: labels.id })
     .from(labels)
-    .where(eq(labels.name, name))
+    .where(sql`LOWER(TRIM(${labels.name})) = ${name}`)
     .limit(1)
 
   return label

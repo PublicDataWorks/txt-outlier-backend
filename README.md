@@ -46,12 +46,11 @@ deno task dev
 
 ## Testing
 
-- Run `deno task test:setup`.
+- Run `deno task test:setup` to prepare the testing environment.
+- Run `deno task test` to execute all tests.
+- Run `deno task test:db` to run database-specific tests.
 
-- Run `deno task test`.
-
-- Run
-  `deno task test:db`.
+For detailed information about the testing architecture and best practices, see the [Testing Documentation](docs/testing.md).
 
 ## Developer Tasks
 
