@@ -337,6 +337,8 @@ export const broadcasts = pgTable('broadcasts', {
   noUsers: integer('no_users').default(0).notNull(),
   firstMessage: text('first_message').notNull(),
   secondMessage: text('second_message').notNull(),
+  originalFirstMessage: text('original_first_message').notNull(),
+  originalSecondMessage: text('original_second_message').notNull(),
   twilioPaging: text('twilio_paging'),
 })
 

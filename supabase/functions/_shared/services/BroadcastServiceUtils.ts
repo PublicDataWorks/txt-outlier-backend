@@ -16,8 +16,10 @@ interface ReconcileOptions {
 }
 const createNextBroadcast = async (previousBroadcast: BroadcastWithSegments) => {
   const newBroadcast = {
-    firstMessage: previousBroadcast.firstMessage,
-    secondMessage: previousBroadcast.secondMessage,
+    firstMessage: previousBroadcast.originalFirstMessage,
+    secondMessage: previousBroadcast.originalSecondMessage,
+    originalFirstMessage: previousBroadcast.originalFirstMessage,
+    originalSecondMessage: previousBroadcast.originalSecondMessage,
     delay: previousBroadcast.delay,
     editable: previousBroadcast.editable,
     noUsers: previousBroadcast.noUsers,
@@ -31,13 +33,24 @@ const createNextBroadcast = async (previousBroadcast: BroadcastWithSegments) => 
     })))
     return insertedIds[0].id!
   })
-  await DubLinkShortener.cleanupUnusedLinks(insertedId, previousBroadcast.firstMessage, previousBroadcast.secondMessage)
-  const processedFirstMessage = await DubLinkShortener.shortenLinksInMessage(previousBroadcast.firstMessage, insertedId)
-  const processedSecondMessage = await DubLinkShortener.shortenLinksInMessage(previousBroadcast.secondMessage, insertedId)
-  await supabase
-    .update(broadcasts)
-    .set({ firstMessage: processedFirstMessage, secondMessage: processedSecondMessage })
-    .where(eq(broadcasts.id, insertedId))
+  const processedFirstMessage = await DubLinkShortener.shortenLinksInMessage(
+    newBroadcast.originalFirstMessage,
+    insertedId,
+  )
+  const processedSecondMessage = await DubLinkShortener.shortenLinksInMessage(
+    newBroadcast.originalSecondMessage,
+    insertedId,
+  )
+
+  if (
+    processedFirstMessage !== newBroadcast.originalFirstMessage ||
+    processedSecondMessage !== newBroadcast.originalSecondMessage
+  ) {
+    await supabase
+      .update(broadcasts)
+      .set({ firstMessage: processedFirstMessage, secondMessage: processedSecondMessage })
+      .where(eq(broadcasts.id, insertedId))
+  }
 }
 
 export { createNextBroadcast }
