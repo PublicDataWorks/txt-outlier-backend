@@ -11,6 +11,7 @@ import {
   UpdateCampaignData,
 } from './dto.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
+import labelService from './labelService.ts'
 
 const RECIPIENT_FILE_BUCKET_NAME = 'campaign-recipients'
 
@@ -53,6 +54,11 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
     throw new BadRequestError('One or more segment IDs are invalid')
   }
 
+  let labelId
+  if (campaignData.campaignLabelName) {
+    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
+  }
+
   const recipientCountResult = await supabase.execute(sql`
     SELECT get_campaign_recipient_count(${campaignData.segments}::jsonb) as recipient_count
   `)
@@ -61,9 +67,14 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
   const [newCampaign] = await supabase
     .insert(campaigns)
     .values({
-      ...campaignData,
+      title: campaignData.title,
+      firstMessage: campaignData.firstMessage,
+      secondMessage: campaignData.secondMessage,
+      runAt: campaignData.runAt,
+      delay: campaignData.delay,
       segments: sql`${campaignData.segments}::jsonb`,
       recipientCount,
+      labelId,
     })
     .returning(formatCampaignSelect)
 
@@ -73,13 +84,18 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
 export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampaign, file: File) => {
   const phoneNumbers = await processPhoneNumberFile(file)
 
-  return await supabase.transaction(async (tx) => {
+  let labelId: string | undefined
+  if (campaignData.campaignLabelName) {
+    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
+  }
+
+  const newCampaign = await supabase.transaction(async (tx) => {
     await tx
       .insert(authors)
       .values(phoneNumbers.map((phone) => ({ phoneNumber: phone, addedViaFileUpload: true })))
       .onConflictDoNothing()
 
-    const [newCampaign] = await tx
+    const [campaign] = await tx
       .insert(campaigns)
       .values({
         title: campaignData.title,
@@ -89,23 +105,34 @@ export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampa
         delay: campaignData.delay,
         segments: null,
         recipientCount: phoneNumbers.length,
+        labelId,
       })
       .returning(formatCampaignSelect)
+
     await tx
       .insert(campaignFileRecipients)
       .values(
         phoneNumbers.map((phone) => ({
           phoneNumber: phone,
-          campaignId: newCampaign.id,
+          campaignId: campaign.id,
         })),
       )
+
+    return campaign
+  })
+
+  // If this fails, the campaign is still created, just without the file URL
+  try {
     const recipientFileUrl = await uploadRecipientFile(file, newCampaign.id)
-    await tx
+    await supabase
       .update(campaigns)
       .set({ recipientFileUrl })
       .where(eq(campaigns.id, newCampaign.id))
-    return newCampaign
-  })
+  } catch (error) {
+    console.error(`Failed to upload recipient file for campaign ${newCampaign.id}:`, error)
+  }
+
+  return newCampaign
 }
 
 async function processPhoneNumberFile(file: File): Promise<string[]> {
@@ -124,50 +151,6 @@ async function processPhoneNumberFile(file: File): Promise<string[]> {
   }
 
   return phoneNumbers
-}
-
-export const handleFileBasedCampaignUpdate = async (
-  campaignId: number,
-  campaignData: Partial<FileBasedCampaign>,
-  file: File,
-) => {
-  const phoneNumbers = await processPhoneNumberFile(file)
-  return await supabase.transaction(async (tx) => {
-    await tx
-      .insert(authors)
-      .values(phoneNumbers.map((phone) => ({ phoneNumber: phone, addedViaFileUpload: true })))
-      .onConflictDoNothing({ target: authors.phoneNumber })
-    const recipientFileUrl = await uploadRecipientFile(file, campaignId)
-    const [updatedCampaign] = await tx
-      .update(campaigns)
-      .set({
-        ...campaignData,
-        segments: null,
-        recipientCount: phoneNumbers.length,
-        recipientFileUrl,
-      })
-      .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
-      .returning(formatCampaignSelect)
-
-    if (!updatedCampaign) {
-      throw new BadRequestError('Campaign not found or cannot be edited')
-    }
-
-    await tx
-      .delete(campaignFileRecipients)
-      .where(eq(campaignFileRecipients.campaignId, campaignId))
-
-    await tx
-      .insert(campaignFileRecipients)
-      .values(
-        phoneNumbers.map((phone) => ({
-          phoneNumber: phone,
-          campaignId: campaignId,
-        })),
-      )
-
-    return updatedCampaign
-  })
 }
 
 export const handleSegmentBasedCampaignUpdate = async (
@@ -191,11 +174,14 @@ export const handleSegmentBasedCampaignUpdate = async (
 
     const recipientCount = Number(recipientCountResult[0]?.recipient_count || 0)
 
-    // Update the campaign with the segments and recipient count
     const [updatedCampaign] = await supabase
       .update(campaigns)
       .set({
-        ...campaignData,
+        title: campaignData.title,
+        firstMessage: campaignData.firstMessage,
+        secondMessage: campaignData.secondMessage,
+        runAt: campaignData.runAt,
+        delay: campaignData.delay,
         segments,
         recipientCount,
         recipientFileUrl: null,
@@ -215,7 +201,13 @@ export const handleSegmentBasedCampaignUpdate = async (
   } else {
     const [updatedCampaign] = await supabase
       .update(campaigns)
-      .set(campaignData)
+      .set({
+        title: campaignData.title,
+        firstMessage: campaignData.firstMessage,
+        secondMessage: campaignData.secondMessage,
+        runAt: campaignData.runAt,
+        delay: campaignData.delay,
+      })
       .where(and(eq(campaigns.id, campaignId), gt(campaigns.runAt, new Date())))
       .returning(formatCampaignSelect)
 
@@ -233,6 +225,7 @@ export const parseFileBasedFormData = (formData: FormData) => ({
   secondMessage: formData.get('secondMessage')?.toString(),
   runAt: formData.get('runAt') ? Number(formData.get('runAt')) : undefined,
   delay: formData.get('delay') ? Number(formData.get('delay')) : undefined,
+  campaignLabelName: formData.get('campaignLabelName')?.toString(),
 })
 
 async function uploadRecipientFile(file: File, campaignId: number) {

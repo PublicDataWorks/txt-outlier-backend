@@ -46,12 +46,12 @@ deno task dev
 
 ## Testing
 
-- Run `deno task test:setup`.
+- Run `deno task test:setup` to prepare the testing environment.
+- Run `deno task test` to execute all tests.
+- Run `deno task test:db` to run database-specific tests.
 
-- Run `deno task test`.
-
-- Run
-  `deno task test:db`.
+For detailed information about the testing architecture and best practices, see
+the [Testing Documentation](docs/testing.md).
 
 ## Developer Tasks
 
@@ -130,8 +130,10 @@ The following edge functions are utilized within the broadcast and campaign syst
    function.
 4. **outlier_on_broadcast_second_messages_delete**: Trigger that runs when a message is removed from
    `broadcast_second_messages`.
-5. **trigger_process_campaign_personalized_recipient_batch**: Statement-level trigger that activates when new records are inserted into the
-   `campaign_personalized_recipients` table, automatically creating a single campaign for all records and queuing personalized messages in a batch.
+5. **trigger_process_campaign_personalized_recipient_batch**: Statement-level trigger that activates when new records
+   are inserted into the
+   `campaign_personalized_recipients` table, automatically creating a single campaign for all records and queuing
+   personalized messages in a batch.
 
 #### Scheduled Jobs
 
@@ -146,7 +148,8 @@ The following edge functions are utilized within the broadcast and campaign syst
 1. **queue_broadcast_messages**: Function to queue messages for broadcasting.
 2. **check_and_run_campaigns**: PostgreSQL function that checks the `run_at` field of the `campaign` table and enqueues
    messages to `broadcast_first_messages`.
-3. **process_campaign_personalized_recipient_batch**: Function that processes batches of personalized campaign recipients and queues messages
+3. **process_campaign_personalized_recipient_batch**: Function that processes batches of personalized campaign
+   recipients and queues messages
    for sending.
 
 ### Operational Flow
@@ -154,43 +157,41 @@ The following edge functions are utilized within the broadcast and campaign syst
 #### Initiating a Broadcast
 
 1. **check_and_trigger_broadcast** checks the nearest upcoming broadcast record where `editable = False`.
-  - If `run_at` is set, it uses this field to determine the run time.
-  - Otherwise, it calculates the run time from `broadcast_settings` (in Detroit time zone).
+
+- If `run_at` is set, it uses this field to determine the run time.
+- Otherwise, it calculates the run time from `broadcast_settings` (in Detroit time zone).
+
 2. If the current time matches the calculated run time (at the minute level), `check_and_trigger_broadcast` calls the
    `make` edge function.
 
 #### Initiating a Campaign
 
-1. **check_and_run_campaigns** checks the `run_at` field of the `campaign` table.
-2. If the current time matches the `run_at` time (at the minute level), `check_and_run_campaigns` enqueues messages
-   directly to `broadcast_first_messages`.
+For detailed information about campaigns, including label features and API usage, see [Campaigns Documentation](docs/campaigns.md).
 
 #### Initiating a Personalized Campaign
 
-1. Insert records into the `campaign_personalized_recipients` table.
-2. The `trigger_process_campaign_personalized_recipient_batch` trigger activates automatically.
-3. The trigger creates a new campaign record in the `campaigns` table.
-4. The trigger then queues all personalized messages directly to `broadcast_first_messages`.
-5. Each recipient receives their custom message instead of a standard campaign message.
+For details on how personalized campaigns work, see [Personalized Campaigns Documentation](docs/personalized-campaigns.md).
 
 #### Message Processing (Common for Broadcast and Campaign)
 
 3. **make** edge function (for broadcasts) retrieves segments linked to the broadcast from `audience_segment` and
    `broadcast_segment` tables.
-  - Segments are processed to obtain phone numbers, excluding those where `excluded = True`, `unsubscribe = True`, or
-    `added_via_file_upload = True`.
-  - The retrieved phone numbers are enqueued to `broadcast_first_messages`.
+
+- Segments are processed to obtain phone numbers, excluding those where `excluded = True`, `unsubscribe = True`, or
+  `added_via_file_upload = True`.
+- The retrieved phone numbers are enqueued to `broadcast_first_messages`.
 
 4. **outlier_on_broadcast_first_messages_insert** triggers immediately upon enqueueing a new message, setting up a cron
    job that runs every 2 seconds to call `send-messages`.
 
 5. **send-messages** edge function:
-  - Pulls one message from either `broadcast_first_messages` or `broadcast_second_messages`.
-  - Calls the Missive API to send the SMS.
-    - If successful and from `broadcast_first_messages`, enqueues a follow-up message to `broadcast_second_messages`.
-    - If successful, removes the message from the queue.
-    - If failed, leaves the message in the queue with a 3-minute sleep.
-    - If failed 3 times (excluding 429 errors), deletes the message from the queue.
+
+- Pulls one message from either `broadcast_first_messages` or `broadcast_second_messages`.
+- Calls the Missive API to send the SMS.
+  - If successful and from `broadcast_first_messages`, enqueues a follow-up message to `broadcast_second_messages`.
+  - If successful, removes the message from the queue.
+  - If failed, leaves the message in the queue with a 3-minute sleep.
+  - If failed 3 times (excluding 429 errors), deletes the message from the queue.
 
 6. **outlier_on_broadcast_second_messages_delete** runs once the `broadcast_second_messages` queue is depleted, cleaning
    up the cron job.
@@ -202,13 +203,15 @@ The following edge functions are utilized within the broadcast and campaign syst
    by 1-2 days.
 
 8. **daily-failed-deliveries-setup** calls `handle-failed-deliveries`:
-  - Identifies conversations with 3 latest messages that are all failed and have never received a reply.
-  - Applies the `undeliverable` label to these conversations, moving them out of the team inbox.
-  - Updates the `unsubscribe` field to `True` for the corresponding phone number in the `author` table.
+
+- Identifies conversations with 3 latest messages that are all failed and have never received a reply.
+- Applies the `undeliverable` label to these conversations, moving them out of the team inbox.
+- Updates the `unsubscribe` field to `True` for the corresponding phone number in the `author` table.
 
 9. **daily-archive-double-failures-setup** calls `archive-double-failures`:
-  - Applies the `archive` label to conversations with 2 latest messages that are failed.
-  - This label moves the conversation out of the team inbox.
+
+- Applies the `archive` label to conversations with 2 latest messages that are failed.
+- This label moves the conversation out of the team inbox.
 
 ### Additional Notes
 

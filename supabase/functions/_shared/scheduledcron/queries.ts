@@ -115,7 +115,8 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
         segments,
         EXTRACT(EPOCH FROM run_at)::INTEGER AS "runAt",
         delay,
-        recipient_count AS "recipientCount"
+        recipient_count AS "recipientCount",
+        label_id AS "labelId"
       FROM campaigns
       WHERE run_at <= NOW()
       ORDER BY run_at DESC
