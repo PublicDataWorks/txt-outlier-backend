@@ -29,7 +29,13 @@ const BaseCampaignSchema = z.object({
   firstMessage: z.string().nonempty('First message is required'),
   secondMessage: z.string().nullable().optional(),
   delay: z.number().int().positive('Delay must be a positive integer').optional(),
-  campaignLabelName: z.string().optional().nullable(),
+  campaignLabelName: z.string()
+    .optional()
+    .nullable()
+    .refine(
+      (val) => val === null || val === undefined || !val.includes('/'),
+      'Campaign label name cannot contain forward slash (/) character',
+    ),
   runAt: z.number()
     .int('Must be a Unix timestamp')
     .transform((timestamp) => new Date(timestamp * 1000))

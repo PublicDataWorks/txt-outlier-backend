@@ -12,7 +12,7 @@ const MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES = Deno.env.get('MISSIVE_SECRET_BR
 const MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES')!
 const MISSIVE_SECRET_NON_BROADCAST = Deno.env.get('MISSIVE_SECRET_NON_BROADCAST')!
 
-const sendMessage = async (message: string, toPhone: string, isSecond: boolean, sharedLabelId?: string) => {
+const sendMessage = async (message: string, toPhone: string, isSecond: boolean, sharedLabelIds: string[]) => {
   const startTime = Date.now()
   // deno-lint-ignore no-explicit-any
   const body: any = {
@@ -29,8 +29,8 @@ const sendMessage = async (message: string, toPhone: string, isSecond: boolean, 
     },
   }
 
-  if (sharedLabelId) {
-    body.drafts.add_shared_labels = [sharedLabelId]
+  if (sharedLabelIds.length > 0) {
+    body.drafts.add_shared_labels = sharedLabelIds
     body.drafts.organization = MISSIVE_ORGANIZATION_ID
   }
   const apiToken = isSecond ? MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES : MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES

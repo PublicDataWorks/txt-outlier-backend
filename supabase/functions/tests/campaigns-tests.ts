@@ -211,6 +211,41 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
     assertEquals(campaign.labelId, mixedCaseLabel.id)
   })
 
+  it('should reject campaignLabelName containing forward slash', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const segmentLabel = await createLabel()
+
+    // Try to create a campaign with a label name containing a forward slash
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with invalid label',
+        firstMessage: 'Test message with invalid label',
+        runAt: futureTimestamp,
+        campaignLabelName: 'label/name',
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    // Should get a validation error
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message.includes('Campaign label name cannot contain forward slash'), true)
+
+    // Verify no campaign was created with this label
+    const latestCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(5)
+
+    for (const campaign of latestCampaigns) {
+      assertEquals(campaign.title !== 'Campaign with invalid label', true)
+    }
+  })
+
   it('should create a campaign with all fields', async () => {
     const label = await createLabel()
     const futureTimestamp = Math.floor(Date.now() / 1000) + 86600
@@ -1799,6 +1834,44 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     assertEquals(response.error.context.status, 400)
     const errorData = await response.error.context.json()
     assertEquals(errorData.message, 'No phone numbers found in the CSV file')
+  })
+
+  it('should reject file-based campaign with campaignLabelName containing forward slash', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Create CSV with phone numbers
+    const phoneNumbers = ['+11234567890', '+19876543210']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'test-numbers.csv', { type: 'text/csv' })
+
+    // Create form data with invalid campaignLabelName
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Upload with Invalid Label')
+    formData.append('firstMessage', 'Testing invalid label with forward slash')
+    formData.append('runAt', futureTimestamp.toString())
+    formData.append('campaignLabelName', 'invalid/label/name')
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    // Should get a validation error
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message.includes('Campaign label name cannot contain forward slash'), true)
+
+    // Verify no campaign was created with this title
+    const latestCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(5)
+
+    for (const campaign of latestCampaigns) {
+      assertEquals(campaign.title !== 'File Upload with Invalid Label', true)
+    }
   })
 })
 
