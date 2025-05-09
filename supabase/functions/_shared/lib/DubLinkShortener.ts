@@ -17,10 +17,15 @@ const ensureBroadcastTagExists = async (tagName: string) => {
 const detectLinksToShorten = (message: string): string[] => {
   if (!message) return []
 
-  // This regex matches URLs starting with http:// or https://
-  const urlRegex = /(https?:\/\/[^\s]+)/g
+  // This regex matches URLs starting with http:// or https:// that have whitespace before and after,
+  // or are at the start or end of the message
+  const urlRegex = /(^|\s)(https?:\/\/[^\s]+)($|\s)/g
 
-  const matches = message.match(urlRegex) || []
+  const matches = []
+  let match
+  while ((match = urlRegex.exec(message)) !== null) {
+    matches.push(match[2])
+  }
 
   // Filter out already shortened URLs (bit.ly, dub.sh, etc.)
   const filteredMatches = matches.filter((url) => {
@@ -35,13 +40,17 @@ const detectLinksToShorten = (message: string): string[] => {
   return [...new Set(filteredMatches)]
 }
 
-const shortenLinksInMessage = async (message: string, broadcastId: number): Promise<string> => {
+const shortenLinksInMessage = async (message: string, id: number, isBroadcast = true): Promise<[string, boolean]> => {
   try {
     // Detect URLs in the message
     const urls = detectLinksToShorten(message)
     console.log(`Found ${urls.length} URLs in the message: ${message}`)
-    if (urls.length === 0) return message
-    const tagName = `broadcast-${broadcastId}`
+    if (urls.length === 0) return [message, false]
+    let tagName = `campaign-${id}`
+    if (isBroadcast) {
+      tagName = `broadcast-${id}`
+    }
+
     await ensureBroadcastTagExists(tagName)
 
     // Fetch all existing links for this broadcast
@@ -63,27 +72,34 @@ const shortenLinksInMessage = async (message: string, broadcastId: number): Prom
     // @ts-ignore - LinkSchema is not exported
     const allLinks = [...existingLinks, ...newLinks]
 
-    // Replace URLs in the message with their shortened versions
+    // Replace URLs in the message with their shortened versions by processing from longest to shortest
+    // This prevents issues where a shorter URL is a prefix of a longer URL
     let processedMessage = message
-    for (const url of urls) {
+
+    // Sort URLs by length (longest first) to avoid prefix problems
+    const sortedUrls = [...urls].sort((a, b) => b.length - a.length)
+
+    for (const url of sortedUrls) {
       const link = allLinks.find((link) => link.url === url)
       if (link?.shortLink) {
+        // Create a safe regex that matches the exact URL and not parts of other URLs
+        const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const regex = new RegExp(escapedUrl, 'g')
+
         // Replace all occurrences of this URL in the message
-        processedMessage = processedMessage.replace(
-          new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-          link.shortLink,
-        )
+        processedMessage = processedMessage.replace(regex, link.shortLink)
         console.log(`Replaced URL '${url}' with shortened link '${link.shortLink}'`)
       }
     }
+
     console.log(`Processed message: ${processedMessage}`)
-    return processedMessage
+    return [processedMessage, true]
   } catch (error) {
     console.error(
-      `Error in shortenLinksInMessage: ${error.message}. Stack: ${error.stack}. Message: ${message}, Broadcast ID: ${broadcastId}`,
+      `Error in shortenLinksInMessage: ${error.message}. Stack: ${error.stack}. Message: ${message}, ID: ${id}, isBroadcast: ${isBroadcast}`,
     )
   }
-  return message
+  return [message, false]
 }
 
 const cleanupUnusedLinks = async (

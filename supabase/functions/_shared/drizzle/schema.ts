@@ -337,8 +337,8 @@ export const broadcasts = pgTable('broadcasts', {
   noUsers: integer('no_users').default(0).notNull(),
   firstMessage: text('first_message').notNull(),
   secondMessage: text('second_message').notNull(),
-  originalFirstMessage: text('original_first_message').notNull(),
-  originalSecondMessage: text('original_second_message').notNull(),
+  originalFirstMessage: text('original_first_message'),
+  originalSecondMessage: text('original_second_message'),
   twilioPaging: text('twilio_paging'),
 })
 
@@ -426,7 +426,6 @@ export type ConversationAssigneeHistory = typeof conversationsAssigneesHistory.$
 export type Organization = typeof organizations.$inferInsert
 export type ConversationAuthor = typeof conversationsAuthors.$inferInsert
 export type TwilioMessage = typeof twilioMessages.$inferInsert
-export type BroadcastSegment = typeof broadcastsSegments.$inferInsert
 export type Broadcast = typeof broadcasts.$inferInsert
 export type AudienceSegment = typeof audienceSegments.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert

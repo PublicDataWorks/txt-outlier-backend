@@ -18,6 +18,7 @@
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
     "hono": "jsr:@hono/hono@4.6.20",
-    "zod": "https://deno.land/x/zod@v3.24.1/mod.ts"
+    "zod": "https://deno.land/x/zod@v3.24.1/mod.ts",
+    "dub": "npm:dub"
   }
 }

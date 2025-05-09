@@ -55,17 +55,19 @@ const patch = async (
   id: number,
   broadcast: BroadcastUpdate,
 ): Promise<UpcomingBroadcastResponse | undefined> => {
-  await DubLinkShortener.cleanupUnusedLinks(id, broadcast.firstMessage, broadcast.secondMessage)
+  // await DubLinkShortener.cleanupUnusedLinks(id, broadcast.firstMessage, broadcast.secondMessage)
 
   const originalFirstMessage = broadcast.firstMessage
   const originalSecondMessage = broadcast.secondMessage
 
   // Process the messages with URL shortening
   if (broadcast.firstMessage) {
-    broadcast.firstMessage = await DubLinkShortener.shortenLinksInMessage(broadcast.firstMessage, id)
+    const [processedMessage, messageChanged] = await DubLinkShortener.shortenLinksInMessage(broadcast.firstMessage, id)
+    if (messageChanged) broadcast.firstMessage = processedMessage
   }
   if (broadcast.secondMessage) {
-    broadcast.secondMessage = await DubLinkShortener.shortenLinksInMessage(broadcast.secondMessage, id)
+    const [processedMessage, messageChanged] = await DubLinkShortener.shortenLinksInMessage(broadcast.secondMessage, id)
+    if (messageChanged) broadcast.secondMessage = processedMessage
   }
 
   return await supabase.transaction(async (tx) => {

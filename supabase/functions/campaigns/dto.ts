@@ -63,6 +63,19 @@ export const RecipientCountSchema = z.object({
   }),
 }).strict()
 
+export type FormattedCampaign = {
+  id: number
+  title: string | null
+  firstMessage: string
+  secondMessage: string | null
+  // deno-lint-ignore no-explicit-any
+  segments: any | null
+  delay: number
+  recipientCount: number | null
+  labelId: string | null
+  runAt: number // Unix timestamp (seconds since epoch)
+}
+
 export const formatCampaignSelect = {
   id: campaigns.id,
   title: campaigns.title,

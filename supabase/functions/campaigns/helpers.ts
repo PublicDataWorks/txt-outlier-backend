@@ -6,12 +6,14 @@ import { authors, campaignFileRecipients, campaigns, labels } from '../_shared/d
 import {
   FileBasedCampaign,
   formatCampaignSelect,
+  FormattedCampaign,
   SegmentBasedCampaign,
   SegmentConfig,
   UpdateCampaignData,
 } from './dto.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import labelService from './labelService.ts'
+import DubLinkShortener from '../_shared/lib/DubLinkShortener.ts'
 
 const RECIPIENT_FILE_BUCKET_NAME = 'campaign-recipients'
 
@@ -64,6 +66,7 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
   `)
 
   const recipientCount = recipientCountResult[0]?.recipient_count || 0
+
   const [newCampaign] = await supabase
     .insert(campaigns)
     .values({
@@ -78,6 +81,7 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
     })
     .returning(formatCampaignSelect)
 
+  await processCampaignMessages(newCampaign)
   return newCampaign
 }
 
@@ -120,6 +124,8 @@ export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampa
 
     return campaign
   })
+
+  await processCampaignMessages(newCampaign)
 
   // If this fails, the campaign is still created, just without the file URL
   try {
@@ -192,6 +198,9 @@ export const handleSegmentBasedCampaignUpdate = async (
     if (!updatedCampaign) {
       throw new BadRequestError('Campaign not found or cannot be edited')
     }
+    if (campaignData.firstMessage || campaignData.secondMessage) {
+      await processCampaignMessages(updatedCampaign, !!campaignData.firstMessage, !!campaignData.secondMessage)
+    }
 
     await supabase
       .delete(campaignFileRecipients)
@@ -213,6 +222,10 @@ export const handleSegmentBasedCampaignUpdate = async (
 
     if (!updatedCampaign) {
       throw new BadRequestError('Campaign not found or cannot be edited')
+    }
+
+    if (campaignData.firstMessage || campaignData.secondMessage) {
+      await processCampaignMessages(updatedCampaign, !!campaignData.firstMessage, !!campaignData.secondMessage)
     }
 
     return updatedCampaign
@@ -270,4 +283,41 @@ export async function deleteRecipientFile(fileUrl: string) {
   if (error) {
     console.error('Error deleting file:', error)
   }
+}
+
+async function processCampaignMessages(campaign: FormattedCampaign, newFirstMessage = true, newSecondMessage = true) {
+  let [processedFirstMessage, firstMessageChanged] = ['', false]
+  if (newFirstMessage) {
+    ;[processedFirstMessage, firstMessageChanged] = await DubLinkShortener.shortenLinksInMessage(
+      campaign.firstMessage,
+      campaign.id!,
+      false,
+    )
+  }
+
+  let [processedSecondMessage, secondMessageChanged] = ['', false]
+  if (newSecondMessage && campaign.secondMessage) {
+    ;[processedSecondMessage, secondMessageChanged] = await DubLinkShortener.shortenLinksInMessage(
+      campaign.secondMessage,
+      campaign.id,
+      false,
+    )
+  }
+
+  if (firstMessageChanged || secondMessageChanged) {
+    const updatedFields = {
+      firstMessage: firstMessageChanged ? processedFirstMessage : undefined,
+      secondMessage: secondMessageChanged ? processedSecondMessage : undefined,
+    }
+
+    await supabase
+      .update(campaigns)
+      .set(updatedFields)
+      .where(eq(campaigns.id, campaign.id))
+
+    campaign.firstMessage = updatedFields.firstMessage || campaign.firstMessage
+    campaign.secondMessage = updatedFields.secondMessage || campaign.secondMessage
+  }
+
+  return campaign
 }
