@@ -22,6 +22,7 @@ beforeEach(async () => {
     '../../migrations/20250318043746_add_reply_to_campaign_to_twilio_messages.sql',
     '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
     '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
+    '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
   ]
 
   for (const filePath of migrationFiles) {
