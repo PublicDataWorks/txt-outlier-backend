@@ -69,6 +69,7 @@
     "hono": "jsr:@hono/hono@4.6.20",
     "zod": "https://deno.land/x/zod@v3.24.1/mod.ts",
     "faker": "https://deno.land/x/deno_faker@v1.0.3/mod.ts",
-    "croner": "jsr:@hexagon/croner@8.1.2"
+    "croner": "jsr:@hexagon/croner@8.1.2",
+    "dub": "npm:dub"
   }
 }

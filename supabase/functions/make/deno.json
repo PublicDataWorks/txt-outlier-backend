@@ -17,6 +17,7 @@
     "postgres": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
-    "hono": "jsr:@hono/hono@4.6.20"
+    "hono": "jsr:@hono/hono@4.6.20",
+    "dub": "npm:dub"
   }
 }

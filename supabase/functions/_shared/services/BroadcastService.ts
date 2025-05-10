@@ -50,9 +50,9 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
   })
+  await createNextBroadcast(broadcast)
 }
 
 const sendNow = async (): Promise<void> => {
