@@ -2,7 +2,7 @@ import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { eq } from 'drizzle-orm'
 
 import { authors, ConversationAuthor, conversationsAuthors, twilioMessages } from '../../_shared/drizzle/schema.ts'
-import { RequestBody } from '../types.ts'
+import { RequestBody, RuleType } from '../types.ts'
 import { upsertAuthor, upsertConversation, upsertLabel, upsertRule } from './utils.ts'
 import { adaptTwilioMessage, adaptTwilioRequestAuthor } from '../adapters.ts'
 import Missive from '../../_shared/lib/Missive.ts'
@@ -56,7 +56,9 @@ const insertTwilioMessage = async (
     requestMessage.from_field.username ? requestMessage.from_field.username : requestMessage.from_field.id,
     requestMessage.to_fields[0].username ? requestMessage.to_fields[0].username : requestMessage.to_fields[0].id,
   )
-  twilioMessage.senderId = requestBody.rule.type === 'outgoing_twilio_message' ? requestMessage.author?.id : undefined
+  const isOutgoing = requestBody.rule.type === RuleType.OutgoingTwilioMessage ||
+    requestBody.rule.type === RuleType.OutgoingSmsMessage
+  twilioMessage.senderId = isOutgoing ? requestMessage.author?.id : undefined
   await tx.insert(twilioMessages).values(twilioMessage)
 }
 
