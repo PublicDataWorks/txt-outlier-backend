@@ -98,15 +98,31 @@ const sendNow = async (): Promise<void> => {
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
-  // We see a lot 429 and 503 errors from Missive API.
+  // We see a lot 429 and 503 errors from Missive API, 180 seconds is a good time to wait
   const results = await supabase.execute(pgmqRead(queueName, 180))
   if (results.length === 0) {
     return
   }
+
   const messageMetadata = results[0].message
   console.log(`Sending broadcast message. isSecond: ${isSecond}, messageMetadata: ${JSON.stringify(messageMetadata)}`)
+  const sharedLabelIds = []
+  if (messageMetadata.label_id) {
+    sharedLabelIds.push(messageMetadata.label_id)
+  }
+  const sharedCampaignLabelId = Deno.env.get('SHARED_CAMPAIGN_LABEL_ID')
+  if (messageMetadata.campaign_id && sharedCampaignLabelId) {
+    sharedLabelIds.push(sharedCampaignLabelId)
+  }
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
-  const response = await MissiveUtils.sendMessage(message, messageMetadata.recipient_phone_number, isSecond)
+
+  const response = await MissiveUtils.sendMessage(
+    message,
+    messageMetadata.recipient_phone_number,
+    isSecond,
+    sharedLabelIds,
+  )
+
   if (response.ok) {
     let secondMessageQueueId = undefined
     if (!isSecond && messageMetadata.second_message) {
@@ -124,8 +140,8 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
       .insert(messageStatuses)
       .values({
         recipientPhoneNumber: messageMetadata.recipient_phone_number,
-        message: message,
-        isSecond: isSecond,
+        message,
+        isSecond,
         broadcastId: messageMetadata?.broadcast_id,
         campaignId: messageMetadata?.campaign_id,
         missiveId: id,
@@ -136,10 +152,10 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
   } else {
     const errorMessage = `
         [sendBroadcastMessage] Failed to send broadcast message.
+        ${JSON.stringify(await response.json())}
         Message: ${JSON.stringify(results[0])},
         isSecond: ${isSecond},
         broadcast: ${messageMetadata.broadcast_id}
-        Missive's response = ${JSON.stringify(await response.json())}
       `
     console.error(errorMessage)
     Sentry.captureException(errorMessage)

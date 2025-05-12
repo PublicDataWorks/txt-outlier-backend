@@ -20,6 +20,8 @@ beforeEach(async () => {
     '../../migrations/20250312074137_add_daily_broadcast_reconciliation_function.sql',
     '../../migrations/20250317043943_campaign_should_not_run_reconcile_status.sql',
     '../../migrations/20250318043746_add_reply_to_campaign_to_twilio_messages.sql',
+    '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
+    '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
   ]
 
   for (const filePath of migrationFiles) {
@@ -67,5 +69,6 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "unsubscribed_messages" CASCADE;
   DROP TABLE IF EXISTS "campaigns" CASCADE;
   DROP TABLE IF EXISTS "campaign_file_recipients" CASCADE;
+  DROP TABLE IF EXISTS "campaign_personalized_recipients" CASCADE;
   DROP FUNCTION IF EXISTS queue_campaign_messages(INTEGER);
 `

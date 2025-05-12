@@ -150,11 +150,11 @@ SELECT
     -- Segments JSON with varying configurations
     CASE
         WHEN n % 3 = 0 THEN
-            '{"included": {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}}'
+            '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}]}'
         WHEN n % 3 = 1 THEN
             '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}]}'
         ELSE
-            '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}, {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET ((n+1) % 10)) || '"}], "excluded": {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET ((n+2) % 10)) || '"}}'
+            '{"included": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET (n % 10)) || '"}, {"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET ((n+1) % 10)) || '"}], "excluded": [{"id": "' || (SELECT id FROM labels ORDER BY created_at LIMIT 1 OFFSET ((n+2) % 10)) || '"}]}'
     END::jsonb,
 
     -- Delay varies between 600 and 1800 seconds

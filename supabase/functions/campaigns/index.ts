@@ -16,7 +16,6 @@ import { and, asc, eq, gt, lte, sql } from 'drizzle-orm'
 import {
   deleteRecipientFile,
   handleFileBasedCampaignCreate,
-  handleFileBasedCampaignUpdate,
   handleSegmentBasedCampaignCreate,
   handleSegmentBasedCampaignUpdate,
   parseFileBasedFormData,
@@ -61,6 +60,7 @@ app.get(FUNCTION_PATH, async (c) => {
       successfulDeliveries: Number(campaign.successfulDeliveries),
       failedDeliveries: Number(campaign.failedDeliveries),
       unsubscribes: Number(campaign.unsubscribes),
+      labelId: campaign.labelId,
     }))
 
     const [{ count }] = await supabase
@@ -109,6 +109,7 @@ app.post(`${FUNCTION_PATH}recipient-count/`, async (c) => {
   }
 })
 
+// This API handles both segment-based and file-based campaign creation
 app.post(FUNCTION_PATH, async (c) => {
   try {
     const contentType = c.req.header('content-type') || ''
@@ -157,29 +158,11 @@ app.patch(`${FUNCTION_PATH}:id/`, async (c) => {
     if (isNaN(id)) {
       return AppResponse.badRequest('Invalid campaign ID')
     }
-
-    const contentType = c.req.header('content-type') || ''
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await c.req.formData()
-      const file = formData.get('file') as File | null
-
-      if (!file) {
-        return AppResponse.badRequest('File is required for file-based campaigns')
-      }
-
-      const parsedFormData = parseFileBasedFormData(formData)
-      const campaignData = UpdateCampaignSchema.parse(parsedFormData)
-      console.log('Updating file-based campaign:', campaignData)
-      const updatedCampaign = await handleFileBasedCampaignUpdate(id, campaignData, file)
-
-      return AppResponse.ok(updatedCampaign)
-    } else {
-      const body = await c.req.json()
-      const campaignData = UpdateCampaignSchema.parse(body)
-      console.log('Updating segment-based campaign:', campaignData)
-      const updatedCampaign = await handleSegmentBasedCampaignUpdate(id, campaignData)
-      return AppResponse.ok(updatedCampaign)
-    }
+    const body = await c.req.json()
+    const campaignData = UpdateCampaignSchema.parse(body)
+    console.log('Updating segment-based campaign:', campaignData)
+    const updatedCampaign = await handleSegmentBasedCampaignUpdate(id, campaignData)
+    return AppResponse.ok(updatedCampaign)
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessage = `Validation error in campaigns: ${error.errors.map((e) => ` [${e.path}] - ${e.message}`)}`
