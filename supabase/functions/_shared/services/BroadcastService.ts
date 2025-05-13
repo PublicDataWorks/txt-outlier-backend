@@ -106,21 +106,12 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
 
   const messageMetadata = results[0].message
   console.log(`Sending broadcast message. isSecond: ${isSecond}, messageMetadata: ${JSON.stringify(messageMetadata)}`)
-  const sharedLabelIds = []
-  if (messageMetadata.label_id) {
-    sharedLabelIds.push(messageMetadata.label_id)
-  }
-  const sharedCampaignLabelId = Deno.env.get('SHARED_CAMPAIGN_LABEL_ID')
-  if (messageMetadata.campaign_id && sharedCampaignLabelId) {
-    sharedLabelIds.push(sharedCampaignLabelId)
-  }
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
-
   const response = await MissiveUtils.sendMessage(
     message,
     messageMetadata.recipient_phone_number,
     isSecond,
-    sharedLabelIds,
+    messageMetadata.label_ids,
   )
 
   if (response.ok) {

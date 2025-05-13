@@ -5,7 +5,7 @@ import Sentry from './Sentry.ts'
 const CREATE_MESSAGE_URL = 'https://public.missiveapp.com/v1/drafts'
 const GET_MESSAGE_URL = 'https://public.missiveapp.com/v1/messages/'
 const CREATE_POST_URL = 'https://public.missiveapp.com/v1/posts'
-const GET_LABELS_URL = 'https://public.missiveapp.com/v1/shared_labels'
+const SHARED_LABELS_URL = 'https://public.missiveapp.com/v1/shared_labels'
 const BROADCAST_PHONE_NUMBER = Deno.env.get('BROADCAST_SOURCE_PHONE_NUMBER')!
 const MISSIVE_ORGANIZATION_ID = Deno.env.get('MISSIVE_ORGANIZATION_ID')!
 const MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES')!
@@ -28,7 +28,6 @@ const sendMessage = async (message: string, toPhone: string, isSecond: boolean, 
       'send': true, // Send right away
     },
   }
-
   if (sharedLabelIds.length > 0) {
     body.drafts.add_shared_labels = sharedLabelIds
     body.drafts.organization = MISSIVE_ORGANIZATION_ID
@@ -128,9 +127,9 @@ const verifySignature = async (req: Request, requestBody: any): Promise<boolean>
   )
 }
 
-const createLabel = async (labelName: string) => {
+const createLabel = async (labelName: string, parent?: string) => {
   try {
-    const response = await fetch(GET_LABELS_URL, {
+    const response = await fetch(SHARED_LABELS_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -140,6 +139,7 @@ const createLabel = async (labelName: string) => {
         shared_labels: {
           name: labelName,
           organization: MISSIVE_ORGANIZATION_ID,
+          parent,
         },
       }),
     })
@@ -164,7 +164,7 @@ const findLabelByName = async (labelName: string) => {
     let iteration = 0
     while (iteration < 40) {
       iteration++
-      const response = await fetch(`${GET_LABELS_URL}?limit=${limit}&offset=${offset}`, {
+      const response = await fetch(`${SHARED_LABELS_URL}?limit=${limit}&offset=${offset}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
