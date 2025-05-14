@@ -348,7 +348,7 @@ BEGIN
                     'second_message', v_campaign_record.second_message,
                     'title', v_campaign_record.title,
                     'delay', v_campaign_record.delay,
-                    'label_id', v_campaign_record.label_id,
+                    'label_ids', v_campaign_record.label_ids,
                     'created_at', EXTRACT(EPOCH FROM NOW())::INTEGER
                 )
                 FROM campaign_recipients_temp

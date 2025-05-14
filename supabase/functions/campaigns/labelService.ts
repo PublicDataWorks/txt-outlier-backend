@@ -22,7 +22,7 @@ const getLabelIdFromName = async (campaignLabelName?: string | null): Promise<st
   // Not in database - try to create it in Missive
   try {
     // Try to create the label
-    const labelId = await Missive.createLabel(campaignLabelName)
+    const labelId = await Missive.createLabel(campaignLabelName, Deno.env.get('PARENT_CAMPAIGN_LABEL_ID')!)
     if (labelId) {
       // Successfully created the label
       console.log(`Label created in Missive: ${campaignLabelName} ${labelId}`)

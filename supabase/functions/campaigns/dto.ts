@@ -77,7 +77,7 @@ export const formatCampaignSelect = {
   segments: campaigns.segments,
   delay: campaigns.delay,
   recipientCount: campaigns.recipientCount,
-  labelId: campaigns.labelId,
+  labelIds: campaigns.labelIds,
   runAt: sql<number>`EXTRACT(EPOCH FROM ${campaigns.runAt})::INTEGER`,
 }
 export type SegmentConfig = z.infer<typeof SegmentConfigSchema>

@@ -34,7 +34,7 @@ export const createCampaign = async ({
       included: [{ id: includedSegments || defaultLabel!.id }],
     },
     processed,
-    labelId,
+    labelIds: labelId ? [labelId] : [],
   }
 
   const [result] = await supabase
