@@ -4,18 +4,30 @@ BEGIN;
 SELECT plan(2);
 
 -- Create helper functions
--- Function to get the label_id from a queued message
-CREATE OR REPLACE FUNCTION get_label_id_from_message(p_campaign_id INTEGER) RETURNS TEXT AS $$
+-- Function to get the label_ids from a queued message
+CREATE OR REPLACE FUNCTION get_label_ids_from_message(p_campaign_id INTEGER) RETURNS TEXT[] AS $$
 DECLARE
-    v_label_id TEXT;
+    v_message JSONB;
+    v_label_ids TEXT[];
 BEGIN
-    SELECT message::jsonb->>'label_id'
-    INTO v_label_id
+    -- First, get the message
+    SELECT message::jsonb
+    INTO v_message
     FROM pgmq.q_broadcast_first_messages
     WHERE message::jsonb->>'campaign_id' = p_campaign_id::TEXT
     LIMIT 1;
+    
+    -- Check if label_ids exists and is an array
+    IF v_message ? 'label_ids' AND jsonb_typeof(v_message->'label_ids') = 'array' THEN
+        SELECT ARRAY(
+            SELECT jsonb_array_elements_text(v_message->'label_ids')
+        ) INTO v_label_ids;
+    ELSE
+        -- Return empty array if no label_ids or not an array
+        v_label_ids := '{}'::TEXT[];
+    END IF;
 
-    RETURN v_label_id;
+    RETURN v_label_ids;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -26,10 +38,10 @@ DELETE FROM pgmq.q_broadcast_first_messages WHERE message::jsonb->>'campaign_id'
 DROP TABLE IF EXISTS campaign_recipients_temp;
 
 -- Ensure campaign_recipients_temp doesn't already exist in any session
-DO $$ 
+DO $$
 BEGIN
     IF EXISTS (
-        SELECT 1 FROM pg_catalog.pg_class c 
+        SELECT 1 FROM pg_catalog.pg_class c
         WHERE c.relname = 'campaign_recipients_temp'
     ) THEN
         EXECUTE 'DROP TABLE campaign_recipients_temp';
@@ -74,7 +86,7 @@ INSERT INTO conversations_authors (conversation_id, author_phone_number)
 VALUES ('00000003-0000-0000-0000-000000000001', '+88881111111');
 
 -- Create a campaign with a label_id
-INSERT INTO campaigns (id, title, first_message, run_at, segments, label_id)
+INSERT INTO campaigns (id, title, first_message, run_at, segments, label_ids)
 VALUES (
     20001,
     'Campaign with Label ID',
@@ -83,7 +95,7 @@ VALUES (
     jsonb_build_object(
         'included', jsonb_build_object('id', '00000005-0000-0000-0000-000000000001')
     ),
-    '00000005-0000-0000-0000-000000000001'
+    ARRAY['00000005-0000-0000-0000-000000000001']
 );
 
 -- Create a wrapper function that's more resilient for testing
@@ -93,10 +105,10 @@ DECLARE
 BEGIN
     -- Make sure temp table doesn't exist
     EXECUTE 'DROP TABLE IF EXISTS campaign_recipients_temp';
-    
+
     -- Call the actual function
     SELECT queue_campaign_messages(p_campaign_id) INTO v_result;
-    
+
     RETURN v_result;
 EXCEPTION
     WHEN OTHERS THEN
@@ -110,14 +122,14 @@ SELECT safe_queue_campaign_messages(20001);
 
 -- Test that the label_id is included in the message
 SELECT is(
-    get_label_id_from_message(20001),
-    '00000005-0000-0000-0000-000000000001',
+    get_label_ids_from_message(20001),
+    ARRAY['00000005-0000-0000-0000-000000000001'],
     'Campaign message includes the correct label_id'
 );
 
 -- Test 2: Campaign without label_id
 -- Create a campaign without a label_id
-INSERT INTO campaigns (id, title, first_message, run_at, segments)
+INSERT INTO campaigns (id, title, first_message, run_at, segments, label_ids)
 VALUES (
     20002,
     'Campaign without Label ID',
@@ -125,31 +137,32 @@ VALUES (
     CURRENT_TIMESTAMP + INTERVAL '1 day',
     jsonb_build_object(
         'included', jsonb_build_object('id', '00000005-0000-0000-0000-000000000001')
-    )
+    ),
+    '{}'::TEXT[]
 );
 
 -- Queue the campaign messages
 SELECT safe_queue_campaign_messages(20002);
 
--- Test that the label_id is null in the message
+-- Test that the label_ids array is empty in the message
 SELECT is(
-    get_label_id_from_message(20002),
-    NULL,
-    'Campaign message has NULL label_id when campaign does not have a label'
+    get_label_ids_from_message(20002),
+    '{}'::TEXT[],
+    'Campaign message has empty label_ids array when campaign does not have labels'
 );
 
 -- Clean up
 DROP TABLE IF EXISTS campaign_recipients_temp;
 
 -- Do more aggressive cleanup for testing
-DO $$ 
+DO $$
 BEGIN
     -- Try to drop with IF EXISTS
     EXECUTE 'DROP TABLE IF EXISTS campaign_recipients_temp';
-    
+
     -- Try another approach if it still exists
     IF EXISTS (
-        SELECT 1 FROM pg_catalog.pg_class c 
+        SELECT 1 FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         WHERE c.relname = 'campaign_recipients_temp'
         AND n.nspname = current_schema()
