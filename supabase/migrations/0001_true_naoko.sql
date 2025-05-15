@@ -33,6 +33,7 @@ BEGIN
     FROM public.broadcasts
     WHERE id = p_broadcast_id;
 
+    DROP TABLE IF EXISTS recipients_temp; -- Could be ON COMMIT DROP
     CREATE TEMPORARY TABLE recipients_temp (
         phone_number text PRIMARY KEY,
         segment_id int
