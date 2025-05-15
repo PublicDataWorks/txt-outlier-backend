@@ -78,7 +78,7 @@ export type FormattedCampaign = {
   segments: any | null
   delay: number
   recipientCount: number | null
-  labelId: string | null
+  labelIds: string[] | null
   runAt: number // Unix timestamp (seconds since epoch)
 }
 
