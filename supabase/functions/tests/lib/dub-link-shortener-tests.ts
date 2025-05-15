@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, it } from 'jsr:@std/testing/bdd'
-import { assertEquals, assertNotEquals } from 'jsr:@std/assert'
+import { assertEquals } from 'jsr:@std/assert'
 import * as sinon from 'npm:sinon'
 
-// Import the setup
 import '../setup.ts'
 
 // Get the original module
@@ -189,6 +188,206 @@ describe('DubLinkShortener', () => {
       sinon.assert.calledOnce(dubMock.links.createMany)
     })
 
+    it('should handle GitHub repository URLs correctly', async () => {
+      // Setup
+      const message = 'https://dub.sh/GhVrND3 https://github.com/PublicDataWorks/txt-outlier-backend/pull/85'
+      const broadcastId = 123
+      const tagName = `broadcast-${broadcastId}`
+
+      // Setup stub responses
+      dubMock.tags.list.withArgs({ search: tagName }).resolves([
+        { id: 'tag1', name: tagName },
+      ])
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+
+      // Setup createMany to return shortened links for both URLs
+      dubMock.links.createMany.resolves([
+        {
+          id: 'link1',
+          url: 'https://dub.sh/GhVrND3',
+          shortLink: 'https://dub.sh/short1',
+          tagNames: [tagName],
+        },
+        {
+          id: 'link2',
+          url: 'https://github.com/PublicDataWorks/txt-outlier-backend/pull/85',
+          shortLink: 'https://dub.sh/short2',
+          tagNames: [tagName],
+        },
+      ])
+
+      // Run the test
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      // Both URLs should be replaced
+      assertEquals(result, 'https://dub.sh/GhVrND3 https://dub.sh/short2')
+      assertEquals(changed, true)
+
+      // Both URLs should be sent for creation
+      sinon.assert.calledWith(dubMock.links.createMany, [
+        { url: 'https://github.com/PublicDataWorks/txt-outlier-backend/pull/85', tagNames: [tagName] },
+      ])
+    })
+
+    it('should properly handle URLs with trailing punctuation', async () => {
+      // Setup
+      const message = 'Check out https://example.com. Also visit https://example.org, and maybe https://example.net!'
+      const broadcastId = 123
+      const tagName = `broadcast-${broadcastId}`
+
+      // Setup stub responses
+      dubMock.tags.list.withArgs({ search: tagName }).resolves([
+        { id: 'tag1', name: tagName },
+      ])
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+
+      // Setup createMany to return shortened links for all URLs
+      dubMock.links.createMany.resolves([
+        {
+          id: 'link1',
+          url: 'https://example.com',
+          shortLink: 'https://dub.sh/abc123',
+          tagNames: [tagName],
+        },
+        {
+          id: 'link2',
+          url: 'https://example.org',
+          shortLink: 'https://dub.sh/def456',
+          tagNames: [tagName],
+        },
+        {
+          id: 'link3',
+          url: 'https://example.net',
+          shortLink: 'https://dub.sh/ghi789',
+          tagNames: [tagName],
+        },
+      ])
+
+      // Run the test
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      // URLs should be replaced while preserving punctuation
+      assertEquals(
+        result,
+        'Check out https://dub.sh/abc123. Also visit https://dub.sh/def456, and maybe https://dub.sh/ghi789!',
+      )
+      assertEquals(changed, true)
+
+      // Should call createMany once with all three URLs
+      sinon.assert.calledWith(dubMock.links.createMany, [
+        { url: 'https://example.com', tagNames: [tagName] },
+        { url: 'https://example.org', tagNames: [tagName] },
+        { url: 'https://example.net', tagNames: [tagName] },
+      ])
+    })
+
+    it('should correctly identify and handle URLs with parentheses and other special punctuation', async () => {
+      // Setup
+      const message = 'See this page (https://example.com) and this too: https://example.org;'
+      const broadcastId = 123
+      const tagName = `broadcast-${broadcastId}`
+
+      // Setup stub responses
+      dubMock.tags.list.withArgs({ search: tagName }).resolves([
+        { id: 'tag1', name: tagName },
+      ])
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+
+      // Setup createMany to return shortened links for all URLs
+      dubMock.links.createMany.resolves([
+        {
+          id: 'link1',
+          url: 'https://example.com',
+          shortLink: 'https://dub.sh/abc123',
+          tagNames: [tagName],
+        },
+        {
+          id: 'link2',
+          url: 'https://example.org',
+          shortLink: 'https://dub.sh/def456',
+          tagNames: [tagName],
+        },
+      ])
+
+      // Run the test
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      // URLs should be replaced
+      assertEquals(
+        result,
+        'See this page (https://dub.sh/abc123) and this too: https://dub.sh/def456;',
+      )
+      assertEquals(changed, true)
+
+      // Verify createMany was called with both URLs
+      sinon.assert.calledWith(dubMock.links.createMany, [
+        { url: 'https://example.com', tagNames: [tagName] },
+        { url: 'https://example.org', tagNames: [tagName] },
+      ])
+    })
+
+    it('should handle URLs directly inside parentheses without spaces', async () => {
+      // Setup
+      const message = 'Check out this page (https://google.com) for more info'
+      const broadcastId = 123
+      const tagName = `broadcast-${broadcastId}`
+
+      // Setup stub responses
+      dubMock.tags.list.withArgs({ search: tagName }).resolves([
+        { id: 'tag1', name: tagName },
+      ])
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+
+      // Setup createMany to return a shortened link
+      dubMock.links.createMany.resolves([
+        {
+          id: 'link1',
+          url: 'https://google.com',
+          shortLink: 'https://dub.sh/goo123',
+          tagNames: [tagName],
+        },
+      ])
+
+      // Run the test
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      // URL inside parentheses should be replaced
+      assertEquals(
+        result,
+        'Check out this page (https://dub.sh/goo123) for more info',
+      )
+      assertEquals(changed, true)
+
+      // Verify createMany was called with the URL
+      sinon.assert.calledWith(dubMock.links.createMany, [
+        { url: 'https://google.com', tagNames: [tagName] },
+      ])
+    })
+
+    it('should not shorten URLs that are already shortened', async () => {
+      // Setup
+      const message =
+        'Check out https://bit.ly/abcdef and https://dub.sh/xyz and https://tinyurl.com/abc and https://goo.gl/abc123'
+      const broadcastId = 123
+      const tagName = `broadcast-${broadcastId}`
+
+      // Setup stub responses
+      dubMock.tags.list.withArgs({ search: tagName }).resolves([
+        { id: 'tag1', name: tagName },
+      ])
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+
+      // Run the test
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      // The message should remain unchanged since all URLs are already shortened
+      assertEquals(result, message)
+      assertEquals(changed, false)
+
+      // CreateMany should not be called since no URLs need shortening
+      sinon.assert.notCalled(dubMock.links.createMany)
+    })
+
     it('should handle error scenarios gracefully', async () => {
       // Setup
       const message = 'Check out https://example.com for more information'
@@ -203,79 +402,6 @@ describe('DubLinkShortener', () => {
       // Original message should be returned on error
       assertEquals(result, message)
       assertEquals(changed, false)
-
-      // Error should be logged
-      sinon.assert.called(console.error as sinon.SinonStub)
-    })
-  })
-
-  describe('cleanupUnusedLinks', () => {
-    it('should not delete links when no URLs are found', async () => {
-      // Setup
-      const broadcastId = 123
-      const firstMessage = 'This is a message with no URLs'
-      const secondMessage = 'This is another message with no URLs'
-
-      // Run the test
-      await DubLinkShortener.cleanupUnusedLinks(broadcastId, firstMessage, secondMessage)
-
-      // Should not call links.list or links.deleteMany
-      sinon.assert.notCalled(dubMock.links.list)
-      sinon.assert.notCalled(dubMock.links.deleteMany)
-
-      // Should log a message
-      sinon.assert.calledWithMatch(console.log as sinon.SinonStub, 'No URLs found in the messages. Skipping cleanup.')
-    })
-
-    it('should delete links that are not in either message', async () => {
-      // Setup
-      const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
-      const firstMessage = 'Check out https://example.com for more information'
-      const secondMessage = 'Also visit https://example.org for details'
-
-      // Setup stub responses with existing links
-      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({
-        result: [
-          {
-            id: 'link1',
-            url: 'https://example.com',
-            shortLink: 'https://dub.sh/abc123',
-            tagNames: [tagName],
-          },
-          {
-            id: 'link2',
-            url: 'https://example.org',
-            shortLink: 'https://dub.sh/def456',
-            tagNames: [tagName],
-          },
-          {
-            id: 'link3',
-            url: 'https://unused-link.com',
-            shortLink: 'https://dub.sh/ghi789',
-            tagNames: [tagName],
-          },
-        ],
-      })
-
-      // Run the test
-      await DubLinkShortener.cleanupUnusedLinks(broadcastId, firstMessage, secondMessage)
-
-      // Should call links.list and links.deleteMany
-      sinon.assert.calledWith(dubMock.links.list, { tagNames: [tagName] })
-      sinon.assert.calledWith(dubMock.links.deleteMany, { linkIds: ['link3'] })
-    })
-
-    it('should handle error scenarios gracefully', async () => {
-      // Setup
-      const broadcastId = 123
-      const firstMessage = 'Check out https://example.com for more information'
-
-      // Setup stub to throw an error
-      dubMock.links.list.throws(new Error('API Error'))
-
-      // Run the test
-      await DubLinkShortener.cleanupUnusedLinks(broadcastId, firstMessage)
 
       // Error should be logged
       sinon.assert.called(console.error as sinon.SinonStub)

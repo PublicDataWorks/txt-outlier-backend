@@ -17,24 +17,18 @@ const ensureBroadcastTagExists = async (tagName: string) => {
 const detectLinksToShorten = (message: string): string[] => {
   if (!message) return []
 
-  // This regex matches URLs starting with http:// or https:// that have whitespace before and after,
-  // or are at the start or end of the message
-  const urlRegex = /(^|\s)(https?:\/\/[^\s]+)($|\s)/g
+  const urlMatches = message.match(/https:\/\/[^\s]+/g) || []
 
-  const matches = []
-  let match
-  while ((match = urlRegex.exec(message)) !== null) {
-    matches.push(match[2])
-  }
+  // Clean up URLs (remove trailing punctuation)
+  const matches = urlMatches.map((url) => url.replace(/[.,;:!?)]+$/, ''))
 
   // Filter out already shortened URLs (bit.ly, dub.sh, etc.)
   const filteredMatches = matches.filter((url) => {
-    // Check if the URL contains common shortener domains
     const lowerUrl = url.toLowerCase()
     return !lowerUrl.includes('//bit.ly/') &&
-      !lowerUrl.includes('//dub.sh/') &&
-      !lowerUrl.includes('//tinyurl.com/') &&
-      !lowerUrl.includes('//goo.gl/')
+      !lowerUrl.includes('https://dub.sh/') &&
+      !lowerUrl.includes('https://tinyurl.com/') &&
+      !lowerUrl.includes('https://goo.gl/')
   })
 
   return [...new Set(filteredMatches)]
@@ -53,7 +47,6 @@ const shortenLinksInMessage = async (message: string, id: number, isBroadcast = 
 
     await ensureBroadcastTagExists(tagName)
 
-    // Fetch all existing links for this broadcast
     const linksResponse = await dub.links.list({ tagNames: [tagName] })
     const existingLinks = linksResponse.result
 
@@ -82,12 +75,9 @@ const shortenLinksInMessage = async (message: string, id: number, isBroadcast = 
     for (const url of sortedUrls) {
       const link = allLinks.find((link) => link.url === url)
       if (link?.shortLink) {
-        // Create a safe regex that matches the exact URL and not parts of other URLs
-        const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const regex = new RegExp(escapedUrl, 'g')
-
-        // Replace all occurrences of this URL in the message
-        processedMessage = processedMessage.replace(regex, link.shortLink)
+        // Replace all occurrences with regex (not just the first one)
+        const pattern = new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+        processedMessage = processedMessage.replace(pattern, link.shortLink)
         console.log(`Replaced URL '${url}' with shortened link '${link.shortLink}'`)
       }
     }
@@ -102,53 +92,4 @@ const shortenLinksInMessage = async (message: string, id: number, isBroadcast = 
   return [message, false]
 }
 
-const cleanupUnusedLinks = async (
-  broadcastId: number,
-  firstMessage?: string,
-  secondMessage?: string,
-) => {
-  try {
-    // Collect all URLs from both messages
-    const allUrls = new Set<string>()
-
-    if (firstMessage) {
-      const firstMessageUrls = detectLinksToShorten(firstMessage)
-      firstMessageUrls.forEach((url) => allUrls.add(url))
-    }
-
-    if (secondMessage) {
-      const secondMessageUrls = detectLinksToShorten(secondMessage)
-      secondMessageUrls.forEach((url) => allUrls.add(url))
-    }
-
-    const urlsToKeep = [...allUrls]
-    if (urlsToKeep.length === 0) {
-      console.log('No URLs found in the messages. Skipping cleanup.')
-      return
-    }
-    // Get existing links for this broadcast
-    const tagName = `broadcast-${broadcastId}`
-    const linksResponse = await dub.links.list({ tagNames: [tagName] })
-    const existingLinks = linksResponse.result
-
-    // Find links that should be deleted (not in either message)
-    const linksToDelete = existingLinks.filter((link) => !urlsToKeep.includes(link.url))
-
-    // Delete unused links in bulk
-    if (linksToDelete.length > 0) {
-      const linkIdsToDelete = linksToDelete.map((link) => link.id)
-      await dub.links.deleteMany({ linkIds: linkIdsToDelete })
-      console.log(
-        `Deleted ${linkIdsToDelete.length} unused links for broadcast ${broadcastId}. Data: ${
-          JSON.stringify(linkIdsToDelete)
-        }`,
-      )
-    }
-  } catch (error) {
-    console.error(
-      `Error in cleanupUnusedLinks: ${error.message}. Stack: ${error.stack}. Broadcast ID: ${broadcastId}, Messages: ${firstMessage}, ${secondMessage}`,
-    )
-  }
-}
-
-export default { shortenLinksInMessage, cleanupUnusedLinks }
+export default { shortenLinksInMessage }

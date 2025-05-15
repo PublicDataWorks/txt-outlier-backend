@@ -55,8 +55,6 @@ const patch = async (
   id: number,
   broadcast: BroadcastUpdate,
 ): Promise<UpcomingBroadcastResponse | undefined> => {
-  // await DubLinkShortener.cleanupUnusedLinks(id, broadcast.firstMessage, broadcast.secondMessage)
-
   const originalFirstMessage = broadcast.firstMessage
   const originalSecondMessage = broadcast.secondMessage
 
