@@ -6,7 +6,7 @@ import { desc, eq } from 'drizzle-orm'
 import { client } from './utils.ts'
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { authors, campaignFileRecipients, campaigns, labels } from '../_shared/drizzle/schema.ts'
+import { authors, campaignFileRecipients, campaigns } from '../_shared/drizzle/schema.ts'
 import { createCampaign } from './factories/campaign.ts'
 import { createLabel } from './factories/label.ts'
 import { createAuthor } from './factories/author.ts'
@@ -82,7 +82,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
     assertEquals(data.title, 'Campaign with existing label')
     assertEquals(data.firstMessage, 'Test message with existing label')
     assertEquals(data.runAt, futureTimestamp)
-    assertEquals(data.labelId, testLabel.id)
+    assertEquals(data.labelIds, [testLabel.id])
 
     // Now check the database record to verify the labelId was set correctly
     const [campaign] = await supabase
@@ -91,7 +91,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
       .orderBy(desc(campaigns.id))
       .limit(1)
 
-    assertEquals(campaign.labelId, testLabel.id)
+    assertEquals(campaign.labelIds, [testLabel.id])
   })
 
   it('should handle null, empty, and whitespace campaignLabelName', async () => {
@@ -113,7 +113,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
     })
 
     assertEquals(nullLabelData.title, 'Campaign with null label')
-    assertEquals(nullLabelData.labelId, null)
+    assertEquals(nullLabelData.labelIds, [])
 
     // Verify in database that labelId is null
     const nullLabelCampaigns = await supabase
@@ -122,7 +122,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
       .orderBy(desc(campaigns.id))
       .limit(1)
 
-    assertEquals(nullLabelCampaigns[0].labelId, null)
+    assertEquals(nullLabelCampaigns[0].labelIds, [])
 
     // Create a campaign with empty string campaignLabelName
     const { data: emptyLabelData } = await client.functions.invoke(FUNCTION_NAME, {
@@ -139,7 +139,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
     })
 
     assertEquals(emptyLabelData.title, 'Campaign with empty label')
-    assertEquals(emptyLabelData.labelId, null)
+    assertEquals(emptyLabelData.labelIds, [])
 
     // Verify in database that labelId is null
     const emptyLabelCampaigns = await supabase
@@ -148,7 +148,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
       .orderBy(desc(campaigns.id))
       .limit(1)
 
-    assertEquals(emptyLabelCampaigns[0].labelId, null)
+    assertEquals(emptyLabelCampaigns[0].labelIds, [])
 
     // Create a campaign with whitespace-only campaignLabelName
     const { data: whitespaceLabelData } = await client.functions.invoke(FUNCTION_NAME, {
@@ -165,7 +165,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
     })
 
     assertEquals(whitespaceLabelData.title, 'Campaign with whitespace-only label')
-    assertEquals(whitespaceLabelData.labelId, null)
+    assertEquals(whitespaceLabelData.labelIds, [])
 
     // Verify in database that labelId is null
     const whitespaceLabelCampaigns = await supabase
@@ -174,7 +174,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
       .orderBy(desc(campaigns.id))
       .limit(1)
 
-    assertEquals(whitespaceLabelCampaigns[0].labelId, null)
+    assertEquals(whitespaceLabelCampaigns[0].labelIds, [])
   })
 
   it('should handle case-insensitivity and trimming for campaignLabelName', async () => {
@@ -199,7 +199,7 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
 
     // Check the response contains the campaign data
     assertEquals(data.title, 'Campaign with case-insensitive label')
-    assertEquals(data.labelId, mixedCaseLabel.id)
+    assertEquals(data.labelIds, [mixedCaseLabel.id])
 
     // Verify in database that the correct labelId was set
     const [campaign] = await supabase
@@ -208,7 +208,42 @@ describe('Segment-based POST', { sanitizeOps: false, sanitizeResources: false },
       .orderBy(desc(campaigns.id))
       .limit(1)
 
-    assertEquals(campaign.labelId, mixedCaseLabel.id)
+    assertEquals(campaign.labelIds, [mixedCaseLabel.id])
+  })
+
+  it('should reject campaignLabelName containing forward slash', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+    const segmentLabel = await createLabel()
+
+    // Try to create a campaign with a label name containing a forward slash
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: {
+        title: 'Campaign with invalid label',
+        firstMessage: 'Test message with invalid label',
+        runAt: futureTimestamp,
+        campaignLabelName: 'label/name',
+        segments: {
+          included: [{ id: segmentLabel.id }],
+        },
+      },
+    })
+
+    // Should get a validation error
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message.includes('Campaign label name cannot contain forward slash'), true)
+
+    // Verify no campaign was created with this label
+    const latestCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(5)
+
+    for (const campaign of latestCampaigns) {
+      assertEquals(campaign.title !== 'Campaign with invalid label', true)
+    }
   })
 
   it('should create a campaign with all fields', async () => {
@@ -865,7 +900,7 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .limit(1)
 
     assertEquals(updatedCampaign.title, 'Updated Campaign')
-    assertEquals(updatedCampaign.labelId, originalLabel.id) // Label ID should remain unchanged
+    assertEquals(updatedCampaign.labelIds, [originalLabel.id]) // Label ID should remain unchanged
 
     // Now try with explicit null value
     const nullResponse = await client.functions.invoke(`${FUNCTION_NAME}${campaign.id}/`, {
@@ -888,7 +923,7 @@ describe('PATCH', { sanitizeOps: false, sanitizeResources: false }, () => {
       .limit(1)
 
     assertEquals(nullUpdatedCampaign.firstMessage, 'Updated again')
-    assertEquals(nullUpdatedCampaign.labelId, originalLabel.id) // Label ID should remain unchanged
+    assertEquals(nullUpdatedCampaign.labelIds, [originalLabel.id]) // Label ID should remain unchanged
   })
 
   it('should convert file-based campaign to segment-based', async () => {
@@ -1642,6 +1677,7 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     assertEquals(response.data.runAt, futureTimestamp)
     assertEquals(response.data.delay, 1800)
     assertEquals(response.data.recipientCount, 3)
+    assertEquals(response.data.labelIds, ['abc'])
   })
 
   it('should create a file-based campaign with existing campaignLabelName', async () => {
@@ -1670,7 +1706,7 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     })
 
     assertEquals(response.data.title, 'File Campaign with Label')
-    assertEquals(response.data.labelId, newLabel.id)
+    assertEquals(response.data.labelIds, ['abc', newLabel.id])
 
     // Verify the campaign was actually saved to the database with the correct label ID
     const [savedCampaign] = await supabase
@@ -1680,7 +1716,7 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
       .limit(1)
 
     assertEquals(savedCampaign.title, 'File Campaign with Label')
-    assertEquals(savedCampaign.labelId, newLabel.id)
+    assertEquals(savedCampaign.labelIds, ['abc', newLabel.id])
     assertEquals(savedCampaign.recipientCount, 2)
   })
 
@@ -1699,7 +1735,7 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     formData.append('runAt', futureTimestamp.toString())
     formData.append('delay', '1800')
 
-    const response = await client.functions.invoke(FUNCTION_NAME, {
+    await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
       body: formData,
     })
@@ -1799,6 +1835,44 @@ describe('File-based POST/PATCH', { sanitizeOps: false, sanitizeResources: false
     assertEquals(response.error.context.status, 400)
     const errorData = await response.error.context.json()
     assertEquals(errorData.message, 'No phone numbers found in the CSV file')
+  })
+
+  it('should reject file-based campaign with campaignLabelName containing forward slash', async () => {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400
+
+    // Create CSV with phone numbers
+    const phoneNumbers = ['+11234567890', '+19876543210']
+    const csvContent = phoneNumbers.join('\n')
+    const file = new File([csvContent], 'test-numbers.csv', { type: 'text/csv' })
+
+    // Create form data with invalid campaignLabelName
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('title', 'File Upload with Invalid Label')
+    formData.append('firstMessage', 'Testing invalid label with forward slash')
+    formData.append('runAt', futureTimestamp.toString())
+    formData.append('campaignLabelName', 'invalid/label/name')
+
+    const response = await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: formData,
+    })
+
+    // Should get a validation error
+    assertEquals(response.error.context.status, 400)
+    const errorData = await response.error.context.json()
+    assertEquals(errorData.message.includes('Campaign label name cannot contain forward slash'), true)
+
+    // Verify no campaign was created with this title
+    const latestCampaigns = await supabase
+      .select()
+      .from(campaigns)
+      .orderBy(desc(campaigns.id))
+      .limit(5)
+
+    for (const campaign of latestCampaigns) {
+      assertEquals(campaign.title !== 'File Upload with Invalid Label', true)
+    }
   })
 })
 

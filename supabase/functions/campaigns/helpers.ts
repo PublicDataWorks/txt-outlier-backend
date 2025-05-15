@@ -56,9 +56,10 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
     throw new BadRequestError('One or more segment IDs are invalid')
   }
 
-  let labelId
+  const labelIds = []
   if (campaignData.campaignLabelName) {
-    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
+    const customLabelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
+    if (customLabelId) labelIds.push(customLabelId)
   }
 
   const recipientCountResult = await supabase.execute(sql`
@@ -77,7 +78,7 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
       delay: campaignData.delay,
       segments: sql`${campaignData.segments}::jsonb`,
       recipientCount,
-      labelId,
+      labelIds,
     })
     .returning(formatCampaignSelect)
 
@@ -88,9 +89,10 @@ export const handleSegmentBasedCampaignCreate = async (campaignData: SegmentBase
 export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampaign, file: File) => {
   const phoneNumbers = await processPhoneNumberFile(file)
 
-  let labelId: string | undefined
+  const labelIds = [Deno.env.get('SHARED_CSV_CAMPAIGN_LABEL_ID')!]
   if (campaignData.campaignLabelName) {
-    labelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
+    const customLabelId = await labelService.getLabelIdFromName(campaignData.campaignLabelName)
+    if (customLabelId) labelIds.push(customLabelId)
   }
 
   const newCampaign = await supabase.transaction(async (tx) => {
@@ -109,7 +111,7 @@ export const handleFileBasedCampaignCreate = async (campaignData: FileBasedCampa
         delay: campaignData.delay,
         segments: null,
         recipientCount: phoneNumbers.length,
-        labelId,
+        labelIds,
       })
       .returning(formatCampaignSelect)
 

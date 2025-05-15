@@ -394,7 +394,7 @@ export const campaigns = pgTable('campaigns', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   processed: boolean('processed').notNull().default(false),
   twilioPaging: text('twilio_paging'),
-  labelId: uuid('label_id'),
+  labelIds: text('label_ids').array().default([]),
 })
 
 export const campaignFileRecipients = pgTable('campaign_file_recipients', {
