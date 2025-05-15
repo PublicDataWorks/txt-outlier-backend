@@ -2,15 +2,7 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm'
 
 import supabase from '../lib/supabase.ts'
 import DateUtils from '../misc/DateUtils.ts'
-import {
-  authors,
-  broadcasts,
-  BroadcastSegment,
-  broadcastsSegments,
-  campaigns,
-  lookupTemplate,
-  messageStatuses,
-} from '../drizzle/schema.ts'
+import { authors, broadcasts, campaigns, lookupTemplate, messageStatuses } from '../drizzle/schema.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
 import {
@@ -30,7 +22,6 @@ import {
   MISSIVE_API_RATE_LIMIT,
   SECOND_MESSAGES_QUEUE_NAME,
 } from '../constants.ts'
-import { cloneBroadcast } from '../misc/utils.ts'
 import BadRequestError from '../exception/BadRequestError.ts'
 
 const makeBroadcast = async (): Promise<void> => {
@@ -50,9 +41,9 @@ const makeBroadcast = async (): Promise<void> => {
   }
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    await createNextBroadcast(tx, broadcast)
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
   })
+  await createNextBroadcast(broadcast)
 }
 
 const sendNow = async (): Promise<void> => {
@@ -77,23 +68,13 @@ const sendNow = async (): Promise<void> => {
       throw new NotFoundError('Unable to send now: the next batch is scheduled to send less than 30 minutes from now')
     }
   }
+
   await supabase.transaction(async (tx) => {
     await tx.execute(queueBroadcastMessages(broadcast.id))
-    const newBroadcastId: { id: number }[] = await tx
-      .insert(broadcasts)
-      .values(cloneBroadcast(broadcast))
-      .returning({ id: broadcasts.id })
-    const newBroadcastSegments: BroadcastSegment[] = []
-    for (const broadcastSegment of broadcast.broadcastToSegments) {
-      newBroadcastSegments.push({
-        broadcastId: newBroadcastId[0].id!,
-        segmentId: broadcastSegment.segment.id!,
-        ratio: broadcastSegment.ratio,
-      })
-    }
     await tx.update(broadcasts).set({ editable: false, runAt: new Date() }).where(eq(broadcasts.id, broadcast.id))
-    await tx.insert(broadcastsSegments).values(newBroadcastSegments)
   })
+
+  await createNextBroadcast(broadcast, true)
 }
 
 const sendBroadcastMessage = async (isSecond: boolean) => {

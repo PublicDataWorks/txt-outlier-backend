@@ -19,6 +19,7 @@
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
     "hono": "jsr:@hono/hono@4.6.20",
     "zod": "https://deno.land/x/zod@v3.24.1/mod.ts",
-    "croner": "jsr:@hexagon/croner@8.1.2"
+    "croner": "jsr:@hexagon/croner@8.1.2",
+    "dub": "npm:dub"
   }
 }

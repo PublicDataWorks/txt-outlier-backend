@@ -13,6 +13,7 @@ import { authors, Broadcast, broadcasts, messageStatuses } from '../drizzle/sche
 import { BroadcastDashBoardQueryReturn, pgmqDelete, selectBroadcastDashboard } from '../scheduledcron/queries.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../constants.ts'
+import DubLinkShortener from '../lib/DubLinkShortener.ts'
 
 const getAll = async (
   limit = 5, // Limit past batches
@@ -54,11 +55,26 @@ const patch = async (
   id: number,
   broadcast: BroadcastUpdate,
 ): Promise<UpcomingBroadcastResponse | undefined> => {
+  const originalFirstMessage = broadcast.firstMessage
+  const originalSecondMessage = broadcast.secondMessage
+
+  // Process the messages with URL shortening
+  if (broadcast.firstMessage) {
+    const [processedMessage, messageChanged] = await DubLinkShortener.shortenLinksInMessage(broadcast.firstMessage, id)
+    if (messageChanged) broadcast.firstMessage = processedMessage
+  }
+  if (broadcast.secondMessage) {
+    const [processedMessage, messageChanged] = await DubLinkShortener.shortenLinksInMessage(broadcast.secondMessage, id)
+    if (messageChanged) broadcast.secondMessage = processedMessage
+  }
+
   return await supabase.transaction(async (tx) => {
     const result: Broadcast[] = await tx.update(broadcasts)
       .set({
         firstMessage: broadcast.firstMessage,
         secondMessage: broadcast.secondMessage,
+        originalFirstMessage: originalFirstMessage,
+        originalSecondMessage: originalSecondMessage,
         runAt: broadcast.runAt ? new Date(broadcast.runAt * 1000) : undefined,
         delay: broadcast.delay,
         noUsers: broadcast.noRecipients,
