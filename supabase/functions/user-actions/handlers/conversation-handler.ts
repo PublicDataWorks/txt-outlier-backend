@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
-import { upsertConversation, upsertOrganization, upsertRule } from './utils.ts'
+import { upsertConversation, upsertLabel, upsertOrganization, upsertRule } from './utils.ts'
 import { RequestBody, RequestConversation, RuleType } from '../types.ts'
 import {
   ConversationAssignee,
@@ -68,6 +68,7 @@ export const handleConversationAssigneeChange = async (requestBody: RequestBody)
       requestBody.conversation,
       inserted[0].id,
     )
+    await upsertLabel(tx, requestBody)
   })
 }
 

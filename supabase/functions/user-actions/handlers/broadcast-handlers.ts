@@ -83,8 +83,8 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
         .update(twilioMessages)
         .set({
           isReply: true,
-          replyToBroadcast: sentMessage[0].broadcastId || sentMessage[0].campaignId,
-          replyToCampaign: sentMessage[0].broadcastId || sentMessage[0].campaignId,
+          replyToBroadcast: sentMessage[0].broadcastId,
+          replyToCampaign: sentMessage[0].campaignId,
         })
         .where(eq(twilioMessages.id, requestMessage.id))
 
