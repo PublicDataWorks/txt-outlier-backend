@@ -57,7 +57,6 @@ app.get(FUNCTION_PATH, async (c) => {
       ...campaign,
       firstMessageCount: Number(campaign.firstMessageCount),
       secondMessageCount: Number(campaign.secondMessageCount),
-      successfulDeliveries: Number(campaign.successfulDeliveries),
       failedDeliveries: Number(campaign.failedDeliveries),
       unsubscribes: Number(campaign.unsubscribes),
       totalReplies: Number(campaign.totalReplies),
