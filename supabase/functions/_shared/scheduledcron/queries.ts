@@ -140,15 +140,6 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
       AND campaign_id IN (SELECT id FROM past_campaigns)
       GROUP BY campaign_id
     ),
-    successful_deliveries AS (
-      SELECT
-        campaign_id,
-        COUNT(DISTINCT (recipient_phone_number, is_second)) AS total_success
-      FROM message_statuses
-      WHERE twilio_sent_status IN ('delivered', 'sent')
-      AND campaign_id IN (SELECT id FROM past_campaigns)
-      GROUP BY campaign_id
-    ),
     failed_deliveries AS (
       SELECT
         campaign_id,
@@ -180,14 +171,12 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
       pc.*,
       COALESCE(fmc.total_first, 0) AS "firstMessageCount",
       COALESCE(smc.total_second, 0) AS "secondMessageCount",
-      COALESCE(sd.total_success, 0) AS "successfulDeliveries",
       COALESCE(fd.total_failed, 0) AS "failedDeliveries",
       COALESCE(u.total_unsub, 0) AS "unsubscribes",
       COALESCE(r.total_replies, 0) AS "totalReplies"
     FROM past_campaigns pc
     LEFT JOIN first_message_counts fmc ON pc.id = fmc.campaign_id
     LEFT JOIN second_message_counts smc ON pc.id = smc.campaign_id
-    LEFT JOIN successful_deliveries sd ON pc.id = sd.campaign_id
     LEFT JOIN failed_deliveries fd ON pc.id = fd.campaign_id
     LEFT JOIN unsubscribes u ON pc.id = u.campaign_id
     LEFT JOIN replies r ON pc.id = r.campaign_id

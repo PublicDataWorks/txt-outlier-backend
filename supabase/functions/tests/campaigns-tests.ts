@@ -1184,13 +1184,11 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     assertEquals(typeof testCampaign.firstMessageCount, 'number')
     assertEquals(typeof testCampaign.secondMessageCount, 'number')
-    assertEquals(typeof testCampaign.successfulDeliveries, 'number')
     assertEquals(typeof testCampaign.failedDeliveries, 'number')
     assertEquals(typeof testCampaign.unsubscribes, 'number')
 
     assertEquals(testCampaign.firstMessageCount, 2)
     assertEquals(testCampaign.secondMessageCount, 1)
-    assertEquals(testCampaign.successfulDeliveries, 2)
     assertEquals(testCampaign.failedDeliveries, 1)
     assertEquals(testCampaign.unsubscribes, 0)
   })
