@@ -183,7 +183,7 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
       COALESCE(sd.total_success, 0) AS "successfulDeliveries",
       COALESCE(fd.total_failed, 0) AS "failedDeliveries",
       COALESCE(u.total_unsub, 0) AS "unsubscribes",
-      COALESCE(r.total_replies, 0) AS "no_of_replies"
+      COALESCE(r.total_replies, 0) AS "totalReplies"
     FROM past_campaigns pc
     LEFT JOIN first_message_counts fmc ON pc.id = fmc.campaign_id
     LEFT JOIN second_message_counts smc ON pc.id = smc.campaign_id

@@ -60,6 +60,7 @@ app.get(FUNCTION_PATH, async (c) => {
       successfulDeliveries: Number(campaign.successfulDeliveries),
       failedDeliveries: Number(campaign.failedDeliveries),
       unsubscribes: Number(campaign.unsubscribes),
+      totalReplies: Number(campaign.totalReplies),
       labelId: campaign.labelId,
     }))
 

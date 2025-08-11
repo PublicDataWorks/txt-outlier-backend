@@ -1270,7 +1270,7 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
     const testCampaign = data.past.items.find((c) => c.id === pastCampaign.id)
 
     assertEquals(testCampaign !== undefined, true)
-    assertEquals(testCampaign.no_of_replies, '3')
+    assertEquals(testCampaign.totalReplies, 3)
   })
 })
 
