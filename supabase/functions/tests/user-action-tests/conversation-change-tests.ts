@@ -7,7 +7,9 @@ import {
   conversations,
   conversationsAssignees,
   conversationsAssigneesHistory,
+  conversationsLabels,
   conversationsUsers,
+  labels,
   organizations,
   teams,
   users,
@@ -251,6 +253,90 @@ describe(
       assertEquals(assigneeHistory[0].assigned, assignees[0].assigned)
       assertEquals(assigneeHistory[0].flagged, assignees[0].flagged)
       assertEquals(assigneeHistory[0].snoozed, assignees[0].snoozed)
+    })
+
+    it('assignee change with labels - should upsert labels', async () => {
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: conversationAssigneeChangeRequest,
+      })
+
+      const createdLabels = await supabase.select().from(labels)
+      assertEquals(createdLabels.length, 2)
+
+      const parentLabel = createdLabels.find((l) => l.id === '13405e0f-8551-4ea7-a303-7552aee0bce4')!
+      assertEquals(parentLabel.name, 'Parent Test')
+      assertEquals(parentLabel.nameWithParentNames, 'Parent Test')
+      assertEquals(parentLabel.color, '#EE3430')
+      assertEquals(parentLabel.parent, null)
+      assertEquals(parentLabel.shareWithOrganization, false)
+      assertEquals(parentLabel.visibility, 'organization')
+
+      const nestedLabel = createdLabels.find((l) => l.id === '37113989-97e3-4121-a903-f85af6bfaaa0')!
+      assertEquals(nestedLabel.name, 'Nested test')
+      assertEquals(nestedLabel.nameWithParentNames, 'Parent Test/Nested test')
+      assertEquals(nestedLabel.color, '#50A8FF')
+      assertEquals(nestedLabel.parent, '13405e0f-8551-4ea7-a303-7552aee0bce4')
+      assertEquals(nestedLabel.shareWithOrganization, false)
+      assertEquals(nestedLabel.visibility, 'organization')
+
+      const conversationLabels = await supabase.select().from(conversationsLabels)
+      assertEquals(conversationLabels.length, 2)
+
+      const labelIds = conversationLabels.map((cl) => cl.labelId)
+      assert(labelIds.includes('13405e0f-8551-4ea7-a303-7552aee0bce4'))
+      assert(labelIds.includes('37113989-97e3-4121-a903-f85af6bfaaa0'))
+
+      assertEquals(conversationLabels.every((cl) => cl.isArchived === false), true)
+    })
+
+    it('assignee change with label removal - should archive removed labels', async () => {
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: conversationAssigneeChangeRequest,
+      })
+
+      const initialLabels = await supabase.select().from(conversationsLabels)
+      assertEquals(initialLabels.length, 2)
+      assertEquals(initialLabels.every((cl) => cl.isArchived === false), true)
+
+      const requestWithOneLabel = JSON.parse(JSON.stringify(conversationAssigneeChangeRequest))
+      requestWithOneLabel.conversation.shared_labels = [requestWithOneLabel.conversation.shared_labels[0]]
+      requestWithOneLabel.conversation.shared_label_names = 'Parent Test'
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: requestWithOneLabel,
+      })
+
+      const updatedLabels = await supabase.select().from(conversationsLabels)
+      assertEquals(updatedLabels.length, 2)
+
+      const parentLabelLink = updatedLabels.find((cl) => cl.labelId === '13405e0f-8551-4ea7-a303-7552aee0bce4')!
+      const nestedLabelLink = updatedLabels.find((cl) => cl.labelId === '37113989-97e3-4121-a903-f85af6bfaaa0')!
+
+      assertEquals(parentLabelLink.isArchived, false)
+      assertEquals(nestedLabelLink.isArchived, true)
+    })
+
+    it('assignee change with all labels removed - should archive all labels', async () => {
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: conversationAssigneeChangeRequest,
+      })
+
+      const requestWithNoLabels = JSON.parse(JSON.stringify(conversationAssigneeChangeRequest))
+      requestWithNoLabels.conversation.shared_labels = []
+      requestWithNoLabels.conversation.shared_label_names = null
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: requestWithNoLabels,
+      })
+
+      const updatedLabels = await supabase.select().from(conversationsLabels)
+      assertEquals(updatedLabels.length, 2)
+      assertEquals(updatedLabels.every((cl) => cl.isArchived === true), true)
     })
   },
 )
