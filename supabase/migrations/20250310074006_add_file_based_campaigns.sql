@@ -342,16 +342,19 @@ BEGIN
             'broadcast_first_messages',
             ARRAY(
                 SELECT jsonb_build_object(
-                    'recipient_phone_number', phone_number,
+                    'recipient_phone_number', crt.phone_number,
                     'campaign_id', p_campaign_id,
                     'first_message', v_campaign_record.first_message,
                     'second_message', v_campaign_record.second_message,
                     'title', v_campaign_record.title,
                     'delay', v_campaign_record.delay,
                     'label_ids', v_campaign_record.label_ids,
+                    'campaign_segments', v_campaign_record.segments,
+                    'conversation_id', ca.conversation_id::TEXT,
                     'created_at', EXTRACT(EPOCH FROM NOW())::INTEGER
                 )
-                FROM campaign_recipients_temp
+                FROM campaign_recipients_temp crt
+                LEFT JOIN conversations_authors ca ON crt.phone_number = ca.author_phone_number
                 LIMIT v_batch_size
                 OFFSET v_offset * v_batch_size
             )

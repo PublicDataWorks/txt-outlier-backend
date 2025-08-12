@@ -5,6 +5,7 @@ import DateUtils from '../misc/DateUtils.ts'
 import { authors, broadcasts, campaigns, lookupTemplate, messageStatuses } from '../drizzle/schema.ts'
 import MissiveUtils from '../lib/Missive.ts'
 import Twilio from '../lib/Twilio.ts'
+import type { QueuedMessageMetadata } from '../types/queue.ts'
 import {
   BROADCAST_DOUBLE_FAILURE_QUERY,
   FAILED_DELIVERED_QUERY,
@@ -87,6 +88,14 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
 
   const messageMetadata = results[0].message
   console.log(`Sending broadcast message. isSecond: ${isSecond}, messageMetadata: ${JSON.stringify(messageMetadata)}`)
+
+  const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
+  if (shouldSkip) {
+    console.log(`Skipping message to ${messageMetadata.recipient_phone_number} - has excluded label`)
+    await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
+    return
+  }
+
   const message = isSecond ? messageMetadata.second_message : messageMetadata.first_message
   const response = await MissiveUtils.sendMessage(
     message,
@@ -140,6 +149,32 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
       console.error(errorMsg)
       Sentry.captureException(errorMsg)
     }
+  }
+}
+
+const shouldSkipCampaignMessage = async (messageMetadata: QueuedMessageMetadata): Promise<boolean> => {
+  if (
+    !messageMetadata.campaign_id || !messageMetadata.campaign_segments?.excluded || !messageMetadata.conversation_id
+  ) {
+    return false
+  }
+
+  try {
+    const conversationResponse = await MissiveUtils.getMissiveConversation(messageMetadata.conversation_id)
+    if (!conversationResponse.ok) {
+      return false
+    }
+
+    const conversationData = await conversationResponse.json()
+    const conversationLabelIds = conversationData.conversations?.shared_labels?.map((label: { id: string }) =>
+      label.id
+    ) || []
+
+    const excludedSegmentIds = messageMetadata.campaign_segments.excluded.map((segment) => segment.id)
+    return excludedSegmentIds.some((excludedId) => conversationLabelIds.includes(excludedId))
+  } catch (error) {
+    console.error(`Error checking exclusion labels: ${error}`)
+    return false
   }
 }
 

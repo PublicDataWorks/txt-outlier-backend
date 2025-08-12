@@ -11,6 +11,7 @@ const MISSIVE_ORGANIZATION_ID = Deno.env.get('MISSIVE_ORGANIZATION_ID')!
 const MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_SECOND_MESSAGES')!
 const MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES = Deno.env.get('MISSIVE_SECRET_BROADCAST_FIRST_MESSAGES')!
 const MISSIVE_SECRET_NON_BROADCAST = Deno.env.get('MISSIVE_SECRET_NON_BROADCAST')!
+const MISSIVE_SECRET_CAMPAIGN_READ_CONVERSATION = Deno.env.get('MISSIVE_SECRET_CAMPAIGN_READ_CONVERSATION')!
 
 const sendMessage = async (message: string, toPhone: string, isSecond: boolean, sharedLabelIds?: string[]) => {
   const startTime = Date.now()
@@ -87,6 +88,15 @@ const getMissiveMessage = async (id: string) => {
     'Authorization': `Bearer ${MISSIVE_SECRET_NON_BROADCAST}`,
   }
   const url = `${GET_MESSAGE_URL}${id}`
+  return await fetch(url, { method: 'GET', headers: headers })
+}
+
+const getMissiveConversation = async (id: string) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${MISSIVE_SECRET_CAMPAIGN_READ_CONVERSATION}`,
+  }
+  const url = `https://public.missiveapp.com/v1/conversations/${id}`
   return await fetch(url, { method: 'GET', headers: headers })
 }
 
@@ -207,6 +217,7 @@ export default {
   createPost,
   verifySignature,
   getMissiveMessage,
+  getMissiveConversation,
   createLabel,
   findLabelByName,
   CREATE_MESSAGE_URL,
