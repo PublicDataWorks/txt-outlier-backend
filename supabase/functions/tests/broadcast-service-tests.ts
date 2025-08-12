@@ -34,7 +34,6 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
     broadcast = await createBroadcast({
       firstMessage: 'Test first message',
       secondMessage: 'Test second message',
-      delay: 300,
     })
     segment = await createSegment({ broadcastId: broadcast.id! })
 

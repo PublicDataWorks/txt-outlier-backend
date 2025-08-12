@@ -350,11 +350,16 @@ BEGIN
                     'delay', v_campaign_record.delay,
                     'label_ids', v_campaign_record.label_ids,
                     'campaign_segments', v_campaign_record.segments,
-                    'conversation_id', ca.conversation_id::TEXT,
+                    'conversation_id', (
+                        SELECT conversation_id::TEXT
+                        FROM conversations_authors
+                        WHERE author_phone_number = crt.phone_number
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ),
                     'created_at', EXTRACT(EPOCH FROM NOW())::INTEGER
                 )
                 FROM campaign_recipients_temp crt
-                LEFT JOIN conversations_authors ca ON crt.phone_number = ca.author_phone_number
                 LIMIT v_batch_size
                 OFFSET v_offset * v_batch_size
             )
