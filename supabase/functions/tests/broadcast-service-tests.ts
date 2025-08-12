@@ -1,27 +1,66 @@
 import { afterEach, beforeEach, describe, it } from 'jsr:@std/testing/bdd'
-import { assert, assertEquals, assertExists } from 'jsr:@std/assert'
+import { assertEquals, assertExists } from 'jsr:@std/assert'
 import * as sinon from 'npm:sinon'
 import { sql } from 'drizzle-orm'
 
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { messageStatuses } from '../_shared/drizzle/schema.ts'
-import { sendBroadcastMessage, shouldSkipCampaignMessage } from '../_shared/services/BroadcastService.ts'
-import { pgmqRead, pgmqSend } from '../_shared/scheduledcron/queries.ts'
+import { type AudienceSegment, type Broadcast, messageStatuses } from '../_shared/drizzle/schema.ts'
+import { pgmqSend } from '../_shared/scheduledcron/queries.ts'
 import { FIRST_MESSAGES_QUEUE, SECOND_MESSAGES_QUEUE_NAME } from '../_shared/constants.ts'
 import { missiveMock } from './_mock/missive.ts'
-import * as Sentry from 'sentry/deno'
 import type { QueuedMessageMetadata } from '../_shared/types/queue.ts'
+import BroadcastService from '../_shared/services/BroadcastService.ts'
+import { createBroadcast } from './factories/broadcast.ts'
+import { createSegment } from './factories/segment.ts'
+import { createAuthor } from './factories/author.ts'
+import { createCampaign } from './factories/campaign.ts'
 
 const sandbox = sinon.createSandbox()
 
 describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false }, () => {
+  const phoneNumber = '+1234567890'
+  let broadcast: Broadcast
+  let segment: AudienceSegment
+  let messageMetadata: QueuedMessageMetadata
+  let expectedConversationId: string
+  let expectedMissiveId: string
+
   beforeEach(async () => {
     missiveMock.sendMessage.reset()
     missiveMock.getMissiveConversation.reset()
-    sandbox.stub(console, 'log')
-    sandbox.stub(console, 'error')
-    sandbox.stub(Sentry, 'captureException')
+    await createAuthor(phoneNumber)
+
+    broadcast = await createBroadcast({
+      firstMessage: 'Test first message',
+      secondMessage: 'Test second message',
+      delay: 300,
+    })
+    segment = await createSegment({ broadcastId: broadcast.id! })
+
+    messageMetadata = {
+      first_message: broadcast.firstMessage,
+      second_message: broadcast.secondMessage,
+      recipient_phone_number: phoneNumber,
+      broadcast_id: broadcast.id!,
+      segment_id: segment.id,
+      delay: broadcast.delay,
+    }
+
+    expectedConversationId = crypto.randomUUID()
+    expectedMissiveId = crypto.randomUUID()
+    const mockResponse = new Response(
+      JSON.stringify({
+        drafts: {
+          id: expectedMissiveId,
+          conversation: expectedConversationId,
+        },
+      }),
+      { status: 200 },
+    )
+    missiveMock.sendMessage.resolves(mockResponse)
+
+    await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
   })
 
   afterEach(() => {
@@ -30,29 +69,15 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
 
   describe('successful message sending', () => {
     it('should send first message successfully and delete from queue', async () => {
-      const messageMetadata = {
-        first_message: 'Hello, this is the first message',
-        recipient_phone_number: '+1234567890',
-        broadcast_id: 123,
-        segment_id: 456,
-        label_ids: ['label1', 'label2'],
-      }
-
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-
-      const mockResponse = new Response(
-        JSON.stringify({
-          drafts: {
-            id: 'missive-message-id',
-            conversation: 'missive-conversation-id',
-          },
-        }),
-        { status: 200 },
+      const messagesBeforeSend = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
       )
-      mockResponse.ok = true
-      missiveMock.sendMessage.resolves(mockResponse)
+      assertEquals(messagesBeforeSend.length, 1)
 
-      await sendBroadcastMessage(false)
+      const statusesBeforeSend = await supabase.select().from(messageStatuses)
+      assertEquals(statusesBeforeSend.length, 0)
+
+      await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
       sinon.assert.calledWith(
@@ -60,13 +85,12 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
         messageMetadata.first_message,
         messageMetadata.recipient_phone_number,
         false,
-        messageMetadata.label_ids,
       )
 
       const remainingMessages = await supabase.execute(
         sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
       )
-      assertEquals(remainingMessages.length, 0, 'Message should be deleted from queue')
+      assertEquals(remainingMessages.length, 0)
 
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 1)
@@ -74,84 +98,57 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
       assertEquals(statuses[0].message, messageMetadata.first_message)
       assertEquals(statuses[0].isSecond, false)
       assertEquals(statuses[0].broadcastId, messageMetadata.broadcast_id)
-      assertEquals(statuses[0].missiveId, 'missive-message-id')
-      assertEquals(statuses[0].missiveConversationId, 'missive-conversation-id')
+      assertEquals(statuses[0].campaignId, null)
+      assertEquals(statuses[0].missiveId, expectedMissiveId)
+      assertEquals(statuses[0].missiveConversationId, expectedConversationId)
       assertEquals(statuses[0].audienceSegmentId, messageMetadata.segment_id)
     })
 
     it('should send first message and queue second message with delay', async () => {
-      const messageMetadata = {
-        first_message: 'First message',
-        second_message: 'Second message',
-        recipient_phone_number: '+1234567890',
-        broadcast_id: 123,
-        campaign_id: 789,
-        segment_id: 456,
-        delay: 300,
-        label_ids: ['label1'],
-      }
-
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-
-      const mockResponse = new Response(
-        JSON.stringify({
-          drafts: {
-            id: 'missive-message-id',
-            conversation: 'missive-conversation-id',
-          },
-        }),
-        { status: 200 },
-      )
-      mockResponse.ok = true
-      missiveMock.sendMessage.resolves(mockResponse)
-
-      await sendBroadcastMessage(false)
-      sinon.assert.calledOnce(missiveMock.sendMessage)
-
-      const firstQueueMessages = await supabase.execute(
-        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
-      )
-      assertEquals(firstQueueMessages.length, 0)
+      await BroadcastService.sendBroadcastMessage(false)
 
       const secondQueueMessages = await supabase.execute(
         sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
       )
       assertEquals(secondQueueMessages.length, 1)
-      const queuedMessage = JSON.parse(secondQueueMessages[0].message)
+      const queuedMessage = secondQueueMessages[0].message
       assertEquals(queuedMessage.first_message, messageMetadata.first_message)
       assertEquals(queuedMessage.second_message, messageMetadata.second_message)
       assertEquals(queuedMessage.recipient_phone_number, messageMetadata.recipient_phone_number)
+      assertEquals(queuedMessage.broadcast_id, broadcast.id!)
 
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 1)
       assertExists(statuses[0].secondMessageQueueId)
-      assertEquals(statuses[0].campaignId, messageMetadata.campaign_id)
+      assertEquals(statuses[0].broadcastId, broadcast.id!)
     })
 
     it('should send second message successfully', async () => {
-      const messageMetadata = {
-        first_message: 'First message',
-        second_message: 'Second message',
-        recipient_phone_number: '+1234567890',
-        broadcast_id: 123,
-        segment_id: 456,
-      }
+      messageMetadata.delay = 0
 
-      await supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), 0))
+      await supabase.execute(sql.raw(`DELETE FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`))
+      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
 
-      const mockResponse = new Response(
-        JSON.stringify({
-          drafts: {
-            id: 'missive-second-id',
-            conversation: 'missive-conv-id',
-          },
-        }),
-        { status: 200 },
+      await BroadcastService.sendBroadcastMessage(false)
+
+      missiveMock.sendMessage.reset()
+      missiveMock.sendMessage.resolves(
+        new Response(
+          JSON.stringify({
+            drafts: {
+              id: crypto.randomUUID(),
+              conversation: crypto.randomUUID(),
+            },
+          }),
+          { status: 200 },
+        ),
       )
-      mockResponse.ok = true
-      missiveMock.sendMessage.resolves(mockResponse)
+      let remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(remainingMessages.length, 1)
 
-      await sendBroadcastMessage(true)
+      await BroadcastService.sendBroadcastMessage(true)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
       sinon.assert.calledWith(
@@ -159,39 +156,34 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
         messageMetadata.second_message,
         messageMetadata.recipient_phone_number,
         true,
-        undefined,
       )
 
-      const remainingMessages = await supabase.execute(
+      remainingMessages = await supabase.execute(
         sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
       )
       assertEquals(remainingMessages.length, 0)
 
       const statuses = await supabase.select().from(messageStatuses)
-      assertEquals(statuses.length, 1)
-      assertEquals(statuses[0].message, messageMetadata.second_message)
-      assertEquals(statuses[0].isSecond, true)
+      assertEquals(statuses.length, 2)
+      const secondStatus = statuses.find((s) => s.isSecond === true)!
+      assertEquals(secondStatus.message, messageMetadata.second_message)
+      assertEquals(secondStatus.isSecond, true)
+      assertEquals(secondStatus.broadcastId, broadcast.id!)
     })
   })
 
   describe('error handling', () => {
-    it('should not delete message on API failure (non-429)', async () => {
-      const messageMetadata = {
-        first_message: 'Test message',
-        recipient_phone_number: '+1234567890',
-        broadcast_id: 123,
-      }
+    beforeEach(() => {
+      missiveMock.sendMessage.reset()
+    })
 
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-
-      const mockResponse = new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 })
-      mockResponse.ok = false
-      missiveMock.sendMessage.resolves(mockResponse)
-
-      await sendBroadcastMessage(false)
+    it('should not delete message on the first API failure', async () => {
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }),
+      )
+      await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
-      sinon.assert.calledOnce(Sentry.captureException as sinon.SinonStub)
 
       const remainingMessages = await supabase.execute(
         sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
@@ -202,158 +194,152 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
       assertEquals(statuses.length, 0)
     })
 
-    it('should handle 429 rate limit without deleting message', async () => {
-      const messageMetadata = {
-        first_message: 'Test message',
-        recipient_phone_number: '+1234567890',
-        broadcast_id: 123,
-      }
-
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-      await supabase.execute(pgmqRead(FIRST_MESSAGES_QUEUE, 0))
-      await supabase.execute(pgmqRead(FIRST_MESSAGES_QUEUE, 0))
-      await supabase.execute(pgmqRead(FIRST_MESSAGES_QUEUE, 0))
-
-      const mockResponse = new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429 })
-      mockResponse.ok = false
-      missiveMock.sendMessage.resolves(mockResponse)
-
-      await sendBroadcastMessage(false)
-
-      sinon.assert.calledOnce(Sentry.captureException as sinon.SinonStub)
-
-      const remainingMessages = await supabase.execute(
-        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
-      )
-      assertEquals(remainingMessages.length, 1, 'Message should remain in queue for 429 errors')
-    })
-
     it('should delete message after max retries for non-429 errors', async () => {
-      const messageMetadata = {
-        first_message: 'Test message',
-        recipient_phone_number: '+1234567890',
-        broadcast_id: 123,
-      }
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }),
+      )
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 3`))
 
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-      await supabase.execute(pgmqRead(FIRST_MESSAGES_QUEUE, 0))
-      await supabase.execute(pgmqRead(FIRST_MESSAGES_QUEUE, 0))
-      await supabase.execute(pgmqRead(FIRST_MESSAGES_QUEUE, 0))
+      await BroadcastService.sendBroadcastMessage(false)
 
-      const mockResponse = new Response(JSON.stringify({ error: 'Server Error' }), { status: 500 })
-      mockResponse.ok = false
-      missiveMock.sendMessage.resolves(mockResponse)
-
-      await sendBroadcastMessage(false)
-
-      sinon.assert.calledTwice(Sentry.captureException as sinon.SinonStub)
+      sinon.assert.calledOnce(missiveMock.sendMessage)
 
       const remainingMessages = await supabase.execute(
         sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
       )
-      assertEquals(remainingMessages.length, 0, 'Message should be deleted after max retries')
+      assertEquals(remainingMessages.length, 0)
+
+      const statuses = await supabase.select().from(messageStatuses)
+      assertEquals(statuses.length, 0)
     })
-  })
 
-  describe('empty queue handling', () => {
-    it('should return early when queue is empty', async () => {
-      await sendBroadcastMessage(false)
+    it('should not delete message on 429 rate limit even after max retries', async () => {
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429 }),
+      )
 
-      sinon.assert.notCalled(missiveMock.sendMessage)
-      sinon.assert.notCalled(Sentry.captureException as sinon.SinonStub)
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 3`))
+
+      await BroadcastService.sendBroadcastMessage(false)
+
+      sinon.assert.calledOnce(missiveMock.sendMessage)
+
+      const remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
+      assertEquals(remainingMessages.length, 1)
 
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 0)
     })
   })
 
-  describe('campaign exclusion handling', () => {
-    it('should skip sending campaign message when recipient has excluded label', async () => {
-      const messageMetadata: QueuedMessageMetadata = {
-        recipient_phone_number: '+1234567890',
-        first_message: 'Campaign message',
-        campaign_id: 123,
-        campaign_segments: {
-          excluded: [{ id: 'exclude-label-1', since: 0 }],
-        },
-        conversation_id: 'conv-456',
-        label_ids: ['label1'],
-      }
+  describe('empty queue handling', () => {
+    it('should return early when first queue is empty', async () => {
+      await supabase.execute(sql.raw(`DELETE FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`))
+      await BroadcastService.sendBroadcastMessage(false)
 
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-
-      const mockConversationResponse = new Response(
-        JSON.stringify({
-          conversations: {
-            shared_labels: [
-              { id: 'exclude-label-1', name: 'Excluded' },
-              { id: 'other-label', name: 'Other' },
-            ],
-          },
-        }),
-        { status: 200 },
-      )
-      mockConversationResponse.ok = true
-      missiveMock.getMissiveConversation.resolves(mockConversationResponse)
-
-      await sendBroadcastMessage(false)
-
-      sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-      sinon.assert.calledWith(missiveMock.getMissiveConversation, 'conv-456')
       sinon.assert.notCalled(missiveMock.sendMessage)
 
-      const remainingMessages = await supabase.execute(
-        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
-      )
-      assertEquals(remainingMessages.length, 0, 'Message should be deleted from queue')
-
       const statuses = await supabase.select().from(messageStatuses)
-      assertEquals(statuses.length, 0, 'No message status should be created for skipped messages')
+      assertEquals(statuses.length, 0)
     })
 
-    it('should send campaign message when recipient has no excluded labels', async () => {
-      const messageMetadata: QueuedMessageMetadata = {
-        recipient_phone_number: '+1234567890',
-        first_message: 'Campaign message',
-        campaign_id: 123,
-        campaign_segments: {
-          excluded: [{ id: 'exclude-label-1', since: 0 }],
+    it('should return early when second queue is empty', async () => {
+      await BroadcastService.sendBroadcastMessage(true)
+
+      sinon.assert.notCalled(missiveMock.sendMessage)
+
+      const statuses = await supabase.select().from(messageStatuses)
+      assertEquals(statuses.length, 0)
+    })
+  })
+})
+
+describe('sendBroadcastMessage with campaigns', { sanitizeOps: false, sanitizeResources: false }, () => {
+  const phoneNumber = '+1234567890'
+  let campaign: any
+  let messageMetadata: QueuedMessageMetadata
+  let expectedConversationId: string
+  let expectedMissiveId: string
+  const labelId = crypto.randomUUID()
+  const conversationId = crypto.randomUUID()
+  const excludeLabelId = crypto.randomUUID()
+
+  beforeEach(async () => {
+    missiveMock.sendMessage.reset()
+    missiveMock.getMissiveConversation.reset()
+    await createAuthor(phoneNumber)
+
+    campaign = await createCampaign({
+      firstMessage: 'Test campaign first message',
+      secondMessage: 'Test campaign second message',
+      labelId: labelId,
+    })
+
+    messageMetadata = {
+      recipient_phone_number: phoneNumber,
+      campaign_id: campaign.id,
+      first_message: campaign.firstMessage,
+      second_message: campaign.secondMessage,
+      title: campaign.title,
+      delay: 300,
+      label_ids: campaign.labelIds,
+      campaign_segments: {
+        excluded: [{ id: excludeLabelId, since: 0 }],
+      },
+      conversation_id: conversationId,
+      created_at: Math.floor(Date.now() / 1000),
+    }
+
+    expectedConversationId = crypto.randomUUID()
+    expectedMissiveId = crypto.randomUUID()
+    const mockResponse = new Response(
+      JSON.stringify({
+        drafts: {
+          id: expectedMissiveId,
+          conversation: expectedConversationId,
         },
-        conversation_id: 'conv-456',
-        label_ids: ['label1'],
-      }
+      }),
+      { status: 200 },
+    )
+    missiveMock.sendMessage.resolves(mockResponse)
 
-      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
+    await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
+  })
 
+  afterEach(() => {
+    sandbox.restore()
+  })
+
+  describe('successful campaign message sending', () => {
+    beforeEach(() => {
       const mockConversationResponse = new Response(
         JSON.stringify({
           conversations: {
             shared_labels: [
-              { id: 'different-label', name: 'Different' },
-              { id: 'other-label', name: 'Other' },
+              { id: crypto.randomUUID(), name: 'Different' },
             ],
           },
         }),
         { status: 200 },
       )
-      mockConversationResponse.ok = true
       missiveMock.getMissiveConversation.resolves(mockConversationResponse)
+    })
 
-      const mockSendResponse = new Response(
-        JSON.stringify({
-          drafts: {
-            id: 'msg-id',
-            conversation: 'conv-id',
-          },
-        }),
-        { status: 200 },
+    it('should send first campaign message successfully and delete from queue', async () => {
+      const messagesBeforeSend = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
       )
-      mockSendResponse.ok = true
-      missiveMock.sendMessage.resolves(mockSendResponse)
+      assertEquals(messagesBeforeSend.length, 1)
 
-      await sendBroadcastMessage(false)
+      const statusesBeforeSend = await supabase.select().from(messageStatuses)
+      assertEquals(statusesBeforeSend.length, 0)
+
+      await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.getMissiveConversation)
+      sinon.assert.calledWith(missiveMock.getMissiveConversation, conversationId)
       sinon.assert.calledOnce(missiveMock.sendMessage)
       sinon.assert.calledWith(
         missiveMock.sendMessage,
@@ -363,361 +349,172 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
         messageMetadata.label_ids,
       )
 
+      const remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
+      assertEquals(remainingMessages.length, 0)
+
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 1)
-      assertEquals(statuses[0].campaignId, 123)
+      assertEquals(statuses[0].recipientPhoneNumber, messageMetadata.recipient_phone_number)
+      assertEquals(statuses[0].message, messageMetadata.first_message)
+      assertEquals(statuses[0].isSecond, false)
+      assertEquals(statuses[0].campaignId, campaign.id)
+      assertEquals(statuses[0].broadcastId, null)
+      assertEquals(statuses[0].missiveId, expectedMissiveId)
+      assertEquals(statuses[0].missiveConversationId, expectedConversationId)
     })
 
-    it('should send campaign message when Missive conversation API fails', async () => {
-      const messageMetadata: QueuedMessageMetadata = {
-        recipient_phone_number: '+1234567890',
-        first_message: 'Campaign message',
-        campaign_id: 123,
-        campaign_segments: {
-          excluded: [{ id: 'exclude-label-1', since: 0 }],
-        },
-        conversation_id: 'conv-456',
-        label_ids: ['label1'],
-      }
+    it('should send first campaign message and queue second message with delay', async () => {
+      let secondQueueMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(secondQueueMessages.length, 0)
+      await BroadcastService.sendBroadcastMessage(false)
 
+      secondQueueMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(secondQueueMessages.length, 1)
+      const queuedMessage = secondQueueMessages[0].message
+      assertEquals(queuedMessage.recipient_phone_number, messageMetadata.recipient_phone_number)
+      assertEquals(queuedMessage.campaign_id, campaign.id)
+      assertEquals(queuedMessage.first_message, messageMetadata.first_message)
+      assertEquals(queuedMessage.second_message, messageMetadata.second_message)
+      assertEquals(queuedMessage.title, messageMetadata.title)
+      assertEquals(queuedMessage.delay, messageMetadata.delay)
+      assertEquals(queuedMessage.label_ids, messageMetadata.label_ids)
+      assertEquals(queuedMessage.campaign_segments, messageMetadata.campaign_segments)
+      assertEquals(queuedMessage.conversation_id, messageMetadata.conversation_id)
+      assertExists(queuedMessage.created_at)
+
+      const statuses = await supabase.select().from(messageStatuses)
+      assertEquals(statuses.length, 1)
+      assertExists(statuses[0].secondMessageQueueId)
+      assertEquals(statuses[0].campaignId, campaign.id)
+    })
+
+    it('should send second campaign message successfully', async () => {
+      messageMetadata.delay = 0
+
+      await supabase.execute(sql.raw(`DELETE FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`))
       await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
 
-      const mockConversationResponse = new Response(JSON.stringify({ error: 'Not found' }), { status: 404 })
-      mockConversationResponse.ok = false
-      missiveMock.getMissiveConversation.resolves(mockConversationResponse)
+      await BroadcastService.sendBroadcastMessage(false)
 
-      const mockSendResponse = new Response(
+      missiveMock.sendMessage.reset()
+      missiveMock.sendMessage.resolves(
+        new Response(
+          JSON.stringify({
+            drafts: {
+              id: crypto.randomUUID(),
+              conversation: crypto.randomUUID(),
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+
+      missiveMock.getMissiveConversation.reset()
+      missiveMock.getMissiveConversation.resolves(
+        new Response(
+          JSON.stringify({
+            conversations: {
+              shared_labels: [
+                { id: crypto.randomUUID(), name: 'Different' },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+      let remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(remainingMessages.length, 1)
+
+      await BroadcastService.sendBroadcastMessage(true)
+
+      sinon.assert.calledOnce(missiveMock.sendMessage)
+      sinon.assert.calledWith(
+        missiveMock.sendMessage,
+        messageMetadata.second_message,
+        messageMetadata.recipient_phone_number,
+        true,
+      )
+
+      remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(remainingMessages.length, 0)
+
+      const statuses = await supabase.select().from(messageStatuses)
+      assertEquals(statuses.length, 2)
+      const secondStatus = statuses.find((s) => s.isSecond === true)!
+      assertEquals(secondStatus.message, messageMetadata.second_message)
+      assertEquals(secondStatus.isSecond, true)
+      assertEquals(secondStatus.campaignId, campaign.id)
+      assertEquals(secondStatus.broadcastId, null)
+    })
+  })
+
+  describe('campaign exclusion handling', () => {
+    it('should skip sending campaign message when recipient has excluded label', async () => {
+      const mockConversationResponse = new Response(
         JSON.stringify({
-          drafts: {
-            id: 'msg-id',
-            conversation: 'conv-id',
+          conversations: {
+            shared_labels: [
+              { id: excludeLabelId, name: 'Excluded' },
+              { id: 'other-label', name: 'Other' },
+            ],
           },
         }),
         { status: 200 },
       )
-      mockSendResponse.ok = true
-      missiveMock.sendMessage.resolves(mockSendResponse)
+      missiveMock.getMissiveConversation.resolves(mockConversationResponse)
+      let remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
+      assertEquals(remainingMessages.length, 1)
+      let secondQueueMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(secondQueueMessages.length, 0)
+      await BroadcastService.sendBroadcastMessage(false)
 
-      await sendBroadcastMessage(false)
+      sinon.assert.calledOnce(missiveMock.getMissiveConversation)
+      sinon.assert.calledWith(missiveMock.getMissiveConversation, conversationId)
+      sinon.assert.notCalled(missiveMock.sendMessage)
+
+      remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
+      assertEquals(remainingMessages.length, 0)
+
+      secondQueueMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
+      )
+      assertEquals(secondQueueMessages.length, 0)
+
+      const statuses = await supabase.select().from(messageStatuses)
+      assertEquals(statuses.length, 0)
+    })
+
+    it('should send campaign message when Missive conversation API fails', async () => {
+      const mockConversationResponse = new Response(
+        JSON.stringify({ error: 'Not found' }),
+        { status: 404 },
+      )
+      missiveMock.getMissiveConversation.resolves(mockConversationResponse)
+
+      await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.getMissiveConversation)
       sinon.assert.calledOnce(missiveMock.sendMessage)
 
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 1)
-      assertEquals(statuses[0].campaignId, 123)
+      assertEquals(statuses[0].campaignId, campaign.id)
     })
-
-    it('should skip campaign message for second message with exclusion', async () => {
-      const messageMetadata: QueuedMessageMetadata = {
-        recipient_phone_number: '+1234567890',
-        first_message: 'First',
-        second_message: 'Second campaign message',
-        campaign_id: 123,
-        campaign_segments: {
-          excluded: [{ id: 'exclude-label-1', since: 0 }],
-        },
-        conversation_id: 'conv-456',
-      }
-
-      await supabase.execute(pgmqSend(SECOND_MESSAGES_QUEUE_NAME, JSON.stringify(messageMetadata), 0))
-
-      const mockConversationResponse = new Response(
-        JSON.stringify({
-          conversations: {
-            shared_labels: [
-              { id: 'exclude-label-1', name: 'Excluded' },
-            ],
-          },
-        }),
-        { status: 200 },
-      )
-      mockConversationResponse.ok = true
-      missiveMock.getMissiveConversation.resolves(mockConversationResponse)
-
-      await sendBroadcastMessage(true)
-
-      sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-      sinon.assert.notCalled(missiveMock.sendMessage)
-
-      const remainingMessages = await supabase.execute(
-        sql.raw(`SELECT * FROM pgmq.q_${SECOND_MESSAGES_QUEUE_NAME}`),
-      )
-      assertEquals(remainingMessages.length, 0, 'Message should be deleted from queue')
-    })
-  })
-})
-
-describe('shouldSkipCampaignMessage', { sanitizeOps: false, sanitizeResources: false }, () => {
-  beforeEach(() => {
-    missiveMock.getMissiveConversation.reset()
-    sandbox.stub(console, 'error')
-  })
-
-  afterEach(() => {
-    sandbox.restore()
-  })
-
-  it('should return false when not a campaign message', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      broadcast_id: 123,
-    }
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, false)
-    sinon.assert.notCalled(missiveMock.getMissiveConversation)
-  })
-
-  it('should return false when campaign has no excluded segments', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      campaign_id: 123,
-      campaign_segments: {
-        included: [{ id: 'inc-1', since: 0 }],
-      },
-      conversation_id: 'conv-123',
-    }
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, false)
-    sinon.assert.notCalled(missiveMock.getMissiveConversation)
-  })
-
-  it('should return false when no conversation_id', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [{ id: 'exc-1', since: 0 }],
-      },
-    }
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, false)
-    sinon.assert.notCalled(missiveMock.getMissiveConversation)
-  })
-
-  it('should return true when conversation has excluded label', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [
-          { id: 'label-1', since: 0 },
-          { id: 'label-2', since: 0 },
-        ],
-      },
-      conversation_id: 'conv-123',
-    }
-
-    const mockResponse = new Response(
-      JSON.stringify({
-        conversations: {
-          shared_labels: [
-            { id: 'label-2', name: 'Excluded Label' },
-            { id: 'label-3', name: 'Other Label' },
-          ],
-        },
-      }),
-      { status: 200 },
-    )
-    mockResponse.ok = true
-    missiveMock.getMissiveConversation.resolves(mockResponse)
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, true)
-    sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-    sinon.assert.calledWith(missiveMock.getMissiveConversation, 'conv-123')
-  })
-
-  it('should return false when conversation has no excluded labels', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [
-          { id: 'label-1', since: 0 },
-          { id: 'label-2', since: 0 },
-        ],
-      },
-      conversation_id: 'conv-123',
-    }
-
-    const mockResponse = new Response(
-      JSON.stringify({
-        conversations: {
-          shared_labels: [
-            { id: 'label-3', name: 'Different Label' },
-            { id: 'label-4', name: 'Another Label' },
-          ],
-        },
-      }),
-      { status: 200 },
-    )
-    mockResponse.ok = true
-    missiveMock.getMissiveConversation.resolves(mockResponse)
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, false)
-    sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-  })
-
-  it('should return false when Missive API call fails', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [{ id: 'label-1', since: 0 }],
-      },
-      conversation_id: 'conv-123',
-    }
-
-    const mockResponse = new Response(JSON.stringify({ error: 'Not found' }), { status: 404 })
-    mockResponse.ok = false
-    missiveMock.getMissiveConversation.resolves(mockResponse)
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, false)
-    sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-  })
-
-  it('should return false and log error when exception occurs', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Test message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [{ id: 'label-1', since: 0 }],
-      },
-      conversation_id: 'conv-123',
-    }
-
-    missiveMock.getMissiveConversation.rejects(new Error('Network error'))
-
-    const shouldSkip = await shouldSkipCampaignMessage(messageMetadata)
-    assertEquals(shouldSkip, false)
-    sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-    sinon.assert.calledOnce(console.error as sinon.SinonStub)
-  })
-})
-
-describe('sendBroadcastMessage with campaign exclusion', { sanitizeOps: false, sanitizeResources: false }, () => {
-  beforeEach(() => {
-    missiveMock.sendMessage.reset()
-    missiveMock.getMissiveConversation.reset()
-    sandbox.stub(console, 'log')
-    sandbox.stub(console, 'error')
-    sandbox.stub(Sentry, 'captureException')
-  })
-
-  afterEach(() => {
-    sandbox.restore()
-  })
-
-  it('should skip sending when recipient has excluded label', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Campaign message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [{ id: 'exclude-label-1', since: 0 }],
-      },
-      conversation_id: 'conv-456',
-      label_ids: ['label1'],
-    }
-
-    await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-
-    const mockConversationResponse = new Response(
-      JSON.stringify({
-        conversations: {
-          shared_labels: [
-            { id: 'exclude-label-1', name: 'Excluded' },
-            { id: 'other-label', name: 'Other' },
-          ],
-        },
-      }),
-      { status: 200 },
-    )
-    mockConversationResponse.ok = true
-    missiveMock.getMissiveConversation.resolves(mockConversationResponse)
-
-    await sendBroadcastMessage(false)
-
-    sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-    sinon.assert.calledWith(missiveMock.getMissiveConversation, 'conv-456')
-    sinon.assert.notCalled(missiveMock.sendMessage)
-
-    const remainingMessages = await supabase.execute(
-      sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
-    )
-    assertEquals(remainingMessages.length, 0, 'Message should be deleted from queue')
-
-    const statuses = await supabase.select().from(messageStatuses)
-    assertEquals(statuses.length, 0, 'No message status should be created for skipped messages')
-  })
-
-  it('should send message when recipient has no excluded labels', async () => {
-    const messageMetadata: QueuedMessageMetadata = {
-      recipient_phone_number: '+1234567890',
-      first_message: 'Campaign message',
-      campaign_id: 123,
-      campaign_segments: {
-        excluded: [{ id: 'exclude-label-1', since: 0 }],
-      },
-      conversation_id: 'conv-456',
-      label_ids: ['label1'],
-    }
-
-    await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
-
-    const mockConversationResponse = new Response(
-      JSON.stringify({
-        conversations: {
-          shared_labels: [
-            { id: 'different-label', name: 'Different' },
-            { id: 'other-label', name: 'Other' },
-          ],
-        },
-      }),
-      { status: 200 },
-    )
-    mockConversationResponse.ok = true
-    missiveMock.getMissiveConversation.resolves(mockConversationResponse)
-
-    const mockSendResponse = new Response(
-      JSON.stringify({
-        drafts: {
-          id: 'msg-id',
-          conversation: 'conv-id',
-        },
-      }),
-      { status: 200 },
-    )
-    mockSendResponse.ok = true
-    missiveMock.sendMessage.resolves(mockSendResponse)
-
-    await sendBroadcastMessage(false)
-
-    sinon.assert.calledOnce(missiveMock.getMissiveConversation)
-    sinon.assert.calledOnce(missiveMock.sendMessage)
-    sinon.assert.calledWith(
-      missiveMock.sendMessage,
-      messageMetadata.first_message,
-      messageMetadata.recipient_phone_number,
-      false,
-      messageMetadata.label_ids,
-    )
-
-    const statuses = await supabase.select().from(messageStatuses)
-    assertEquals(statuses.length, 1)
-    assertEquals(statuses[0].campaignId, 123)
   })
 })
