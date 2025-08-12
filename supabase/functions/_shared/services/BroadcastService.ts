@@ -153,20 +153,19 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
 }
 
 const shouldSkipCampaignMessage = async (messageMetadata: QueuedMessageMetadata): Promise<boolean> => {
-  if (
-    !messageMetadata.campaign_id || !messageMetadata.campaign_segments?.excluded || !messageMetadata.conversation_id
-  ) {
-    return false
-  }
-
   try {
+    if (
+      !messageMetadata.campaign_id || !messageMetadata.campaign_segments?.excluded || !messageMetadata.conversation_id
+    ) {
+      return false
+    }
     const conversationResponse = await MissiveUtils.getMissiveConversation(messageMetadata.conversation_id)
     if (!conversationResponse.ok) {
       return false
     }
 
     const conversationData = await conversationResponse.json()
-    const conversationLabelIds = conversationData.conversations?.shared_labels?.map((label: { id: string }) =>
+    const conversationLabelIds = conversationData.conversations?.[0]?.shared_labels?.map((label: { id: string }) =>
       label.id
     ) || []
 

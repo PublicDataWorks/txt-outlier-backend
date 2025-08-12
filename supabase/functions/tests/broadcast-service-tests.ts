@@ -315,11 +315,13 @@ describe('sendBroadcastMessage with campaigns', { sanitizeOps: false, sanitizeRe
     beforeEach(() => {
       const mockConversationResponse = new Response(
         JSON.stringify({
-          conversations: {
-            shared_labels: [
-              { id: crypto.randomUUID(), name: 'Different' },
-            ],
-          },
+          conversations: [
+            {
+              shared_labels: [
+                { id: crypto.randomUUID(), name: 'Different' },
+              ],
+            },
+          ],
         }),
         { status: 200 },
       )
@@ -418,11 +420,13 @@ describe('sendBroadcastMessage with campaigns', { sanitizeOps: false, sanitizeRe
       missiveMock.getMissiveConversation.resolves(
         new Response(
           JSON.stringify({
-            conversations: {
-              shared_labels: [
-                { id: crypto.randomUUID(), name: 'Different' },
-              ],
-            },
+            conversations: [
+              {
+                shared_labels: [
+                  { id: crypto.randomUUID(), name: 'Different' },
+                ],
+              },
+            ],
           }),
           { status: 200 },
         ),
@@ -458,15 +462,47 @@ describe('sendBroadcastMessage with campaigns', { sanitizeOps: false, sanitizeRe
   })
 
   describe('campaign exclusion handling', () => {
+    it('should send campaign message when Missive returns empty conversations array', async () => {
+      const mockConversationResponse = new Response(
+        JSON.stringify({
+          conversations: [],
+        }),
+        { status: 200 },
+      )
+      missiveMock.getMissiveConversation.resolves(mockConversationResponse)
+
+      let remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
+      assertEquals(remainingMessages.length, 1)
+
+      await BroadcastService.sendBroadcastMessage(false)
+
+      sinon.assert.calledOnce(missiveMock.getMissiveConversation)
+      sinon.assert.calledWith(missiveMock.getMissiveConversation, conversationId)
+      sinon.assert.calledOnce(missiveMock.sendMessage)
+
+      remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
+      assertEquals(remainingMessages.length, 0)
+
+      const statuses = await supabase.select().from(messageStatuses)
+      assertEquals(statuses.length, 1)
+      assertEquals(statuses[0].campaignId, campaign.id)
+    })
+
     it('should skip sending campaign message when recipient has excluded label', async () => {
       const mockConversationResponse = new Response(
         JSON.stringify({
-          conversations: {
-            shared_labels: [
-              { id: excludeLabelId, name: 'Excluded' },
-              { id: 'other-label', name: 'Other' },
-            ],
-          },
+          conversations: [
+            {
+              shared_labels: [
+                { id: excludeLabelId, name: 'Excluded' },
+                { id: 'other-label', name: 'Other' },
+              ],
+            },
+          ],
         }),
         { status: 200 },
       )
