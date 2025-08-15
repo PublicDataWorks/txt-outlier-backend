@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm'
 
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { type AudienceSegment, type Broadcast, messageStatuses } from '../_shared/drizzle/schema.ts'
+import { type AudienceSegment, type Broadcast, Campaign, messageStatuses } from '../_shared/drizzle/schema.ts'
 import { pgmqSend } from '../_shared/scheduledcron/queries.ts'
 import { FIRST_MESSAGES_QUEUE, SECOND_MESSAGES_QUEUE_NAME } from '../_shared/constants.ts'
 import { missiveMock } from './_mock/missive.ts'
@@ -257,7 +257,7 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
 
 describe('sendBroadcastMessage with campaigns', { sanitizeOps: false, sanitizeResources: false }, () => {
   const phoneNumber = '+1234567890'
-  let campaign: any
+  let campaign: Campaign
   let messageMetadata: QueuedMessageMetadata
   let expectedConversationId: string
   let expectedMissiveId: string
@@ -550,6 +550,32 @@ describe('sendBroadcastMessage with campaigns', { sanitizeOps: false, sanitizeRe
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 1)
       assertEquals(statuses[0].campaignId, campaign.id)
+    })
+
+    it('should not call getMissiveConversation when excluded array is empty', async () => {
+      missiveMock.getMissiveConversation.reset()
+      missiveMock.sendMessage.reset()
+
+      const mockSendResponse = new Response(
+        JSON.stringify({
+          drafts: {
+            id: crypto.randomUUID(),
+            conversation: crypto.randomUUID(),
+          },
+        }),
+        { status: 200 },
+      )
+      missiveMock.sendMessage.resolves(mockSendResponse)
+
+      await supabase.execute(sql.raw(`DELETE FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`))
+      messageMetadata.campaign_segments = {
+        excluded: [],
+      }
+      await supabase.execute(pgmqSend(FIRST_MESSAGES_QUEUE, JSON.stringify(messageMetadata), 0))
+
+      await BroadcastService.sendBroadcastMessage(false)
+
+      sinon.assert.notCalled(missiveMock.getMissiveConversation)
     })
   })
 })

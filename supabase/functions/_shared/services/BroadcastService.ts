@@ -155,7 +155,8 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
 const shouldSkipCampaignMessage = async (messageMetadata: QueuedMessageMetadata): Promise<boolean> => {
   try {
     if (
-      !messageMetadata.campaign_id || !messageMetadata.campaign_segments?.excluded || !messageMetadata.conversation_id
+      !messageMetadata.campaign_id || !messageMetadata.campaign_segments?.excluded?.length ||
+      !messageMetadata.conversation_id
     ) {
       return false
     }
