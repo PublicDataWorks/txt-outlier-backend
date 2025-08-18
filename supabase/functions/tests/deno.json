@@ -29,8 +29,8 @@
     "base64": "https://denopkg.com/chiefbiiko/base64/mod.ts",
     "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
     "jsonwebtoken": "npm:jsonwebtoken",
-    "sentry/deno": "https://deno.land/x/sentry@7.114.0/index.mjs",
-    "sentry/node": "npm:@sentry/node@^7.114.0",
-    "dub": "./_mock/dub.ts"
+    "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
+    "dub": "./_mock/dub.ts",
+    "../_shared/lib/Missive.ts": "./_mock/missive.ts"
   }
 }
