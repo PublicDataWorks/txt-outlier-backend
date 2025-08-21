@@ -161,7 +161,7 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
     replies AS (
       SELECT
         reply_to_campaign AS campaign_id,
-        COUNT(*) AS total_replies
+        COUNT(DISTINCT from_field) AS total_replies
       FROM twilio_messages
       WHERE reply_to_campaign IS NOT NULL
         AND reply_to_campaign IN (SELECT id FROM past_campaigns)

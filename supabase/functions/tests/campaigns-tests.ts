@@ -1230,15 +1230,19 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
       processed: true,
     })
 
-    const fromPhone = '+12345678901'
+    const fromPhone1 = '+12345678901'
+    const fromPhone2 = '+12345678902'
+    const fromPhone3 = '+12345678903'
     const toPhone = '+19876543210'
 
-    await createAuthor(fromPhone, { unsubscribed: false, exclude: false })
+    await createAuthor(fromPhone1, { unsubscribed: false, exclude: false })
+    await createAuthor(fromPhone2, { unsubscribed: false, exclude: false })
+    await createAuthor(fromPhone3, { unsubscribed: false, exclude: false })
     await createAuthor(toPhone, { unsubscribed: false, exclude: false })
 
     await createTwilioMessage({
       preview: 'Reply 1',
-      fromField: fromPhone,
+      fromField: fromPhone1,
       toField: toPhone,
       isReply: true,
       replyToCampaign: pastCampaign.id,
@@ -1246,7 +1250,7 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     await createTwilioMessage({
       preview: 'Reply 2',
-      fromField: fromPhone,
+      fromField: fromPhone2,
       toField: toPhone,
       isReply: true,
       replyToCampaign: pastCampaign.id,
@@ -1254,7 +1258,7 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
 
     await createTwilioMessage({
       preview: 'Reply 3',
-      fromField: fromPhone,
+      fromField: fromPhone2,
       toField: toPhone,
       isReply: true,
       replyToCampaign: pastCampaign.id,
@@ -1268,7 +1272,7 @@ describe('GET', { sanitizeOps: false, sanitizeResources: false }, () => {
     const testCampaign = data.past.items.find((c) => c.id === pastCampaign.id)
 
     assertEquals(testCampaign !== undefined, true)
-    assertEquals(testCampaign.totalReplies, 3)
+    assertEquals(testCampaign.totalReplies, 2)
   })
 })
 
