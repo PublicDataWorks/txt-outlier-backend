@@ -78,6 +78,27 @@ describe(
       assertEquals(unsubscribeAfter[0].twilioMessageId, unsubscribeMsg.message!.id)
     })
 
+    it('stop message should NOT be marked as reply', async () => {
+      const stopMsg = newIncomingSmsRequest
+      stopMsg.message!.preview = 'stop'
+      stopMsg.message!.delivered_at = Date.now() / 1000
+      await createBroadcastMessageStatus({
+        recipient: stopMsg.message!.from_field.id,
+        createdAt: subMinutes(new Date(), 10).toISOString(),
+      })
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: stopMsg,
+      })
+
+      const incomingMessages = await supabase.select().from(twilioMessages)
+      assertEquals(incomingMessages.length, 1)
+      assertEquals(incomingMessages[0].isReply, false, 'STOP messages should not be marked as replies')
+      assertEquals(incomingMessages[0].replyToBroadcast, null, 'STOP messages should not have replyToBroadcast set')
+      assertEquals(incomingMessages[0].replyToCampaign, null, 'STOP messages should not have replyToCampaign set')
+    })
+
     it('stop after receiving broadcast', async () => {
       const unsubscribeMsg = newIncomingSmsRequest
       unsubscribeMsg.message!.preview = 'stop'

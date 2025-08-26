@@ -79,23 +79,12 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
 
     const sentMessage = await findRecentBroadcastOrCampaignMessage(phoneNumber, deliveredDate)
     if (sentMessage.length > 0) {
-      await supabase
-        .update(twilioMessages)
-        .set({
-          isReply: true,
-          replyToBroadcast: sentMessage[0].broadcastId,
-          replyToCampaign: sentMessage[0].campaignId,
-        })
-        .where(eq(twilioMessages.id, requestMessage.id))
-
-      // Handle second message queue deletion if exists
       if (sentMessage[0].secondMessageQueueId) {
         await supabase.execute(
           pgmqDelete(SECOND_MESSAGES_QUEUE_NAME, String(sentMessage[0].secondMessageQueueId)),
         )
       }
     }
-
     const messageContent = requestMessage.preview.trim().toLowerCase()
 
     if (UNSUBSCRIBED_TERMS.some((term) => messageContent.includes(term))) {
@@ -104,8 +93,20 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
         messageId: requestMessage.id,
         sentMessageId: sentMessage[0]?.id,
       })
-    } else if (START_TERMS.some((term) => messageContent.includes(term))) {
-      await updateSubscriptionStatus(phoneNumber, false)
+    } else {
+      if (sentMessage.length > 0) {
+        await supabase
+          .update(twilioMessages)
+          .set({
+            isReply: true,
+            replyToBroadcast: sentMessage[0].broadcastId,
+            replyToCampaign: sentMessage[0].campaignId,
+          })
+          .where(eq(twilioMessages.id, requestMessage.id))
+      }
+      if (START_TERMS.some((term) => messageContent.includes(term))) {
+        await updateSubscriptionStatus(phoneNumber, false)
+      }
     }
   } catch (error) {
     console.error('Error handling broadcast reply:', error)
