@@ -3,14 +3,47 @@ import { Dub } from 'dub'
 const dub = new Dub({ token: Deno.env.get('DUB_API_KEY')! })
 
 const ensureBroadcastTagExists = async (tagName: string) => {
-  const existingTags = await dub.tags.list({ search: tagName })
-  const tagExists = existingTags.some((tag) => tag.name === tagName)
+  try {
+    const existingTags = await dub.tags.list({ search: tagName })
+    const tagExists = existingTags.some((tag) => tag.name === tagName)
 
-  if (!tagExists) {
-    await dub.tags.create({ name: tagName })
-    console.log(`Created tag '${tagName}'`)
-  } else {
-    console.log(`Tag '${tagName}' already exists`)
+    if (!tagExists) {
+      try {
+        await dub.tags.create({ name: tagName })
+        console.log(`Created tag '${tagName}'`)
+      } catch (createError) {
+        // Handle ResponseValidationError - the tag may have been created successfully
+        // despite the SDK validation error due to schema mismatch
+        if (createError?.message?.includes('Response validation failed') ||
+            createError?.constructor?.name === 'ResponseValidationError') {
+          console.warn(
+            `Tag creation returned validation error (likely SDK/API schema mismatch), verifying if tag was created: ${createError.message}`
+          )
+
+          // Verify if the tag was actually created
+          const verifyTags = await dub.tags.list({ search: tagName })
+          const tagNowExists = verifyTags.some((tag) => tag.name === tagName)
+
+          if (tagNowExists) {
+            console.log(`Tag '${tagName}' was created successfully despite validation error`)
+          } else {
+            // Tag creation genuinely failed
+            throw createError
+          }
+        } else {
+          // Different error - rethrow
+          throw createError
+        }
+      }
+    } else {
+      console.log(`Tag '${tagName}' already exists`)
+    }
+  } catch (error) {
+    // If tag operations fail completely, log the error but don't fail the entire link shortening
+    console.error(
+      `Error in ensureBroadcastTagExists for tag '${tagName}': ${error.message}. Stack: ${error.stack}. Continuing without tag.`
+    )
+    // We'll continue without the tag - links can still be created
   }
 }
 
@@ -45,10 +78,17 @@ const shortenLinksInMessage = async (message: string, id: number, isBroadcast = 
       tagName = `broadcast-${id}`
     }
 
+    // Try to ensure tag exists (will not throw if it fails)
     await ensureBroadcastTagExists(tagName)
 
-    const linksResponse = await dub.links.list({ tagNames: [tagName] })
-    const existingLinks = linksResponse.result
+    // Try to get existing links with this tag
+    let existingLinks = []
+    try {
+      const linksResponse = await dub.links.list({ tagNames: [tagName] })
+      existingLinks = linksResponse.result
+    } catch (listError) {
+      console.warn(`Could not list links by tag '${tagName}': ${listError.message}. Will create all links as new.`)
+    }
 
     // Find URLs that don't have shortened links yet
     const urlsToCreate = urls.filter((url) => !existingLinks.some((link) => link.url === url))
