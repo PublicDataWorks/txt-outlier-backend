@@ -86,7 +86,7 @@ const shortenLinksInMessage = async (message: string, id: number, isBroadcast = 
     return [processedMessage, true]
   } catch (error) {
     console.error(
-      `Error in shortenLinksInMessage: ${error.message}. Stack: ${error.stack}. Message: ${message}, ID: ${id}, isBroadcast: ${isBroadcast}`,
+      `Error in shortenLinksInMessage: ${error}. Stack: ${error.stack}. Message: ${message}, ID: ${id}, isBroadcast: ${isBroadcast}`,
     )
   }
   return [message, false]
