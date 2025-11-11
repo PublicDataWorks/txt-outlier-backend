@@ -129,7 +129,7 @@ const handleBroadcastOutgoing = async (requestBody: RequestBody) => {
 
     const response = await Missive.getMissiveMessage(message.id)
     if (!response.ok) {
-      console.error(`Failed to get message ${message.id}`)
+      console.error(`Failed to get message ${message.id}, ${response.status}`)
       return
     }
 
