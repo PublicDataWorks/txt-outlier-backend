@@ -2,18 +2,6 @@ import { Dub } from 'dub'
 
 const dub = new Dub({ token: Deno.env.get('DUB_API_KEY')! })
 
-const ensureBroadcastTagExists = async (tagName: string) => {
-  const existingTags = await dub.tags.list({ search: tagName })
-  const tagExists = existingTags.some((tag) => tag.name === tagName)
-
-  if (!tagExists) {
-    await dub.tags.create({ name: tagName })
-    console.log(`Created tag '${tagName}'`)
-  } else {
-    console.log(`Tag '${tagName}' already exists`)
-  }
-}
-
 const detectLinksToShorten = (message: string): string[] => {
   if (!message) return []
 
@@ -34,18 +22,18 @@ const detectLinksToShorten = (message: string): string[] => {
   return [...new Set(filteredMatches)]
 }
 
-const shortenLinksInMessage = async (message: string, id: number, isBroadcast = true): Promise<[string, boolean]> => {
+const shortenLinksInMessage = async (message: string, id: number): Promise<[string, boolean]> => {
   try {
     // Detect URLs in the message
     const urls = detectLinksToShorten(message)
     console.log(`Found ${urls.length} URLs in the message: ${message}`)
     if (urls.length === 0) return [message, false]
-    let tagName = `campaign-${id}`
-    if (isBroadcast) {
-      tagName = `broadcast-${id}`
-    }
 
-    await ensureBroadcastTagExists(tagName)
+    const tagName = Deno.env.get('DUB_TAG_NAME')
+    if (!tagName) {
+      console.error('DUB_TAG_NAME environment variable is not set')
+      return [message, false]
+    }
 
     const linksResponse = await dub.links.list({ tagNames: [tagName] })
     const existingLinks = linksResponse.result
@@ -86,7 +74,7 @@ const shortenLinksInMessage = async (message: string, id: number, isBroadcast = 
     return [processedMessage, true]
   } catch (error) {
     console.error(
-      `Error in shortenLinksInMessage: ${error}. Stack: ${error.stack}. Message: ${message}, ID: ${id}, isBroadcast: ${isBroadcast}`,
+      `Error in shortenLinksInMessage: ${error}. Stack: ${error.stack}. Message: ${message}, ID: ${id}`,
     )
   }
   return [message, false]
