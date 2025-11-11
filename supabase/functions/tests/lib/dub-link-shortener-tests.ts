@@ -15,20 +15,18 @@ const sandbox = sinon.createSandbox()
 
 describe('DubLinkShortener', () => {
   beforeEach(() => {
-    // Reset all stubs between tests
-    sandbox.reset()
+    sandbox.restore()
 
     // Mock console methods to avoid cluttering test output
     sandbox.stub(console, 'log')
     sandbox.stub(console, 'error')
 
-    // Reset all mock methods to clear any previous test configurations
-    Object.values(dubMock.tags).forEach((method) => {
-      if (typeof method.reset === 'function') method.reset()
-    })
-    Object.values(dubMock.links).forEach((method) => {
-      if (typeof method.reset === 'function') method.reset()
-    })
+    const envStub = sandbox.stub(Deno.env, 'get')
+    envStub.callThrough()
+    envStub.withArgs('DUB_TAG_NAME').returns('txt-messages')
+
+    dubMock.links.list.reset()
+    dubMock.links.createMany.reset()
   })
 
   afterEach(() => {
@@ -38,27 +36,19 @@ describe('DubLinkShortener', () => {
 
   describe('shortenLinksInMessage', () => {
     it('should return the message unchanged when there are no URLs', async () => {
-      // Setup
       const message = 'This is a message with no URLs'
       const broadcastId = 123
 
-      // Run the test
       const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
-
-      // Verify results
       assertEquals(result, message)
       assertEquals(changed, false)
     })
 
-    it('should create a tag for the broadcast if URLs are detected', async () => {
-      // Setup - create test message with URL
+    it('should shorten URLs using the configured tag name', async () => {
       const message = 'Check out https://example.com for more information'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
-      // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([])
-      dubMock.tags.create.withArgs({ name: tagName }).resolves({ id: 'tag1', name: tagName })
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
       dubMock.links.createMany.resolves([{
         id: 'link1',
@@ -67,16 +57,11 @@ describe('DubLinkShortener', () => {
         tagNames: [tagName],
       }])
 
-      // Run the test
       const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
 
-      // Check that URL was replaced
       assertEquals(result, 'Check out https://dub.sh/abc123 for more information')
       assertEquals(changed, true)
 
-      // Verify that the correct methods were called
-      sinon.assert.calledWith(dubMock.tags.list, { search: tagName })
-      sinon.assert.calledWith(dubMock.tags.create, { name: tagName })
       sinon.assert.calledWith(dubMock.links.list, { tagNames: [tagName] })
       sinon.assert.calledWith(dubMock.links.createMany, [{
         url: 'https://example.com',
@@ -84,46 +69,11 @@ describe('DubLinkShortener', () => {
       }])
     })
 
-    it('should not create a tag if it already exists', async () => {
-      // Setup
-      const message = 'Check out https://example.com for more information'
-      const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
-
-      // Setup stub responses - tag already exists
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
-      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
-      dubMock.links.createMany.resolves([{
-        id: 'link1',
-        url: 'https://example.com',
-        shortLink: 'https://dub.sh/abc123',
-        tagNames: [tagName],
-      }])
-
-      // Run the test
-      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
-
-      // Check that URL was replaced
-      assertEquals(result, 'Check out https://dub.sh/abc123 for more information')
-      assertEquals(changed, true)
-
-      // Verify tag.create was not called
-      sinon.assert.calledWith(dubMock.tags.list, { search: tagName })
-      sinon.assert.notCalled(dubMock.tags.create)
-    })
-
     it('should use existing shortened links if available', async () => {
       // Setup
       const message = 'Check out https://example.com and https://example.org'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
-
-      // Setup stub responses - one link already exists
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
+      const tagName = 'txt-messages'
 
       // Setup existing links - only example.com has a shortened link
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({
@@ -164,12 +114,9 @@ describe('DubLinkShortener', () => {
       // Setup
       const message = 'Check https://example.com here and https://example.com there'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
       // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
       dubMock.links.createMany.resolves([{
         id: 'link1',
@@ -192,12 +139,9 @@ describe('DubLinkShortener', () => {
       // Setup
       const message = 'https://dub.sh/GhVrND3 https://github.com/PublicDataWorks/txt-outlier-backend/pull/85'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
       // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
 
       // Setup createMany to return shortened links for both URLs
@@ -233,12 +177,9 @@ describe('DubLinkShortener', () => {
       // Setup
       const message = 'Check out https://example.com. Also visit https://example.org, and maybe https://example.net!'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
       // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
 
       // Setup createMany to return shortened links for all URLs
@@ -285,12 +226,9 @@ describe('DubLinkShortener', () => {
       // Setup
       const message = 'See this page (https://example.com) and this too: https://example.org;'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
       // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
 
       // Setup createMany to return shortened links for all URLs
@@ -330,12 +268,9 @@ describe('DubLinkShortener', () => {
       // Setup
       const message = 'Check out this page (https://google.com) for more info'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
       // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
 
       // Setup createMany to return a shortened link
@@ -369,12 +304,9 @@ describe('DubLinkShortener', () => {
       const message =
         'Check out https://bit.ly/abcdef and https://dub.sh/xyz and https://tinyurl.com/abc and https://goo.gl/abc123'
       const broadcastId = 123
-      const tagName = `broadcast-${broadcastId}`
+      const tagName = 'txt-messages'
 
       // Setup stub responses
-      dubMock.tags.list.withArgs({ search: tagName }).resolves([
-        { id: 'tag1', name: tagName },
-      ])
       dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
 
       // Run the test
@@ -394,7 +326,7 @@ describe('DubLinkShortener', () => {
       const broadcastId = 123
 
       // Setup stub to throw an error
-      dubMock.tags.list.throws(new Error('API Error'))
+      dubMock.links.list.throws(new Error('API Error'))
 
       // Run the test
       const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
@@ -405,6 +337,25 @@ describe('DubLinkShortener', () => {
 
       // Error should be logged
       sinon.assert.called(console.error as sinon.SinonStub)
+    })
+
+    it('should return original message when DUB_TAG_NAME is not set', async () => {
+      const message = 'Check out https://example.com for more information'
+      const broadcastId = 123
+
+      sandbox.restore()
+      sandbox.stub(console, 'log')
+      sandbox.stub(console, 'error')
+      const envStub = sandbox.stub(Deno.env, 'get')
+      envStub.callThrough()
+      envStub.withArgs('DUB_TAG_NAME').returns(undefined)
+
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      assertEquals(result, message)
+      assertEquals(changed, false)
+
+      sinon.assert.calledWith(console.error as sinon.SinonStub, 'DUB_TAG_NAME environment variable is not set')
     })
   })
 })

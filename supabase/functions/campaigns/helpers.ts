@@ -293,7 +293,6 @@ async function processCampaignMessages(campaign: FormattedCampaign, newFirstMess
     ;[processedFirstMessage, firstMessageChanged] = await DubLinkShortener.shortenLinksInMessage(
       campaign.firstMessage,
       campaign.id!,
-      false,
     )
   }
 
@@ -302,7 +301,6 @@ async function processCampaignMessages(campaign: FormattedCampaign, newFirstMess
     ;[processedSecondMessage, secondMessageChanged] = await DubLinkShortener.shortenLinksInMessage(
       campaign.secondMessage,
       campaign.id,
-      false,
     )
   }
 
