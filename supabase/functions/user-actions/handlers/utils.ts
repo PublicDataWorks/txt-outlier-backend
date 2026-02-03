@@ -40,16 +40,12 @@ import {
 } from '../adapters.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 
-export const upsertRule = async (
-  // deno-lint-ignore no-explicit-any
-  tx: PostgresJsTransaction<any, any>,
-  requestRule: RequestRule,
-) => {
+// IMPORTANT: Do not call this inside a transaction.
+// Many concurrent webhooks share the same rule ID - running this in a transaction
+// causes lock contention as each request waits for the previous transaction to complete.
+export const ensureRuleExists = async (requestRule: RequestRule) => {
   const newRule = adaptRule(requestRule)
-  await tx.insert(rules).values(newRule).onConflictDoUpdate({
-    target: rules.id,
-    set: { description: newRule.description },
-  })
+  await supabase.insert(rules).values(newRule).onConflictDoNothing()
 }
 
 export const upsertUsers = async (

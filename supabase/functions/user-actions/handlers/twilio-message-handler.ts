@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 
 import { authors, ConversationAuthor, conversationsAuthors, twilioMessages } from '../../_shared/drizzle/schema.ts'
 import { RequestBody, RuleType } from '../types.ts'
-import { upsertAuthor, upsertConversation, upsertLabel, upsertRule } from './utils.ts'
+import { ensureRuleExists, upsertAuthor, upsertConversation, upsertLabel } from './utils.ts'
 import { adaptTwilioMessage, adaptTwilioRequestAuthor } from '../adapters.ts'
 import Missive from '../../_shared/lib/Missive.ts'
 import supabase from '../../_shared/lib/supabase.ts'
@@ -11,8 +11,8 @@ import supabase from '../../_shared/lib/supabase.ts'
 const RESUBSCRIBED_TERMS = ['start', 'resubscribe', 'detroit']
 
 const handleTwilioMessage = async (requestBody: RequestBody) => {
+  await ensureRuleExists(requestBody.rule)
   await supabase.transaction(async (tx) => {
-    await upsertRule(tx, requestBody.rule)
     await upsertConversation(tx, requestBody.conversation)
     await insertTwilioMessage(tx, requestBody)
     await upsertLabel(tx, requestBody)
