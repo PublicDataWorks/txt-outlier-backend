@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
-import { upsertConversation, upsertLabel, upsertOrganization, upsertRule } from './utils.ts'
+import { ensureRuleExists, upsertConversation, upsertLabel, upsertOrganization } from './utils.ts'
 import { RequestBody, RequestConversation, RuleType } from '../types.ts'
 import {
   ConversationAssignee,
@@ -15,8 +15,8 @@ import { adaptConversationAssignee, adaptConversationAssigneeHistory } from '../
 import supabase from '../../_shared/lib/supabase.ts'
 
 export const handleConversationStatusChanged = async (requestBody: RequestBody, changeType: string) => {
+  await ensureRuleExists(requestBody.rule)
   await supabase.transaction(async (tx) => {
-    await upsertRule(tx, requestBody.rule)
     const teamId = requestBody.conversation.team ? requestBody.conversation.team!.id : null
 
     await upsertOrganization(tx, requestBody.conversation.organization)
@@ -54,8 +54,8 @@ export const handleConversationStatusChanged = async (requestBody: RequestBody, 
 }
 
 export const handleConversationAssigneeChange = async (requestBody: RequestBody) => {
+  await ensureRuleExists(requestBody.rule)
   await supabase.transaction(async (tx) => {
-    await upsertRule(tx, requestBody.rule)
     await upsertConversation(tx, requestBody.conversation)
     const convoHistory = {
       conversationId: requestBody.conversation.id,
