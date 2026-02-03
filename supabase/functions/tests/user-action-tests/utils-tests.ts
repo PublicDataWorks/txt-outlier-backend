@@ -29,20 +29,22 @@ describe(
       assertEquals(newRules[0].type, teamChangeRequest.rule.type)
     })
 
-    it('handles multiple calls with same rule ID without error', async () => {
+    it('handles concurrent calls with same rule ID without error', async () => {
       // Simulate concurrent webhooks sharing the same rule ID
-      await client.functions.invoke(FUNCTION_NAME, {
-        method: 'POST',
-        body: teamChangeRequest,
-      })
-      await client.functions.invoke(FUNCTION_NAME, {
-        method: 'POST',
-        body: teamChangeRequest,
-      })
-      await client.functions.invoke(FUNCTION_NAME, {
-        method: 'POST',
-        body: teamChangeRequest,
-      })
+      await Promise.all([
+        client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: teamChangeRequest,
+        }),
+        client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: teamChangeRequest,
+        }),
+        client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: teamChangeRequest,
+        }),
+      ])
 
       const allRules = await supabase.select().from(rules)
       assertEquals(allRules.length, 1)
