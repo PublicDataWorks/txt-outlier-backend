@@ -302,7 +302,7 @@ describe('DubLinkShortener', () => {
     it('should not shorten URLs that are already shortened', async () => {
       // Setup
       const message =
-        'Check out https://bit.ly/abcdef and https://dub.sh/xyz and https://tinyurl.com/abc and https://goo.gl/abc123'
+        'Check out https://bit.ly/abcdef and https://dub.sh/xyz and https://tinyurl.com/abc and https://goo.gl/abc123 and https://t.co/abc and https://ow.ly/abc and https://go.outliermedia.org/abc'
       const broadcastId = 123
       const tagName = 'txt-messages'
 
