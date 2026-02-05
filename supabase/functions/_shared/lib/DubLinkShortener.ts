@@ -13,8 +13,13 @@ const detectLinksToShorten = (message: string): string[] => {
   // Filter out already shortened URLs (bit.ly, dub.sh, etc.)
   const shortenerDomains = ['bit.ly', 'dub.sh', 'tinyurl.com', 'goo.gl', 't.co', 'ow.ly', 'go.outliermedia.org']
   const filteredMatches = matches.filter((url) => {
-    const lowerUrl = url.toLowerCase()
-    return !shortenerDomains.some((domain) => lowerUrl.includes(`https://${domain}/`))
+    try {
+      const hostname = new URL(url).hostname.toLowerCase()
+      return !shortenerDomains.includes(hostname)
+    } catch (error) {
+      console.error(`Failed to parse URL: ${url}`, error)
+      return false
+    }
   })
 
   return [...new Set(filteredMatches)]

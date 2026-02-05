@@ -320,6 +320,66 @@ describe('DubLinkShortener', () => {
       sinon.assert.notCalled(dubMock.links.createMany)
     })
 
+    it('should filter out URLs that fail to parse', async () => {
+      const message = 'Check out https://[invalid for more info'
+      const broadcastId = 123
+
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      assertEquals(result, message)
+      assertEquals(changed, false)
+    })
+
+    it('should shorten valid URLs while filtering out malformed ones', async () => {
+      const message = 'Check https://example.com and https://[invalid here'
+      const broadcastId = 123
+      const tagName = 'txt-messages'
+
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+      dubMock.links.createMany.resolves([{
+        id: 'link1',
+        url: 'https://example.com',
+        shortLink: 'https://dub.sh/abc123',
+        tagNames: [tagName],
+      }])
+
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      assertEquals(result, 'Check https://dub.sh/abc123 and https://[invalid here')
+      assertEquals(changed, true)
+      sinon.assert.calledWith(dubMock.links.createMany, [{ url: 'https://example.com', tagNames: [tagName] }])
+    })
+
+    it('should handle mix of excluded and malformed URLs', async () => {
+      const message = 'Check https://bit.ly/abc and https://[invalid here'
+      const broadcastId = 123
+
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      assertEquals(result, message)
+      assertEquals(changed, false)
+    })
+
+    it('should handle mix of valid, excluded, and malformed URLs', async () => {
+      const message = 'Check https://example.com and https://bit.ly/abc and https://[invalid here'
+      const broadcastId = 123
+      const tagName = 'txt-messages'
+
+      dubMock.links.list.withArgs({ tagNames: [tagName] }).resolves({ result: [] })
+      dubMock.links.createMany.resolves([{
+        id: 'link1',
+        url: 'https://example.com',
+        shortLink: 'https://dub.sh/abc123',
+        tagNames: [tagName],
+      }])
+
+      const [result, changed] = await DubLinkShortener.shortenLinksInMessage(message, broadcastId)
+
+      assertEquals(result, 'Check https://dub.sh/abc123 and https://bit.ly/abc and https://[invalid here')
+      assertEquals(changed, true)
+      sinon.assert.calledWith(dubMock.links.createMany, [{ url: 'https://example.com', tagNames: [tagName] }])
+    })
+
     it('should handle error scenarios gracefully', async () => {
       // Setup
       const message = 'Check out https://example.com for more information'
