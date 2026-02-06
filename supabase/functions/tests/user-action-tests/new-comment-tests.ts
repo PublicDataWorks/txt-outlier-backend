@@ -3,6 +3,7 @@ import { assert, assertEquals } from 'jsr:@std/assert'
 
 import '../setup.ts'
 import { newCommentRequest } from '../fixtures/new-comment.ts'
+import { conversationCLosedRequest } from '../fixtures/conversation-change-request.ts'
 import { comments, commentsMentions, tasksAssignees, users } from '../../_shared/drizzle/schema.ts'
 import { MentionUser } from '../../user-actions/types.ts'
 import supabase from '../../_shared/lib/supabase.ts'
@@ -178,6 +179,48 @@ describe(
         )
         assert(newComment[0].isTask)
       })
+    })
+
+    it('missing organization does not crash the server', async () => {
+      const body = JSON.parse(JSON.stringify(newCommentRequest))
+      body.comment!.id = 'deadfeed-dead-feed-dead-deadfeed0002'
+      body.conversation.users = []
+      delete body.conversation.organization
+
+      const result = await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: body,
+      })
+
+      assertEquals(result.error, null)
+      const newComments = await supabase.select().from(comments)
+      assert(!newComments.some((c) => c.id === 'deadfeed-dead-feed-dead-deadfeed0002'))
+    })
+
+    it('concurrent comment and conversation webhooks do not deadlock', async () => {
+      const commentBody = JSON.parse(JSON.stringify(newCommentRequest))
+      commentBody.comment!.id = 'deadfeed-dead-feed-dead-deadfeed0001'
+      commentBody.conversation.users = []
+
+      const convoBody = JSON.parse(JSON.stringify(conversationCLosedRequest))
+
+      const results = await Promise.all([
+        client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: commentBody,
+        }),
+        client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: convoBody,
+        }),
+      ])
+
+      for (const result of results) {
+        assertEquals(result.error, null)
+      }
+
+      const newComments = await supabase.select().from(comments)
+      assert(newComments.some((c) => c.id === 'deadfeed-dead-feed-dead-deadfeed0001'))
     })
   },
 )

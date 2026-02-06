@@ -48,6 +48,14 @@ export const ensureRuleExists = async (requestRule: RequestRule) => {
   await supabase.insert(rules).values(newRule).onConflictDoNothing()
 }
 
+// IMPORTANT: Do not call this inside a transaction.
+// Many concurrent webhooks share the same org - running this in a transaction
+// causes lock contention and deadlocks with the users table.
+export const ensureOrganizationExists = async (requestOrg: RequestOrganization) => {
+  const org = adaptOrg(requestOrg)
+  await supabase.insert(organizations).values(org).onConflictDoNothing()
+}
+
 export const upsertUsers = async (
   // deno-lint-ignore no-explicit-any
   tx: PostgresJsTransaction<any, any>,
@@ -94,13 +102,9 @@ export const upsertConversation = async (
   requestConvo: RequestConversation,
   closed: boolean | null = null,
   assigneeChanged = false, // true: assignee changed handled by caller
-  upsertOrg = true,
   teamId: string | null = null,
 ) => {
   // TODO: missing color field
-  if (upsertOrg) {
-    await upsertOrganization(tx, requestConvo.organization)
-  }
   await upsertAuthor(tx, requestConvo.authors)
   // TODO: handle external authors
   const convo = adaptConversation(requestConvo)
@@ -147,18 +151,6 @@ export const upsertConversation = async (
   if (!assigneeChanged && assignees.length > 0) {
     await tx.insert(conversationsAssignees).values(assignees)
   }
-}
-
-export const upsertOrganization = async (
-  // deno-lint-ignore no-explicit-any
-  tx: PostgresJsTransaction<any, any>,
-  requestOrganization: RequestOrganization,
-) => {
-  const org = adaptOrg(requestOrganization)
-  await tx.insert(organizations).values(org).onConflictDoUpdate({
-    target: organizations.id,
-    set: { name: org.name },
-  })
 }
 
 const upsertConversationsUsers = async (

@@ -2,7 +2,7 @@ import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { sql } from 'drizzle-orm'
 
 import { MentionTeam, MentionUser, RequestBody, RequestTask } from '../types.ts'
-import { ensureRuleExists, upsertConversation, upsertUsers } from './utils.ts'
+import { upsertConversation, upsertUsers } from './utils.ts'
 import {
   Comment,
   CommentMention,
@@ -15,7 +15,6 @@ import {
 import supabase from '../../_shared/lib/supabase.ts'
 
 export const handleNewComment = async (requestBody: RequestBody) => {
-  await ensureRuleExists(requestBody.rule)
   await supabase.transaction(async (tx) => {
     const users = [
       requestBody.comment!.author,
