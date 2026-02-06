@@ -85,7 +85,7 @@ export const upsertUsers = async (
     }
   }
   await tx.insert(users).values(newUsers).onConflictDoUpdate({
-    target: rules.id,
+    target: users.id,
     set: {
       name: sql`excluded.name`,
       email: sql`excluded.email`,
