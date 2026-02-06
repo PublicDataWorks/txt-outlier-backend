@@ -1,12 +1,10 @@
 import { conversationHistory, teams } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
-import { ensureRuleExists, upsertConversation, upsertOrganization } from './utils.ts'
+import { upsertConversation } from './utils.ts'
 import { RequestBody, RuleType } from '../types.ts'
 
 export const handleTeamChange = async (requestBody: RequestBody) => {
-  await ensureRuleExists(requestBody.rule)
   await supabase.transaction(async (tx) => {
-    await upsertOrganization(tx, requestBody.conversation.organization)
     if (requestBody.conversation.team) {
       const teamData = {
         id: requestBody.conversation.team.id,
@@ -23,7 +21,6 @@ export const handleTeamChange = async (requestBody: RequestBody) => {
       tx,
       requestBody.conversation,
       null,
-      false,
       false,
       teamId,
     )
