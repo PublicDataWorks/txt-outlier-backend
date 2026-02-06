@@ -181,6 +181,35 @@ describe(
       })
     })
 
+    it('should update user name and email on subsequent comments', async () => {
+      const body1 = JSON.parse(JSON.stringify(newCommentRequest))
+      body1.conversation.users = []
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: body1,
+      })
+
+      const usersBefore = await supabase.select().from(users)
+      assertEquals(usersBefore.length, 1)
+      assertEquals(usersBefore[0].name, 'User 3')
+      assertEquals(usersBefore[0].email, 'user3@mail.com')
+
+      const body2 = JSON.parse(JSON.stringify(newCommentRequest))
+      body2.comment!.id = 'deadfeed-dead-feed-dead-deadfeed0003'
+      body2.comment!.author.name = 'User 3 Updated'
+      body2.comment!.author.email = 'user3updated@mail.com'
+      body2.conversation.users = []
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: body2,
+      })
+
+      const usersAfter = await supabase.select().from(users)
+      assertEquals(usersAfter.length, 1)
+      assertEquals(usersAfter[0].name, 'User 3 Updated')
+      assertEquals(usersAfter[0].email, 'user3updated@mail.com')
+    })
+
     it('missing organization does not crash the server', async () => {
       const body = JSON.parse(JSON.stringify(newCommentRequest))
       body.comment!.id = 'deadfeed-dead-feed-dead-deadfeed0002'
