@@ -259,8 +259,23 @@ inspector_port = 8083
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/MY_FUNCTION_NAME/*.html" ]
 
+[functions.make]
+verify_jwt = false
+
+[functions.send-messages]
+verify_jwt = false
+
+[functions.reconcile-twilio-status]
+verify_jwt = false
+
+[functions.handle-failed-deliveries]
+verify_jwt = false
+
+[functions.archive-double-failures]
+verify_jwt = false
+
 [analytics]
-enabled = true
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"
