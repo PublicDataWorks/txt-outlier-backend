@@ -4,9 +4,9 @@ BEGIN
     -- Check if secrets already exist
     IF NOT EXISTS (
         SELECT 1 FROM vault.decrypted_secrets
-        WHERE name = 'service_role_key'
+        WHERE name = 'secret_key'
     ) THEN
-        PERFORM vault.create_secret('{{SERVICE_ROLE_KEY}}', 'service_role_key');
+        PERFORM vault.create_secret('{{SERVICE_ROLE_KEY}}', 'secret_key');
     END IF;
 
     IF NOT EXISTS (

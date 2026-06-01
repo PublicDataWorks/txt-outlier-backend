@@ -12,7 +12,7 @@ BEGIN
     -- Get secrets from vault
     SELECT decrypted_secret INTO service_key
     FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
+    WHERE name = 'secret_key';
 
     SELECT decrypted_secret INTO edge_url
     FROM vault.decrypted_secrets
@@ -136,7 +136,7 @@ BEGIN
     -- Get secrets from vault
     SELECT decrypted_secret INTO service_key
     FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
+    WHERE name = 'secret_key';
 
     SELECT decrypted_secret INTO edge_url
     FROM vault.decrypted_secrets
@@ -194,7 +194,7 @@ BEGIN
     -- Get secrets from vault
     SELECT decrypted_secret INTO service_key
     FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
+    WHERE name = 'secret_key';
 
     SELECT decrypted_secret INTO edge_url
     FROM vault.decrypted_secrets
