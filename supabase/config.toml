@@ -95,6 +95,7 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
+secret_key = "sb_secret_a_secret"
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
 site_url = "http://localhost:5173"
@@ -275,7 +276,7 @@ verify_jwt = false
 verify_jwt = false
 
 [analytics]
-enabled = true
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

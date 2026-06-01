@@ -16,28 +16,26 @@ jobs:
           command: /home/circleci/.deno/bin/deno task fmt --check
 
       - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
+      - run: npm install -g supabase@2.101.0
       - run:
           name: Setup Supabase
-          command: npx supabase@2.101.0 start
+          command: supabase start
       - run:
           name: Start Functions Server
-          command: npx supabase@2.101.0 functions serve --env-file supabase/functions/tests/.env.edge_testing
+          command: /home/circleci/.deno/bin/deno task test:setup
           background: true
       - run:
           name: Wait for services
           command: sleep 30
       - run:
-          name: Run tests with coverage
-          command: /home/circleci/.deno/bin/deno task test:coverage
+          name: Run tests
+          command: /home/circleci/.deno/bin/deno task test
       - run:
           name: Run DB tests
-          command: npx supabase@2.101.0 db test
-      - run:
-          name: Generate coverage report
-          command: /home/circleci/.deno/bin/deno task coverage
+          command: supabase db test
       - run:
           name: Clean up after test
-          command: npx supabase@2.101.0 stop
+          command: supabase stop
           when: always
 
 workflows:
