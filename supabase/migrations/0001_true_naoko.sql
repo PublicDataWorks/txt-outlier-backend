@@ -151,7 +151,7 @@ BEGIN
                     body:=''{"isSecond": false}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer %s"
+                        "apikey": "%s"
                     }''::jsonb
                 ) as request_id;',
                 edge_url,
@@ -207,7 +207,7 @@ BEGIN
                     body:=''{"isSecond": true}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer %s"
+                        "apikey": "%s"
                     }''::jsonb
                 ) as request_id;',
                 edge_url,

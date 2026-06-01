@@ -42,7 +42,7 @@ BEGIN
                     body:=''{"broadcastId": "%s"}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer %s"
+                        "apikey": "%s"
                     }''::jsonb
                 ) as request_id;',
                 edge_url,
@@ -91,7 +91,7 @@ BEGIN
                     body:=''{"campaignId": "%s"}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer %s"
+                        "apikey": "%s"
                     }''::jsonb
                 ) as request_id;',
                 edge_url,
@@ -150,7 +150,7 @@ BEGIN
                 url:=''%s/handle-failed-deliveries/'',
                 headers:=''{
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer %s"
+                    "apikey": "%s"
                 }''::jsonb
             ) as request_id;',
             edge_url,
@@ -209,7 +209,7 @@ BEGIN
                 body:=''{}''::jsonb,
                 headers:=''{
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer %s"
+                    "apikey": "%s"
                 }''::jsonb
             ) as request_id;',
             edge_url,

@@ -37,7 +37,7 @@ BEGIN
         url:=edge_url || 'make/',
         headers:=jsonb_build_object(
             'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || service_key
+            'apikey', service_key
         ),
         body:=jsonb_build_object('run_at_utc', run_at_utc)
     );
