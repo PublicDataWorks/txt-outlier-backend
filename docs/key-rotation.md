@@ -23,6 +23,19 @@ secret key (`sb_secret_…`):
 
 After cron calls are confirmed working, revoke the old key in the API keys settings.
 
-> Local and CI are unaffected — they use a pinned placeholder
-> (`[auth] secret_key = "sb_secret_a_secret"` in `supabase/config.toml`), not the
-> production key.
+## Local development and CI
+
+Local and CI never use the production key. The local secret is **pinned** to
+`sb_secret_a_secret` in `supabase/config.toml` (`[auth] secret_key`); the Supabase
+runtime injects it as `SUPABASE_SECRET_KEYS` for every edge function, so it is what
+the incoming `apikey` is checked against. Two other files must carry that same value,
+or local cron POSTs 401 the same way production would:
+
+- **root `.env` → `SECRET_KEY`** — `deno task dev` seeds this into the Vault
+  `secret_key` via `add_keys_to_vault.sh`; it is the value the cron jobs send, so it
+  must equal the `config.toml` pin. `.env-example` defaults to it.
+- **`supabase/functions/tests/.env.edge_testing` → `SUPABASE_SECRET_KEYS.default`** —
+  the standalone edge runtime started by `deno task test:setup`.
+
+(`supabase/functions/.env` also lists `SUPABASE_SECRET_KEYS`, but `supabase start`
+strips it and re-injects the `config.toml` pin, so its value is ignored locally.)
