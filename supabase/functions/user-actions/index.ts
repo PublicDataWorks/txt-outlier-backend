@@ -70,8 +70,23 @@ Deno.serve(async (req: Request) => {
     console.info(`Successfully handled rule: ${requestBody.rule.id}, ${requestBody.rule.type}`)
   } catch (error) {
     console.error(`Error processing request: ${error.message}, stack: ${error.stack}`)
+    // This function is publicly reachable (verify_jwt is disabled because it
+    // authenticates via the Missive HMAC signature), so unsigned or malformed
+    // requests reach here. Reject them cleanly without running handleError,
+    // which expects a verified Missive payload and would otherwise throw on a
+    // missing `rule` or spam the `errors` table with unauthenticated traffic.
+    if (error instanceof UnauthorizedError) {
+      return AppResponse.unauthorized(error.message)
+    }
+    if (error instanceof BadRequestError) {
+      return AppResponse.badRequest(error.message)
+    }
     if (requestBody) {
-      await handleError(requestBody, error)
+      try {
+        await handleError(requestBody, error)
+      } catch {
+        console.error('Failed to record error while handling request')
+      }
     }
     if (
       typeof error.message === 'string' &&

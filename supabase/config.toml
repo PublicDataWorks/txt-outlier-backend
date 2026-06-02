@@ -259,6 +259,13 @@ inspector_port = 8083
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/MY_FUNCTION_NAME/*.html" ]
 
+# Public Missive webhook receiver. It authenticates requests itself via the
+# Missive HMAC signature (x-hook-signature) in Missive.verifySignature, so the
+# gateway JWT gate is redundant. Disabling verify_jwt decouples webhook delivery
+# from Supabase API keys, so rotating keys can't 401 incoming webhooks.
+[functions.user-actions]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
