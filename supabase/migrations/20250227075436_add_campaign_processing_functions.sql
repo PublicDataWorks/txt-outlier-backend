@@ -353,7 +353,7 @@ BEGIN
               body:=''''{"campaignId": %s, "runAt": %s}''''::jsonb,
               headers:=''''{
                 "Content-Type": "application/json",
-                "Authorization": "Bearer %s"
+                "apikey": "%s"
                 }''''::jsonb)
             as request_id;''
           );',
