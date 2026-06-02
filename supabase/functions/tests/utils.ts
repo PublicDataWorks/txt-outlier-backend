@@ -15,4 +15,7 @@ const options = {
 
 const client: SupabaseClient = createClient(supabaseUrl, supabaseKey, options)
 
-export { client }
+const secretKey = Deno.env.get('LOCAL_SECRET_KEY')!
+const serviceClient: SupabaseClient = createClient(supabaseUrl, secretKey, options)
+
+export { client, serviceClient }

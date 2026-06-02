@@ -1,10 +1,8 @@
-import { sql } from 'drizzle-orm'
 import { afterAll, beforeEach } from 'jsr:@std/testing/bdd'
-import supabase, { postgresClient } from '../_shared/lib/supabase.ts'
+import { postgresClient } from '../_shared/lib/supabase.ts'
 
 // This needs to be at the top level
 beforeEach(async () => {
-  await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const migrationFiles = [
     '../../migrations/0000_minor_magik.sql',
     '../../migrations/0001_true_naoko.sql',
@@ -25,9 +23,17 @@ beforeEach(async () => {
     '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
   ]
 
-  for (const filePath of migrationFiles) {
-    const sqlScript = await Deno.readTextFile(filePath)
-    await supabase.execute(sql.raw(sqlScript))
+  const conn = await postgresClient.reserve()
+  try {
+    await conn.unsafe('SELECT pg_advisory_lock(987654321)')
+    await conn.unsafe(DROP_ALL_TABLES)
+    for (const filePath of migrationFiles) {
+      const sqlScript = await Deno.readTextFile(filePath)
+      await conn.unsafe(sqlScript)
+    }
+  } finally {
+    await conn.unsafe('SELECT pg_advisory_unlock(987654321)')
+    conn.release()
   }
 })
 

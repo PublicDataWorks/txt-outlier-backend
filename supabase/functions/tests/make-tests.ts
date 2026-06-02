@@ -1,6 +1,6 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
 import { assert, assertEquals, assertInstanceOf } from 'jsr:@std/assert'
-import { client } from './utils.ts'
+import { serviceClient as client } from './utils.ts'
 import './setup.ts'
 import { createAuthors } from './factories/author.ts'
 import { createBroadcast } from './factories/broadcast.ts'
