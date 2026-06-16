@@ -28,3 +28,8 @@ Follow-up:
 - Production smoke check confirmed the exclusion helper exists and returns `false` for a nonexistent phone number.
 - Supabase advisors still report existing project-wide warnings, including RLS-enabled tables with no policies,
   mutable search paths on unrelated functions, extension-in-public warnings, and available Postgres security patches.
+- PR review hardening follow-up deployed to production as migration
+  `20260616162907 harden_csv_upload_broadcast_exclusion`.
+- The final production version drops `public.is_broadcast_excluded_recipient(text)`, precomputes excluded broadcast
+  recipients in a temporary table inside `queue_broadcast_messages`, uses `search_path=public, pg_temp`, and orders
+  batch pagination by `phone_number`.

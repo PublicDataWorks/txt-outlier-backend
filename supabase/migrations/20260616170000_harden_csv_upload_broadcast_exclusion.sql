@@ -1,3 +1,5 @@
+DROP FUNCTION IF EXISTS public.is_broadcast_excluded_recipient(text);
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.queue_broadcast_messages(
     p_broadcast_id int
 ) RETURNS void

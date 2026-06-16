@@ -18,3 +18,9 @@
   in production.
 - Ran Supabase security and performance advisors after DDL. Results were existing project-wide warnings; the new
   broadcast functions were not reported as mutable-search-path findings.
+- Addressed PR migration hardening feedback by removing the per-row helper, building a temporary exclusion set inside
+  `queue_broadcast_messages`, setting `search_path = public, pg_temp`, and ordering queued-message batches by
+  `phone_number`.
+- Applied production Supabase migration `20260616162907 harden_csv_upload_broadcast_exclusion`.
+- Verified the old helper was dropped in production and `queue_broadcast_messages` has
+  `search_path=public, pg_temp`.
