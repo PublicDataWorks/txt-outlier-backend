@@ -236,7 +236,6 @@ For details on how personalized campaigns work, see [Personalized Campaigns Docu
 - Broadcast queueing also excludes authors connected to a non-archived `CSV UPLOAD` label, including nested labels like
   `Campaigns/CSV UPLOAD`, because existing authors added through CSV campaigns may not have `added_via_file_upload`
   set.
--
 
 ## Related Repositories
 

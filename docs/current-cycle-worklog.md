@@ -10,3 +10,4 @@
 - Ran `deno lint` successfully.
 - Attempted `TZ=UTC deno test --no-check --no-lock --allow-all --env=.env.testing make-tests.ts`; blocked because
   Docker is not running and local Supabase Postgres is unavailable.
+- Started PR and production deployment follow-up for the CSV upload broadcast exclusion.

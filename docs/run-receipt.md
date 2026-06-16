@@ -19,3 +19,6 @@ Required workflow artifacts:
 - `WORKFLOW.md` was not present in this checkout before implementation.
 - Execution board, blocker register, current-cycle worklog, reference index, and this run receipt were created under
   `docs/` because no existing copies were found.
+
+Follow-up:
+- PR creation and production deployment requested on 2026-06-16.
