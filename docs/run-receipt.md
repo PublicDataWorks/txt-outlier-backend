@@ -22,3 +22,9 @@ Required workflow artifacts:
 
 Follow-up:
 - PR creation and production deployment requested on 2026-06-16.
+- Opened draft PR https://github.com/PublicDataWorks/txt-outlier-backend/pull/102.
+- Deployed to production Supabase project `TXT Outlier` (`pshrrdazlftosdtoevpf`) as migration
+  `20260616162541 exclude_csv_upload_from_broadcasts`.
+- Production smoke check confirmed the exclusion helper exists and returns `false` for a nonexistent phone number.
+- Supabase advisors still report existing project-wide warnings, including RLS-enabled tables with no policies,
+  mutable search paths on unrelated functions, extension-in-public warnings, and available Postgres security patches.
