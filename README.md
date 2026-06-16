@@ -233,6 +233,9 @@ For details on how personalized campaigns work, see [Personalized Campaigns Docu
   segment queries because these authors were recipients added through campaign file uploads and were not intended to be
   part of broadcasts. Including them in broadcasts could lead to unintended message delivery and potential compliance
   issues.
+- Broadcast queueing also excludes authors connected to a non-archived `CSV UPLOAD` label, including nested labels like
+  `Campaigns/CSV UPLOAD`, because existing authors added through CSV campaigns may not have `added_via_file_upload`
+  set.
 -
 
 ## Related Repositories
