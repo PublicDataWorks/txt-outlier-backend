@@ -1,15 +1,13 @@
 // factories/conversation.ts
-import { faker } from "faker";
-import { conversations } from "../../_shared/drizzle/schema.ts";
-import supabase from "../../_shared/lib/supabase.ts";
+import { faker } from 'faker'
+import { conversations } from '../../_shared/drizzle/schema.ts'
+import supabase from '../../_shared/lib/supabase.ts'
 
 type CreateConversationParams = {
-  createdAt?: string;
-};
+  createdAt?: string
+}
 
-export const createConversation = async (
-  { createdAt }: CreateConversationParams = {},
-) => {
+export const createConversation = async ({ createdAt }: CreateConversationParams = {}) => {
   const [result] = await supabase
     .insert(conversations)
     .values({
@@ -25,7 +23,7 @@ export const createConversation = async (
       completedTasksCount: 0,
       ...(createdAt ? { createdAt } : {}),
     })
-    .returning();
+    .returning()
 
-  return result;
-};
+  return result
+}

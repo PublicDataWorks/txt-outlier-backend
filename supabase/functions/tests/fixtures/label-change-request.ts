@@ -1,19 +1,19 @@
-import { RequestBody } from "../../user-actions/types.ts";
+import { RequestBody } from '../../user-actions/types.ts'
 
 export const labelChangeRequest: RequestBody = {
   rule: {
-    id: "ac70197d-1e7c-4742-a769-88ea4ef31a76",
-    description: "Label changed",
-    type: "label_change",
+    id: 'ac70197d-1e7c-4742-a769-88ea4ef31a76',
+    description: 'Label changed',
+    type: 'label_change',
   },
   conversation: {
-    id: "e8196c2f-4bc9-4fa1-a018-6a4078362ed1",
+    id: 'e8196c2f-4bc9-4fa1-a018-6a4078362ed1',
     created_at: 1704181890,
-    subject: "test",
+    subject: 'test',
     latest_message_subject: null,
     organization: {
-      id: "7deec8a7-439a-414c-a10a-059142216786",
-      name: "Outlier Staging",
+      id: '7deec8a7-439a-414c-a10a-059142216786',
+      name: 'Outlier Staging',
     },
     color: null,
     authors: [],
@@ -26,9 +26,9 @@ export const labelChangeRequest: RequestBody = {
     completed_tasks_count: 1,
     users: [
       {
-        id: "2d98b928-c3be-4cc6-8087-0baa2235e86e",
-        name: "User 1",
-        email: "user1@mail.com",
+        id: '2d98b928-c3be-4cc6-8087-0baa2235e86e',
+        name: 'User 1',
+        email: 'user1@mail.com',
         unassigned: false,
         closed: false,
         archived: true,
@@ -39,9 +39,9 @@ export const labelChangeRequest: RequestBody = {
         snoozed: false,
       },
       {
-        id: "6335aa04-e15b-4e23-ad0e-e41cdc1295a5",
-        name: "User 2",
-        email: "user2@mail.com",
+        id: '6335aa04-e15b-4e23-ad0e-e41cdc1295a5',
+        name: 'User 2',
+        email: 'user2@mail.com',
         unassigned: false,
         closed: false,
         archived: true,
@@ -52,9 +52,9 @@ export const labelChangeRequest: RequestBody = {
         snoozed: false,
       },
       {
-        id: "815e18a9-eab9-4b89-8227-de6518f5d987",
-        name: "User 3",
-        email: "user3@mail.com",
+        id: '815e18a9-eab9-4b89-8227-de6518f5d987',
+        name: 'User 3',
+        email: 'user3@mail.com',
         unassigned: false,
         closed: false,
         archived: false,
@@ -65,9 +65,9 @@ export const labelChangeRequest: RequestBody = {
         snoozed: false,
       },
       {
-        id: "cd89f926-901a-4d36-83eb-4f7e8881118d",
-        name: "User 4",
-        email: "user4@mail.com",
+        id: 'cd89f926-901a-4d36-83eb-4f7e8881118d',
+        name: 'User 4',
+        email: 'user4@mail.com',
         unassigned: false,
         closed: false,
         archived: true,
@@ -80,9 +80,9 @@ export const labelChangeRequest: RequestBody = {
     ],
     assignees: [
       {
-        id: "815e18a9-eab9-4b89-8227-de6518f5d987",
-        name: "User 3",
-        email: "user3@mail.com",
+        id: '815e18a9-eab9-4b89-8227-de6518f5d987',
+        name: 'User 3',
+        email: 'user3@mail.com',
         unassigned: false,
         closed: false,
         archived: false,
@@ -93,32 +93,30 @@ export const labelChangeRequest: RequestBody = {
         snoozed: false,
       },
     ],
-    assignee_names: "User 3",
-    assignee_emails: "user3@mail.com",
-    shared_label_names: "Spanish",
-    web_url:
-      "https://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1",
-    app_url:
-      "missive://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1",
+    assignee_names: 'User 3',
+    assignee_emails: 'user3@mail.com',
+    shared_label_names: 'Spanish',
+    web_url: 'https://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1',
+    app_url: 'missive://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1',
     team: {
-      id: "fb0b601e-7d6e-4248-8882-4f129fdfe43c",
-      name: "Outlier Staging",
-      organization: "7deec8a7-439a-414c-a10a-059142216786",
+      id: 'fb0b601e-7d6e-4248-8882-4f129fdfe43c',
+      name: 'Outlier Staging',
+      organization: '7deec8a7-439a-414c-a10a-059142216786',
     },
     shared_labels: [
       {
-        id: "37113989-97e3-4121-a903-f85af6bfaaa0",
-        name: "Nested test",
-        name_with_parent_names: "Parent Test/Nested test",
-        organization: "7deec8a7-439a-414c-a10a-059142216786",
-        color: "#50A8FF",
-        parent: "13405e0f-8551-4ea7-a303-7552aee0bce4",
+        id: '37113989-97e3-4121-a903-f85af6bfaaa0',
+        name: 'Nested test',
+        name_with_parent_names: 'Parent Test/Nested test',
+        organization: '7deec8a7-439a-414c-a10a-059142216786',
+        color: '#50A8FF',
+        parent: '13405e0f-8551-4ea7-a303-7552aee0bce4',
         share_with_organization: false,
         // @ts-ignore
         share_with_users: [], // FIXME
         share_with_team: null, // FIXME
-        visibility: "organization",
+        visibility: 'organization',
       },
     ],
   },
-};
+}

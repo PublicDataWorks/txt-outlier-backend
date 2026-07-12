@@ -1,12 +1,12 @@
 // author.ts
-import { faker } from "faker";
-import { authors } from "../../_shared/drizzle/schema.ts";
-import supabase from "../../_shared/lib/supabase.ts";
+import { faker } from 'faker'
+import { authors } from '../../_shared/drizzle/schema.ts'
+import supabase from '../../_shared/lib/supabase.ts'
 
 type AuthorOptions = {
-  unsubscribed: boolean;
-  exclude: boolean;
-};
+  unsubscribed: boolean
+  exclude: boolean
+}
 
 export const createAuthor = async (
   phoneNumber?: string,
@@ -20,10 +20,10 @@ export const createAuthor = async (
       exclude: options.exclude,
     })
     .onConflictDoNothing()
-    .returning();
+    .returning()
 
-  return result;
-};
+  return result
+}
 
 // Keep the original function for backward compatibility
 export const createAuthors = async (times = 1, number?: string) => {
@@ -31,11 +31,11 @@ export const createAuthors = async (times = 1, number?: string) => {
     phoneNumber: number || faker.phone.phoneNumber(),
     unsubscribed: false,
     exclude: false,
-  }));
+  }))
 
   return supabase
     .insert(authors)
     .values(newAuthors)
     .onConflictDoNothing()
-    .returning();
-};
+    .returning()
+}

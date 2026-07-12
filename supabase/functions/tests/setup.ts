@@ -1,46 +1,46 @@
-import { afterAll, beforeEach } from "jsr:@std/testing/bdd";
-import { postgresClient } from "../_shared/lib/supabase.ts";
+import { afterAll, beforeEach } from 'jsr:@std/testing/bdd'
+import { postgresClient } from '../_shared/lib/supabase.ts'
 
 // This needs to be at the top level
 beforeEach(async () => {
   const migrationFiles = [
-    "../../migrations/0000_minor_magik.sql",
-    "../../migrations/0001_true_naoko.sql",
-    "../../migrations/20250210085456_add_second_message_queue_id.sql",
-    "../../migrations/20250211082613_create_broadcast_settings_table.sql",
-    "../../migrations/20250221071041_create_campaigns_table.sql",
-    "../../migrations/20250227075436_add_campaign_processing_functions.sql",
-    "../../migrations/20250228040858_add_campaign_support_to_message_statuses.sql",
-    "../../migrations/20250303034658_drop_reply_to_broadcast_fkey.sql",
-    "../../migrations/20250304080718_add_recipient_count_to_campaigns.sql",
-    "../../migrations/20250306085822_count_campaign_recipient_using_conversations_authors_table.sql",
-    "../../migrations/20250310074006_add_file_based_campaigns.sql",
-    "../../migrations/20250312074137_add_daily_broadcast_reconciliation_function.sql",
-    "../../migrations/20250317043943_campaign_should_not_run_reconcile_status.sql",
-    "../../migrations/20250318043746_add_reply_to_campaign_to_twilio_messages.sql",
-    "../../migrations/20250506034003_add_campaign_personalized_recipients.sql",
-    "../../migrations/20250507070855_add_label_id_to_campaigns.sql",
-    "../../migrations/20250508095220_add_original_messages_to_broadcasts.sql",
-    "../../migrations/20260712090000_add_conversation_analysis.sql",
-  ];
+    '../../migrations/0000_minor_magik.sql',
+    '../../migrations/0001_true_naoko.sql',
+    '../../migrations/20250210085456_add_second_message_queue_id.sql',
+    '../../migrations/20250211082613_create_broadcast_settings_table.sql',
+    '../../migrations/20250221071041_create_campaigns_table.sql',
+    '../../migrations/20250227075436_add_campaign_processing_functions.sql',
+    '../../migrations/20250228040858_add_campaign_support_to_message_statuses.sql',
+    '../../migrations/20250303034658_drop_reply_to_broadcast_fkey.sql',
+    '../../migrations/20250304080718_add_recipient_count_to_campaigns.sql',
+    '../../migrations/20250306085822_count_campaign_recipient_using_conversations_authors_table.sql',
+    '../../migrations/20250310074006_add_file_based_campaigns.sql',
+    '../../migrations/20250312074137_add_daily_broadcast_reconciliation_function.sql',
+    '../../migrations/20250317043943_campaign_should_not_run_reconcile_status.sql',
+    '../../migrations/20250318043746_add_reply_to_campaign_to_twilio_messages.sql',
+    '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
+    '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
+    '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
+    '../../migrations/20260712090000_add_conversation_analysis.sql',
+  ]
 
-  const conn = await postgresClient.reserve();
+  const conn = await postgresClient.reserve()
   try {
-    await conn.unsafe("SELECT pg_advisory_lock(987654321)");
-    await conn.unsafe(DROP_ALL_TABLES);
+    await conn.unsafe('SELECT pg_advisory_lock(987654321)')
+    await conn.unsafe(DROP_ALL_TABLES)
     for (const filePath of migrationFiles) {
-      const sqlScript = await Deno.readTextFile(filePath);
-      await conn.unsafe(sqlScript);
+      const sqlScript = await Deno.readTextFile(filePath)
+      await conn.unsafe(sqlScript)
     }
   } finally {
-    await conn.unsafe("SELECT pg_advisory_unlock(987654321)");
-    conn.release();
+    await conn.unsafe('SELECT pg_advisory_unlock(987654321)')
+    conn.release()
   }
-});
+})
 
 afterAll(async () => {
-  await postgresClient.end();
-});
+  await postgresClient.end()
+})
 
 export const DROP_ALL_TABLES = `
   DROP EXTENSION IF EXISTS pg_cron CASCADE;
@@ -81,4 +81,4 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "conversation_analyses" CASCADE;
   DROP TABLE IF EXISTS "analysis_tags" CASCADE;
   DROP FUNCTION IF EXISTS queue_campaign_messages(INTEGER);
-`;
+`

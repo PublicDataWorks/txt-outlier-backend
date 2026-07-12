@@ -1,42 +1,42 @@
 // factories/analysis.ts
-import { faker } from "faker";
+import { faker } from 'faker'
 import {
   type AnalysisTag,
   analysisTags,
   conversationAnalyses,
   type ConversationAnalysis,
-} from "../../_shared/drizzle/schema.ts";
-import supabase from "../../_shared/lib/supabase.ts";
-import { createConversation } from "./conversation.ts";
+} from '../../_shared/drizzle/schema.ts'
+import supabase from '../../_shared/lib/supabase.ts'
+import { createConversation } from './conversation.ts'
 
 export type CreateConversationAnalysisParams = {
-  conversationId?: string;
-  status?: string;
-  source?: string;
-  attempts?: number;
-  error?: string | null;
-  tag?: string | null;
-  secondaryTags?: string[];
-  summary?: string | null;
-  supportingQuote?: string | null;
-  unmetDemand?: boolean;
-  unmetDemandReason?: string | null;
-  confidence?: number | null;
-  model?: string | null;
-  promptVersion?: string | null;
-  messageCount?: number | null;
-  lastMessageAt?: string | null;
-  slackChannel?: string | null;
-  slackMessageTs?: string | null;
-  promotedAt?: string | null;
-  promotedBy?: string | null;
-  createdAt?: string;
-};
+  conversationId?: string
+  status?: string
+  source?: string
+  attempts?: number
+  error?: string | null
+  tag?: string | null
+  secondaryTags?: string[]
+  summary?: string | null
+  supportingQuote?: string | null
+  unmetDemand?: boolean
+  unmetDemandReason?: string | null
+  confidence?: number | null
+  model?: string | null
+  promptVersion?: string | null
+  messageCount?: number | null
+  lastMessageAt?: string | null
+  slackChannel?: string | null
+  slackMessageTs?: string | null
+  promotedAt?: string | null
+  promotedBy?: string | null
+  createdAt?: string
+}
 
 export const createConversationAnalysis = async ({
   conversationId,
-  status = "pending",
-  source = "realtime",
+  status = 'pending',
+  source = 'realtime',
   attempts = 0,
   error,
   tag,
@@ -57,7 +57,7 @@ export const createConversationAnalysis = async ({
   createdAt,
 }: CreateConversationAnalysisParams = {}): Promise<ConversationAnalysis> => {
   // Create a conversation if not provided (conversation_id is a required unique FK)
-  const conversation = conversationId ? null : await createConversation();
+  const conversation = conversationId ? null : await createConversation()
 
   const analysis: ConversationAnalysis = {
     conversationId: conversationId || conversation!.id,
@@ -68,19 +68,19 @@ export const createConversationAnalysis = async ({
     ...(createdAt ? { createdAt } : {}),
     tag: tag === undefined
       ? faker.random.arrayElement([
-        "housing",
-        "utilities",
-        "employment",
-        "food-assistance",
-        "transportation",
-        "health",
-        "public-safety",
-        "education",
-        "legal-aid",
-        "civic-info",
-        "story-tip",
-        "service-feedback",
-        "other",
+        'housing',
+        'utilities',
+        'employment',
+        'food-assistance',
+        'transportation',
+        'health',
+        'public-safety',
+        'education',
+        'legal-aid',
+        'civic-info',
+        'story-tip',
+        'service-feedback',
+        'other',
       ])
       : tag,
     secondaryTags,
@@ -97,39 +97,39 @@ export const createConversationAnalysis = async ({
     slackMessageTs,
     promotedAt,
     promotedBy,
-  };
+  }
 
   const [result] = await supabase
     .insert(conversationAnalyses)
     .values(analysis)
-    .returning();
+    .returning()
 
-  return result;
-};
+  return result
+}
 
 export type CreateAnalysisTagParams = {
-  name?: string;
-  description?: string;
-  active?: boolean;
-};
+  name?: string
+  description?: string
+  active?: boolean
+}
 
 export const createAnalysisTag = async ({
   name,
   description,
   active = true,
 }: CreateAnalysisTagParams = {}): Promise<AnalysisTag> => {
-  const tagName = name || `tag-${faker.random.alphaNumeric(6).toLowerCase()}`;
+  const tagName = name || `tag-${faker.random.alphaNumeric(6).toLowerCase()}`
 
   const analysisTag: AnalysisTag = {
     name: tagName,
     description: description || faker.lorem.sentence(),
     active,
-  };
+  }
 
   const [result] = await supabase
     .insert(analysisTags)
     .values(analysisTag)
-    .returning();
+    .returning()
 
-  return result;
-};
+  return result
+}

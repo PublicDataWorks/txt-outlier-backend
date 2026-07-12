@@ -1,5 +1,5 @@
-import { User, users } from "../../_shared/drizzle/schema.ts";
-import supabase from "../../_shared/lib/supabase.ts";
+import { User, users } from '../../_shared/drizzle/schema.ts'
+import supabase from '../../_shared/lib/supabase.ts'
 
 export async function createUser(overrides: Partial<User> = {}): Promise<User> {
   const userData: User = {
@@ -10,8 +10,8 @@ export async function createUser(overrides: Partial<User> = {}): Promise<User> {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
-  };
+  }
 
-  await supabase.insert(users).values(userData);
-  return userData;
+  await supabase.insert(users).values(userData)
+  return userData
 }

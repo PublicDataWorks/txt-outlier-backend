@@ -1,25 +1,21 @@
-import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
-import "https://deno.land/x/dotenv@v3.2.2/load.ts";
+import 'https://deno.land/x/dotenv@v3.2.2/load.ts'
 
 // Set up the configuration for the Supabase client
-const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-const supabaseKey = Deno.env.get("LOCAL_SERVICE_KEY") ?? "";
+const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+const supabaseKey = Deno.env.get('LOCAL_SERVICE_KEY') ?? ''
 const options = {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
     detectSessionInUrl: false,
   },
-};
+}
 
-const client: SupabaseClient = createClient(supabaseUrl, supabaseKey, options);
+const client: SupabaseClient = createClient(supabaseUrl, supabaseKey, options)
 
-const secretKey = Deno.env.get("LOCAL_SECRET_KEY")!;
-const serviceClient: SupabaseClient = createClient(
-  supabaseUrl,
-  secretKey,
-  options,
-);
+const secretKey = Deno.env.get('LOCAL_SECRET_KEY')!
+const serviceClient: SupabaseClient = createClient(supabaseUrl, secretKey, options)
 
-export { client, serviceClient };
+export { client, serviceClient }

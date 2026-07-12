@@ -1,16 +1,16 @@
 // broadcast.ts
-import { faker } from "faker";
-import { type Broadcast, broadcasts } from "../../_shared/drizzle/schema.ts";
-import supabase from "../../_shared/lib/supabase.ts";
+import { faker } from 'faker'
+import { type Broadcast, broadcasts } from '../../_shared/drizzle/schema.ts'
+import supabase from '../../_shared/lib/supabase.ts'
 
 export type CreateBroadcastParams = {
-  noUsers?: number;
-  runAt?: Date | null;
-  firstMessage?: string;
-  secondMessage?: string;
-  editable?: boolean;
-  delay?: number;
-};
+  noUsers?: number
+  runAt?: Date | null
+  firstMessage?: string
+  secondMessage?: string
+  editable?: boolean
+  delay?: number
+}
 
 export const createBroadcast = async ({
   noUsers,
@@ -26,12 +26,12 @@ export const createBroadcast = async ({
     firstMessage: firstMessage || faker.lorem.sentence(),
     secondMessage: secondMessage || faker.lorem.sentence(),
     editable: editable || false,
-  };
+  }
 
   const [result] = await supabase
     .insert(broadcasts)
     .values(broadcast)
-    .returning();
+    .returning()
 
-  return result;
-};
+  return result
+}
