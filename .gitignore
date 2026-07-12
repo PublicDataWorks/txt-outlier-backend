@@ -13,3 +13,5 @@ node_modules
 .vscode
 cov_profile
 /exports
+/discovery
+/undefined
