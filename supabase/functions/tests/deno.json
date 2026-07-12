@@ -30,6 +30,7 @@
     "supabase-js": "https://esm.sh/@supabase/supabase-js@2",
     "jsonwebtoken": "npm:jsonwebtoken",
     "sentry": "https://deno.land/x/sentry@8.53.0/index.mjs",
+    "zod": "https://deno.land/x/zod@v3.24.1/mod.ts",
     "dub": "./_mock/dub.ts",
     "../_shared/lib/Missive.ts": "./_mock/missive.ts"
   }

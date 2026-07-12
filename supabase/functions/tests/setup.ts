@@ -21,6 +21,7 @@ beforeEach(async () => {
     '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
     '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
     '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
+    '../../migrations/20260712090000_add_conversation_analysis.sql',
   ]
 
   const conn = await postgresClient.reserve()
@@ -77,5 +78,7 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "campaigns" CASCADE;
   DROP TABLE IF EXISTS "campaign_file_recipients" CASCADE;
   DROP TABLE IF EXISTS "campaign_personalized_recipients" CASCADE;
+  DROP TABLE IF EXISTS "conversation_analyses" CASCADE;
+  DROP TABLE IF EXISTS "analysis_tags" CASCADE;
   DROP FUNCTION IF EXISTS queue_campaign_messages(INTEGER);
 `
