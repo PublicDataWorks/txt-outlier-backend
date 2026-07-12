@@ -113,6 +113,10 @@ const startOfCurrentQuarter = (): string => {
   return new Date(Date.UTC(now.getUTCFullYear(), quarterMonth, 1)).toISOString()
 }
 
+// Not concurrency-safe: two overlapping process-queue invocations analyzing different rows with the
+// same tag could read the same count and post the same "Nth this quarter" ordinal. This is a vanity
+// stat for the Slack message, not used for any business logic, so an occasional duplicate display
+// value is an accepted tradeoff against the cost of a locked/atomic counter.
 const countTagThisQuarter = async (tag: string): Promise<number> => {
   const [row] = await supabase.execute(sql`
     SELECT count(*)::int AS count

@@ -163,7 +163,7 @@ const RECORD_ANALYSIS_TOOL = {
     properties: {
       tag: {
         type: 'string',
-        description: 'The single primary tag chosen from the provided taxonomy (or "other" if none fit).',
+        description: 'The single primary tag chosen from the provided taxonomy.',
       },
       secondary_tags: {
         type: 'array',

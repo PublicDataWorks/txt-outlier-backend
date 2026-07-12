@@ -61,7 +61,7 @@ const formatDate = (iso: string | null): string => {
   const date = new Date(iso)
   return Number.isNaN(date.getTime())
     ? 'unknown date'
-    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const messageCountText = (count: number | null): string =>
@@ -168,7 +168,7 @@ export const buildAnalysisMessageBlocks = (
       type: 'mrkdwn',
       text: `${isBug ? 'Detected' : `Closed by ${attribution}`}  •  ${messageCountText(conversation.messageCount)}` +
         `${durationSuffix ? `  •  ${durationSuffix}` : ''}  •  closed ${formatDate(conversation.closedAt)}  •  ` +
-        `<${conversation.webUrl}|Open in Missive>`,
+        `<${escapeMrkdwn(conversation.webUrl)}|Open in Missive>`,
     }],
   })
 

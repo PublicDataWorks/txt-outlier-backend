@@ -98,6 +98,24 @@ describe('buildAnalysisMessageBlocks', { sanitizeOps: false, sanitizeResources: 
     })
   })
 
+  it('escapes Slack mrkdwn control characters in resident/LLM-derived text so SMS content cannot inject formatting', () => {
+    const analysis = {
+      ...baseAnalysis,
+      topic: 'A & B <!channel>',
+      summary: 'Resident said <script> & wanted <@U123> pinged.',
+      supportingQuote: 'Contact me & <here> now',
+    }
+    const blocks = buildAnalysisMessageBlocks(analysis, { ...baseConversation, closedBy: 'A & B' })
+    const serialized = JSON.stringify(blocks)
+
+    assertEquals(serialized.includes('<!channel>'), false)
+    assertEquals(serialized.includes('<script>'), false)
+    assertEquals(serialized.includes('<@U123>'), false)
+    assertEquals(serialized.includes('<here>'), false)
+    assertEquals(blocks[2].text.text.includes('A &amp; B &lt;!channel&gt;'), true)
+    assertEquals(blocks[1].text.text.includes('A &amp; B'), true)
+  })
+
   it('never includes a phone number, street address, or resident name field anywhere in the blocks', () => {
     const blocks = buildAnalysisMessageBlocks(baseAnalysis, baseConversation)
     const serialized = JSON.stringify(blocks)

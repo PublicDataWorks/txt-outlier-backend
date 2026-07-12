@@ -64,12 +64,19 @@ const REALTIME_DELAY_HOURS = 72
 // after the transaction commits and must never fail the webhook - the AI tagging pipeline is best-effort
 // and picked up asynchronously by the cron queue. A re-close (conversation_id already has a row from a
 // prior close/reopen cycle) resets it to pending with a fresh timer and clears any prior analysis result,
-// unless a queue worker currently has it claimed ('processing').
+// unless a queue worker currently has it claimed ('processing') - in that narrow window this close event
+// is not queued (the in-flight cycle's own result is preserved rather than risking a clobbered write);
+// given the 72h delay this normally requires, a same-second re-close during active processing is an
+// accepted, rare edge case rather than one this revision re-architects around.
 const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
   try {
     if (!requestBody.conversation.authors?.length) {
       return
     }
+    // Clears every prior-cycle field, including Slack refs and promotion state: leaving slack_channel/
+    // slack_message_ts set would make processRow's retry-reuse guard treat this brand-new cycle as
+    // already posted and silently skip Slack, and a stale promoted_at would misrepresent the new
+    // cycle's state before it's even analyzed.
     await supabase.execute(sql`
       INSERT INTO conversation_analyses (conversation_id, status, source, process_after)
       VALUES (${requestBody.conversation.id}, 'pending', 'realtime', NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS}))
@@ -88,6 +95,14 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
         unmet_demand_reason = NULL,
         confidence = NULL,
         suppress_reason = NULL,
+        model = NULL,
+        prompt_version = NULL,
+        message_count = NULL,
+        last_message_at = NULL,
+        slack_channel = NULL,
+        slack_message_ts = NULL,
+        promoted_at = NULL,
+        promoted_by = NULL,
         updated_at = NOW()
       WHERE conversation_analyses.status <> 'processing'
     `)

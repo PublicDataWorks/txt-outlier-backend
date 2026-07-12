@@ -130,4 +130,41 @@ describe('conversation-handler enqueues conversation analysis on close', {
     const delayHours = (new Date(rows[0].processAfter).getTime() - before) / (60 * 60 * 1000)
     assertEquals(delayHours > 71.9 && delayHours < 72.1, true)
   })
+
+  it('clears stale Slack refs and promotion state from a prior completed cycle on re-close', async () => {
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+
+    // Simulate a prior cycle that was fully analyzed, posted to Slack, and promoted.
+    await supabase
+      .update(conversationAnalyses)
+      .set({
+        status: 'completed',
+        tag: 'reporter-engaged',
+        topic: 'Home Repair',
+        summary: 'Old cycle summary',
+        slackChannel: 'C_OLD_CHANNEL',
+        slackMessageTs: '1111111111.000000',
+        promotedAt: new Date().toISOString(),
+        promotedBy: 'Jane',
+        model: 'claude-old',
+        messageCount: 3,
+      })
+      .where(eq(conversationAnalyses.conversationId, closeRequest.conversation.id))
+
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    assertEquals(error, null)
+
+    const [row] = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(row.status, 'pending')
+    assertEquals(row.tag, null)
+    assertEquals(row.topic, null)
+    assertEquals(row.summary, null)
+    assertEquals(row.slackChannel, null)
+    assertEquals(row.slackMessageTs, null)
+    assertEquals(row.promotedAt, null)
+    assertEquals(row.promotedBy, null)
+    assertEquals(row.model, null)
+    assertEquals(row.messageCount, null)
+  })
 })
