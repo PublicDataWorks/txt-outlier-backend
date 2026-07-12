@@ -30,6 +30,7 @@ export type CreateConversationAnalysisParams = {
   slackMessageTs?: string | null
   promotedAt?: string | null
   promotedBy?: string | null
+  createdAt?: string
 }
 
 export const createConversationAnalysis = async ({
@@ -53,6 +54,7 @@ export const createConversationAnalysis = async ({
   slackMessageTs,
   promotedAt,
   promotedBy,
+  createdAt,
 }: CreateConversationAnalysisParams = {}): Promise<ConversationAnalysis> => {
   // Create a conversation if not provided (conversation_id is a required unique FK)
   const conversation = conversationId ? null : await createConversation()
@@ -63,6 +65,7 @@ export const createConversationAnalysis = async ({
     source,
     attempts,
     error,
+    ...(createdAt ? { createdAt } : {}),
     tag: tag === undefined ? faker.random.arrayElement(['billing', 'support', 'feedback', 'bug_report']) : tag,
     secondaryTags,
     summary: summary === undefined ? faker.lorem.sentence() : summary,
