@@ -7,6 +7,7 @@ import '../setup.ts'
 import { serviceClient } from '../utils.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { conversationAnalyses } from '../../_shared/drizzle/schema.ts'
+import { createAuthor } from '../factories/author.ts'
 import { createConversation } from '../factories/conversation.ts'
 import { createConversationAuthor } from '../factories/conversation-author.ts'
 import { createTwilioMessage } from '../factories/twilio-message.ts'
@@ -20,6 +21,9 @@ const OUTLIER_PHONE_NUMBER = '+15555550100'
 const createEligibleConversation = async (createdAt?: string) => {
   const conversation = await createConversation({ createdAt })
   const residentPhone = `+1313555${Math.floor(1000 + Math.random() * 8999)}`
+  // authors rows must exist first: conversations_authors and twilio_messages both FK on authors.phone_number
+  await createAuthor(residentPhone)
+  await createAuthor(OUTLIER_PHONE_NUMBER)
   await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
   await createTwilioMessage({ fromField: residentPhone, toField: OUTLIER_PHONE_NUMBER })
   return conversation
@@ -47,6 +51,8 @@ describe('conversation-analysis seed-backfill', { sanitizeOps: false, sanitizeRe
   it('does not seed a conversation whose only twilio message is outbound from the Outlier number', async () => {
     const conversation = await createConversation()
     const residentPhone = '+13135551111'
+    await createAuthor(residentPhone)
+    await createAuthor(OUTLIER_PHONE_NUMBER)
     await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
     await createTwilioMessage({ fromField: OUTLIER_PHONE_NUMBER, toField: residentPhone })
 

@@ -8,12 +8,12 @@ dashboard.
 
 The pipeline runs in five stages:
 
-1. **Close**: A conversation accumulates inbound/outbound Twilio messages. There is no explicit "close" event — the
-   `analyze-conversations` cron job simply looks for conversations that don't have an analysis row yet each time it
-   runs, so a conversation becomes eligible for analysis as soon as it exists and has at least one inbound message.
-2. **Queue**: Rows are inserted into `conversation_analyses` with `status = 'pending'`, either continuously (see
-   below — realtime seeding happens as part of normal conversation processing) or in bulk via the
-   `seed-backfill` action for historical data.
+1. **Close**: A conversation accumulates inbound/outbound Twilio messages. When Missive fires a `conversation_closed`
+   event, the `user-actions` webhook enqueues a `pending` `conversation_analyses` row for it.
+2. **Queue**: Rows are inserted into `conversation_analyses` with `status = 'pending'`, either continuously (via the
+   `user-actions` webhook on `conversation_closed`, as above) or in bulk via the `seed-backfill` action for
+   historical data. The `analyze-conversations` cron job only drains this queue — it doesn't decide what gets
+   queued.
 3. **Cron**: The `analyze-conversations` cron job calls the `conversation-analysis` edge function every minute with
    `action: 'process-queue'`, which claims a small batch of pending rows and processes them one at a time.
 4. **AI**: For each claimed row, the transcript is pulled from `twilio_messages`, sent to Claude with the active tag
@@ -106,8 +106,9 @@ analyses were promoted to story ideas this week. Posts the result as a Slack Blo
 - `GET /insights-dashboard/data/unmet-demand?limit=50` — recent unmet-demand rows (summary, reason, tag,
   `created_at`, Missive link).
 
-If `DASHBOARD_TOKEN` is set, every request (including the HTML page) must include a matching `?token=` query
-parameter or it returns `401`. See [Dashboard](#dashboard) below.
+`DASHBOARD_TOKEN` is required — every request (including the HTML page) must include a matching `?token=` query
+parameter or it returns `401`, and requests are rejected outright if `DASHBOARD_TOKEN` isn't set. See
+[Dashboard](#dashboard) below.
 
 ## Environment Variables
 
@@ -118,7 +119,7 @@ parameter or it returns `401`. See [Dashboard](#dashboard) below.
 | `SLACK_BOT_TOKEN`            | Yes      | Bot token used for `chat.postMessage`, `chat.update`, `conversations.history`. |
 | `SLACK_ANALYSIS_CHANNEL_ID`  | Yes      | Channel (or channel ID) the analysis messages and weekly digest are posted to. |
 | `SLACK_SIGNING_SECRET`       | Yes      | Used to verify requests hitting `slack-interactions` actually came from Slack. |
-| `DASHBOARD_TOKEN`            | No       | If set, required as `?token=` on every `insights-dashboard` request.      |
+| `DASHBOARD_TOKEN`            | Yes      | Required as a matching `?token=` on every `insights-dashboard` request — the dashboard denies all requests when this isn't set. |
 | `DASHBOARD_URL`              | No       | Public URL of the dashboard; when set, it's linked from the weekly digest message. |
 
 Add these to `supabase/functions/.env` (and `.env-example` as blank placeholders) alongside the existing secrets —
@@ -127,8 +128,10 @@ see [Environment Files](environment-files.md) for how the different env files ar
 ### Slack app setup
 
 1. Create a Slack app (or reuse an existing internal one) at https://api.slack.com/apps.
-2. Under **OAuth & Permissions**, add the `chat:write` bot token scope, then install the app to the workspace and
-   copy the **Bot User OAuth Token** into `SLACK_BOT_TOKEN`.
+2. Under **OAuth & Permissions**, add the `chat:write` and `channels:history` bot token scopes (`groups:history`
+   instead of/in addition to `channels:history` if the channel is private) — `channels:history`/`groups:history` is
+   needed because promoting an analysis reads the posted message via `conversations.history` before `chat.update`.
+   Then install the app to the workspace and copy the **Bot User OAuth Token** into `SLACK_BOT_TOKEN`.
 3. Invite the bot to the channel that will receive analysis posts and the weekly digest, then copy that channel's ID
    into `SLACK_ANALYSIS_CHANNEL_ID`.
 4. Under **Basic Information**, copy the **Signing Secret** into `SLACK_SIGNING_SECRET`.
@@ -176,16 +179,15 @@ function, which posts a summary of the previous 7 days to `SLACK_ANALYSIS_CHANNE
 
 ## Dashboard
 
-The dashboard at `GET /insights-dashboard` is meant for internal use — it has no login of its own. If
-`DASHBOARD_TOKEN` is set in the environment, share the URL with the token appended, e.g.:
+The dashboard at `GET /insights-dashboard` is meant for internal use — it has no login of its own. `DASHBOARD_TOKEN`
+is required; share the URL with the token appended, e.g.:
 
-```
-https://<project-ref>.functions.supabase.co/insights-dashboard?token=<DASHBOARD_TOKEN>
+```text
+https://<project-ref>.functions.supabase.co/insights-dashboard/?token=<DASHBOARD_TOKEN>
 ```
 
-Without a token configured, the dashboard (and its `/data/*` JSON endpoints) are open to anyone with the URL, so
-setting `DASHBOARD_TOKEN` is strongly recommended outside of local development. Set `DASHBOARD_URL` so the weekly
-digest message can link straight to it.
+Without `DASHBOARD_TOKEN` configured, the dashboard (and its `/data/*` JSON endpoints) reject every request. Set
+`DASHBOARD_URL` so the weekly digest message can link straight to it.
 
 ## Tag Taxonomy
 

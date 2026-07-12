@@ -8,7 +8,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Conversation insights</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <style>
   :root {
     --surface-1: #fcfcfb;
@@ -220,6 +220,16 @@ export const DASHBOARD_HTML = `<!doctype html>
     return div.innerHTML
   }
 
+  function isHttpUrl(value) {
+    return typeof value === 'string' && /^https?:\/\//i.test(value)
+  }
+
+  function renderMissiveCell(url) {
+    if (!url) return '–'
+    if (!isHttpUrl(url)) return escapeHtml(url)
+    return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">Open in Missive</a>'
+  }
+
   function renderSummary(data) {
     document.getElementById('tile-total').textContent = formatNumber(data.total)
     document.getElementById('tile-last7').textContent = formatNumber(data.last7Days)
@@ -341,7 +351,7 @@ export const DASHBOARD_HTML = `<!doctype html>
         '<td><span class="tag-pill">' + escapeHtml(row.tag || 'other') + '</span></td>' +
         '<td>' + escapeHtml(row.summary) + '</td>' +
         '<td>' + escapeHtml(row.reason) + '</td>' +
-        '<td>' + (row.missiveUrl ? '<a href="' + escapeHtml(row.missiveUrl) + '" target="_blank" rel="noopener">Open in Missive</a>' : '–') + '</td>' +
+        '<td>' + renderMissiveCell(row.missiveUrl) + '</td>' +
         '</tr>'
     })
 

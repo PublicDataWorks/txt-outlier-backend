@@ -109,6 +109,7 @@ describe('analyzeTranscript', () => {
       summary: 'A summary.',
       supporting_quote: 'Please help',
       unmet_demand: false,
+      confidence: 0.5,
     }))
 
     const result = await analyzeTranscript([buildMessage(0)], tags)

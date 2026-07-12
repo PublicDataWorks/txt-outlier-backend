@@ -14,14 +14,25 @@ const DEFAULT_WEEKS = 12
 const MAX_WEEKS = 104
 const DEFAULT_UNMET_DEMAND_LIMIT = 50
 const MAX_UNMET_DEMAND_LIMIT = 500
-const TOP_TAGS_LIMIT = 8
 const DAY_MS = 24 * 60 * 60 * 1000
 
-// Gate every route behind DASHBOARD_TOKEN when it's set — this function has verify_jwt=false so it's
-// otherwise reachable by anyone with the URL.
+// Simple XOR-accumulate constant-time comparison (mirrors SlackService's timingSafeEqual) so token
+// comparison doesn't leak length-of-match via early-return timing.
+const timingSafeEqual = (a: string, b: string): boolean => {
+  if (a.length !== b.length) return false
+  let mismatch = 0
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return mismatch === 0
+}
+
+// Gate every route behind DASHBOARD_TOKEN — fail closed: this function has verify_jwt=false so it's
+// otherwise reachable by anyone with the URL, and an unset token must deny rather than allow.
 app.use(`${FUNCTION_PATH}*`, async (c, next) => {
   const requiredToken = Deno.env.get('DASHBOARD_TOKEN')
-  if (requiredToken && c.req.query('token') !== requiredToken) {
+  const providedToken = c.req.query('token')
+  if (!requiredToken || !providedToken || !timingSafeEqual(providedToken, requiredToken)) {
     return AppResponse.unauthorized()
   }
   await next()
@@ -35,7 +46,7 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
     const last7Start = new Date(now.getTime() - 7 * DAY_MS).toISOString()
     const last30Start = new Date(now.getTime() - 30 * DAY_MS).toISOString()
 
-    const [[totalRow], [last7Row], [unmetRow], [promotedRow], topTagsRaw] = await Promise.all([
+    const [[totalRow], [last7Row], [unmetRow], [promotedRow]] = await Promise.all([
       supabase
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAnalyses)
@@ -56,23 +67,13 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAnalyses)
         .where(isNotNull(conversationAnalyses.promotedAt)),
-      supabase
-        .select({ tag: conversationAnalyses.tag, count: sql<number>`count(*)::int` })
-        .from(conversationAnalyses)
-        .where(eq(conversationAnalyses.status, 'completed'))
-        .groupBy(conversationAnalyses.tag)
-        .orderBy(desc(sql`count(*)`))
-        .limit(TOP_TAGS_LIMIT),
     ])
-
-    const topTags = topTagsRaw.filter((row): row is { tag: string; count: number } => row.tag !== null)
 
     return AppResponse.ok({
       total: totalRow?.count ?? 0,
       last7Days: last7Row?.count ?? 0,
       unmetDemandLast30Days: unmetRow?.count ?? 0,
       promotedTotal: promotedRow?.count ?? 0,
-      topTags,
     })
   } catch (error) {
     console.error(`Error in insights-dashboard summary: ${error instanceof Error ? error.message : String(error)}`)
@@ -93,14 +94,18 @@ app.get(`${FUNCTION_PATH}data/tags-over-time`, async (c) => {
     }
 
     const since = new Date(Date.now() - weeks * 7 * DAY_MS).toISOString()
+    // Bucket by the conversation's actual activity date (last message, falling back to created_at for
+    // conversations with none) rather than the analysis row's created_at, so backfilled analyses land on
+    // the week they really happened instead of the week they were seeded.
+    const activityDate = sql`coalesce(${conversationAnalyses.lastMessageAt}, ${conversationAnalyses.createdAt})`
     // Unaliased on purpose: groupBy/orderBy repeat the same expression text as the select, which Postgres
     // evaluates once per row — simpler than relying on drizzle re-emitting the select alias.
-    const weekExpr = sql<string>`to_char(date_trunc('week', ${conversationAnalyses.createdAt}), 'YYYY-MM-DD')`
+    const weekExpr = sql<string>`to_char(date_trunc('week', ${activityDate}), 'YYYY-MM-DD')`
 
     const rows = await supabase
       .select({ week: weekExpr.as('week'), tag: conversationAnalyses.tag, count: sql<number>`count(*)::int` })
       .from(conversationAnalyses)
-      .where(and(eq(conversationAnalyses.status, 'completed'), gte(conversationAnalyses.createdAt, since)))
+      .where(and(eq(conversationAnalyses.status, 'completed'), gte(activityDate, since)))
       .groupBy(weekExpr, conversationAnalyses.tag)
       .orderBy(weekExpr)
 

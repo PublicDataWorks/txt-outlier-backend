@@ -54,6 +54,11 @@ const messageCountText = (count: number | null): string =>
 
 const toBlockquote = (text: string): string => text.split('\n').map((line) => `> ${line}`).join('\n')
 
+// Resident/LLM-derived text goes into mrkdwn blocks: escape Slack's control characters so SMS content
+// can't inject links, mentions (e.g. <!channel>), or broken formatting into the team channel.
+const escapeMrkdwn = (text: string): string =>
+  text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
 // Exported in case other callers (e.g. the weekly digest) want the same visual language, though the
 // process-queue flow only needs postAnalysisMessage.
 export const buildAnalysisMessageBlocks = (
@@ -69,11 +74,11 @@ export const buildAnalysisMessageBlocks = (
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: analysis.summary },
+      text: { type: 'mrkdwn', text: escapeMrkdwn(analysis.summary) },
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: toBlockquote(analysis.supportingQuote) },
+      text: { type: 'mrkdwn', text: toBlockquote(escapeMrkdwn(analysis.supportingQuote)) },
     },
     {
       type: 'context',
@@ -88,7 +93,10 @@ export const buildAnalysisMessageBlocks = (
   if (analysis.unmetDemand) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `:warning: *Unmet demand:* ${analysis.unmetDemandReason ?? 'Not specified'}` },
+      text: {
+        type: 'mrkdwn',
+        text: `:warning: *Unmet demand:* ${escapeMrkdwn(analysis.unmetDemandReason ?? 'Not specified')}`,
+      },
     })
   }
 

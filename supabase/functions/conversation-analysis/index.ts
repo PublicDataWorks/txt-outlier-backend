@@ -6,11 +6,28 @@ import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { analysisTags, conversationAnalyses, conversations, conversationsAuthors } from '../_shared/drizzle/schema.ts'
-import { analyzeTranscript, getConversationTranscript, PROMPT_VERSION } from '../_shared/services/AnalysisService.ts'
+import {
+  analyzeTranscript,
+  DEFAULT_ANALYSIS_MODEL,
+  getConversationTranscript,
+  PROMPT_VERSION,
+} from '../_shared/services/AnalysisService.ts'
 import { postAnalysisMessage } from '../_shared/services/SlackService.ts'
 
 const DEFAULT_BATCH_SIZE = 5
+const MAX_BATCH_SIZE = 50
+const MAX_SEED_LIMIT = 50000
 const MAX_ATTEMPTS = 3
+
+// Both loadConversationMeta and seedBackfill depend on this value; an unset var must fail loudly
+// rather than match every phone (meta lookup) or interpolate undefined (seed SQL).
+const requireOutlierPhone = (): string => {
+  const phone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+  if (!phone) {
+    throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
+  }
+  return phone
+}
 
 type ProcessQueueBody = {
   action: 'process-queue'
@@ -30,6 +47,8 @@ type ClaimedRow = {
   id: number
   conversationId: string
   attempts: number
+  slackChannel: string | null
+  slackMessageTs: string | null
 }
 
 // Atomically claims up to `batchSize` pending rows (realtime before backfill, oldest first within each source),
@@ -49,7 +68,8 @@ const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, conversation_id AS "conversationId", attempts
+    RETURNING id, conversation_id AS "conversationId", attempts,
+      slack_channel AS "slackChannel", slack_message_ts AS "slackMessageTs"
   `)
   return claimed as unknown as ClaimedRow[]
 }
@@ -71,7 +91,7 @@ const loadConversationMeta = async (
     .leftJoin(conversationsAuthors, eq(conversationsAuthors.conversationId, conversations.id))
     .where(eq(conversations.id, conversationId))
 
-  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+  const outlierPhone = requireOutlierPhone()
   const authorPhone = rows
     .map((row) => row.authorPhone)
     .find((phone): phone is string => phone !== null && phone !== outlierPhone) ?? null
@@ -109,24 +129,38 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   const messageCount = transcript.length
   const lastMessageAt = transcript[transcript.length - 1].timestamp
 
-  const slackMessage = await postAnalysisMessage(
-    {
-      id: row.id,
-      tag: result.tag,
-      summary: result.summary,
-      supportingQuote: result.supportingQuote,
-      unmetDemand: result.unmetDemand,
-      unmetDemandReason: result.unmetDemandReason,
-      confidence: result.confidence,
-    },
-    {
-      id: row.conversationId,
-      webUrl: conversationMeta.webUrl,
-      authorPhone: conversationMeta.authorPhone,
-      messageCount,
-      lastMessageAt,
-    },
-  )
+  // A retry after a failed completion-write must not post to Slack again: reuse the message this row
+  // already posted (persisted immediately below), otherwise the channel gets duplicates and the old
+  // message's promote button would point at a row whose stored ts is the newer post.
+  let slackMessage = row.slackChannel && row.slackMessageTs
+    ? { channel: row.slackChannel, ts: row.slackMessageTs }
+    : null
+  if (!slackMessage) {
+    slackMessage = await postAnalysisMessage(
+      {
+        id: row.id,
+        tag: result.tag,
+        summary: result.summary,
+        supportingQuote: result.supportingQuote,
+        unmetDemand: result.unmetDemand,
+        unmetDemandReason: result.unmetDemandReason,
+        confidence: result.confidence,
+      },
+      {
+        id: row.conversationId,
+        webUrl: conversationMeta.webUrl,
+        authorPhone: conversationMeta.authorPhone,
+        messageCount,
+        lastMessageAt,
+      },
+    )
+    // Persist the Slack refs on their own, before the full completion update: if that update fails
+    // and the row is retried, the refs are what prevents a duplicate post.
+    await supabase
+      .update(conversationAnalyses)
+      .set({ slackChannel: slackMessage.channel, slackMessageTs: slackMessage.ts, updatedAt: new Date().toISOString() })
+      .where(eq(conversationAnalyses.id, row.id))
+  }
 
   await supabase
     .update(conversationAnalyses)
@@ -139,7 +173,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       unmetDemand: result.unmetDemand,
       unmetDemandReason: result.unmetDemandReason,
       confidence: result.confidence,
-      model: Deno.env.get('ANALYSIS_MODEL') ?? 'claude-sonnet-5',
+      model: Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL,
       promptVersion: PROMPT_VERSION,
       messageCount,
       lastMessageAt,
@@ -187,13 +221,10 @@ const assertValidIsoBound = (value: string, field: string): string => {
 // Seeds pending rows (source='backfill') for every conversation that has at least one inbound twilio message
 // (a message addressed to the Outlier number), optionally bounded by conversations.created_at.
 const seedBackfill = async (limit?: number, before?: string, after?: string): Promise<number> => {
-  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
-  if (!outlierPhone) {
-    throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
-  }
+  const outlierPhone = requireOutlierPhone()
 
-  if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
-    throw new BadRequestError(`Invalid limit: ${limit}`)
+  if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0 || limit > MAX_SEED_LIMIT)) {
+    throw new BadRequestError(`Invalid limit: ${limit} (must be a positive integer <= ${MAX_SEED_LIMIT})`)
   }
 
   const afterClause = after ? sql`AND c.created_at > ${assertValidIsoBound(after, 'after')}` : sql``
@@ -247,7 +278,9 @@ Deno.serve(withSupabase({ auth: 'secret' }, async (req: Request) => {
   if (body.action === 'process-queue') {
     try {
       await processQueue(
-        Number.isInteger(body.batchSize) && (body.batchSize as number) > 0 ? body.batchSize! : DEFAULT_BATCH_SIZE,
+        Number.isInteger(body.batchSize) && (body.batchSize as number) > 0
+          ? Math.min(body.batchSize!, MAX_BATCH_SIZE)
+          : DEFAULT_BATCH_SIZE,
       )
     } catch (error) {
       console.error(

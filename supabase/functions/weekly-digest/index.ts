@@ -22,8 +22,8 @@ const getTagCounts = async (from: Date, to: Date): Promise<TagCount[]> => {
     .where(
       and(
         eq(conversationAnalyses.status, 'completed'),
-        gte(conversationAnalyses.createdAt, from.toISOString()),
-        lt(conversationAnalyses.createdAt, to.toISOString()),
+        gte(conversationAnalyses.updatedAt, from.toISOString()),
+        lt(conversationAnalyses.updatedAt, to.toISOString()),
       ),
     )
     .groupBy(conversationAnalyses.tag)
@@ -39,8 +39,8 @@ const getCompletedCount = async (from: Date, to: Date): Promise<number> => {
     .where(
       and(
         eq(conversationAnalyses.status, 'completed'),
-        gte(conversationAnalyses.createdAt, from.toISOString()),
-        lt(conversationAnalyses.createdAt, to.toISOString()),
+        gte(conversationAnalyses.updatedAt, from.toISOString()),
+        lt(conversationAnalyses.updatedAt, to.toISOString()),
       ),
     )
   return row?.count ?? 0
@@ -54,8 +54,8 @@ const getUnmetDemandCount = async (from: Date, to: Date): Promise<number> => {
       and(
         eq(conversationAnalyses.status, 'completed'),
         eq(conversationAnalyses.unmetDemand, true),
-        gte(conversationAnalyses.createdAt, from.toISOString()),
-        lt(conversationAnalyses.createdAt, to.toISOString()),
+        gte(conversationAnalyses.updatedAt, from.toISOString()),
+        lt(conversationAnalyses.updatedAt, to.toISOString()),
       ),
     )
   return row?.count ?? 0
@@ -76,11 +76,11 @@ const getUnmetDemandExamples = async (from: Date, to: Date): Promise<UnmetDemand
       and(
         eq(conversationAnalyses.status, 'completed'),
         eq(conversationAnalyses.unmetDemand, true),
-        gte(conversationAnalyses.createdAt, from.toISOString()),
-        lt(conversationAnalyses.createdAt, to.toISOString()),
+        gte(conversationAnalyses.updatedAt, from.toISOString()),
+        lt(conversationAnalyses.updatedAt, to.toISOString()),
       ),
     )
-    .orderBy(desc(conversationAnalyses.createdAt))
+    .orderBy(desc(conversationAnalyses.updatedAt))
     .limit(UNMET_DEMAND_EXAMPLES_LIMIT)
 }
 
@@ -96,6 +96,10 @@ const getPromotedCount = async (from: Date, to: Date): Promise<number> => {
     )
   return row?.count ?? 0
 }
+
+// Escape Slack mrkdwn special chars in resident/LLM-derived text before interpolating it into a block's
+// text field — order matters, & must go first so it doesn't double-escape the entities below.
+const escapeMrkdwn = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 // :arrow_up:/:arrow_down:/:new: prefix comparing this week's count against the same tag's prior-week count.
 const deltaEmoji = (current: number, prior: number): string => {
@@ -134,7 +138,10 @@ const buildDigestBlocks = (data: {
   if (data.tagCounts.length > 0) {
     const tagLines = data.tagCounts
       .slice(0, TOP_TAGS_LIMIT)
-      .map((row) => `• *${row.tag}* — ${row.count}${deltaEmoji(row.count, data.priorTagCounts.get(row.tag) ?? 0)}`)
+      .map((row) => {
+        const tag = escapeMrkdwn(row.tag)
+        return `• *${tag}* — ${row.count}${deltaEmoji(row.count, data.priorTagCounts.get(row.tag) ?? 0)}`
+      })
       .join('\n')
     blocks.push({
       type: 'section',
@@ -146,7 +153,9 @@ const buildDigestBlocks = (data: {
     const exampleLines = data.unmetDemandExamples
       .map((example) => {
         const link = example.webUrl ? ` <${example.webUrl}|Open in Missive>` : ''
-        return `• _${example.tag ?? 'other'}_ — ${example.summary ?? 'No summary'}${link}`
+        const tag = escapeMrkdwn(example.tag ?? 'other')
+        const summary = escapeMrkdwn(example.summary ?? 'No summary')
+        return `• _${tag}_ — ${summary}${link}`
       })
       .join('\n')
     blocks.push({

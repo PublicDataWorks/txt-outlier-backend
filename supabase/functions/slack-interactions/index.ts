@@ -52,8 +52,15 @@ Deno.serve(async (req) => {
     // Signature verification needs the exact raw body, so read it as text before any parsing.
     const rawBody = await req.text()
 
+    const signingSecret = Deno.env.get('SLACK_SIGNING_SECRET')
+    if (!signingSecret) {
+      // Fail closed: an empty HMAC key would make every forged request verify successfully.
+      console.error('SLACK_SIGNING_SECRET is not set - rejecting Slack interaction')
+      return AppResponse.unauthorized('Slack signing secret not configured')
+    }
+
     const isVerified = await verifySlackSignature(
-      Deno.env.get('SLACK_SIGNING_SECRET')!,
+      signingSecret,
       req.headers.get('x-slack-request-timestamp') ?? '',
       req.headers.get('x-slack-signature') ?? '',
       rawBody,

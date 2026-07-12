@@ -5,8 +5,10 @@ import { conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
 import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
 
 export const PROMPT_VERSION = 'v1'
+export const DEFAULT_ANALYSIS_MODEL = 'claude-sonnet-5'
 
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
+const ANTHROPIC_TIMEOUT_MS = 30_000
 const OUTLIER_PHONE_NUMBER = Deno.env.get('OUTLIER_PHONE_NUMBER')
 
 // Most recent N messages / M chars we'll ever send to the model, to keep prompts bounded.
@@ -18,6 +20,11 @@ const MAX_TRANSCRIPT_CHARS = 30000
 // author, and matching on it would pull in every resident's messages, so the query is scoped strictly to the
 // resident phone(s) of this conversation.
 export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
+  if (!OUTLIER_PHONE_NUMBER) {
+    // Without it, the Outlier number can't be filtered out of residentPhones and every
+    // message would be classified as inbound - fail loudly instead of mislabeling.
+    throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
+  }
   const authorRows = await supabase
     .select({ phone: conversationsAuthors.authorPhoneNumber })
     .from(conversationsAuthors)
@@ -62,7 +69,8 @@ const truncateTranscript = (
   transcript: TranscriptMessage[],
 ): { messages: TranscriptMessage[]; truncated: boolean } => {
   let truncated = false
-  let messages = transcript
+  // Copy before mutating: splice below would otherwise shrink the caller's array
+  let messages = [...transcript]
 
   if (messages.length > MAX_TRANSCRIPT_MESSAGES) {
     messages = messages.slice(-MAX_TRANSCRIPT_MESSAGES)
@@ -185,13 +193,14 @@ export const analyzeTranscript = async (
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: Deno.env.get('ANALYSIS_MODEL') ?? 'claude-sonnet-5',
+        model: Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL,
         max_tokens: 1024,
         system: buildSystemPrompt(tags),
         messages: [{ role: 'user', content: userContent }],
         tools: [RECORD_ANALYSIS_TOOL],
         tool_choice: { type: 'tool', name: 'record_analysis' },
       }),
+      signal: AbortSignal.timeout(ANTHROPIC_TIMEOUT_MS),
     })
   } catch (error) {
     throw new Error(`Anthropic API request failed: ${error.message}`)
@@ -216,11 +225,12 @@ export const analyzeTranscript = async (
   const output = parsed.data
 
   const matchedTag = tags.find((tag) => tag.name.toLowerCase() === output.tag.toLowerCase())
-  const secondaryTags = [...output.secondary_tags]
+  let secondaryTags = [...output.secondary_tags]
   let tag = output.tag
   if (!matchedTag) {
+    // Preserve the model's unmatched proposal as the first secondary tag, keeping the documented cap of 2
     if (!secondaryTags.some((secondary) => secondary.toLowerCase() === output.tag.toLowerCase())) {
-      secondaryTags.push(output.tag)
+      secondaryTags = [output.tag, ...secondaryTags].slice(0, 2)
     }
     tag = 'other'
   } else {
