@@ -92,7 +92,7 @@ describe('buildAnalysisMessageBlocks', { sanitizeOps: false, sanitizeResources: 
       type: 'context',
       elements: [{
         type: 'mrkdwn',
-        text: 'Closed by Sarah  •  5 messages  •  over 6 days  •  closed Jul 10  •  ' +
+        text: 'Closed by Sarah  •  5 messages  •  over 6 days  •  closed Jul 10, 2026  •  ' +
           '<https://mail.missiveapp.com/#inbox/conversations/a1a1a1a1|Open in Missive>',
       }],
     })
