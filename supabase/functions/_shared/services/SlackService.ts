@@ -56,7 +56,7 @@ const toBlockquote = (text: string): string => text.split('\n').map((line) => `>
 
 // Resident/LLM-derived text goes into mrkdwn blocks: escape Slack's control characters so SMS content
 // can't inject links, mentions (e.g. <!channel>), or broken formatting into the team channel.
-const escapeMrkdwn = (text: string): string =>
+export const escapeMrkdwn = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
 // Exported in case other callers (e.g. the weekly digest) want the same visual language, though the
@@ -148,7 +148,7 @@ export const updateAnalysisMessagePromoted = async (channel: string, ts: string,
   const blocksWithoutActions = existingBlocks.filter((block) => block.type !== 'actions')
   blocksWithoutActions.push({
     type: 'context',
-    elements: [{ type: 'mrkdwn', text: `:star: Promoted to story idea by ${promotedBy}` }],
+    elements: [{ type: 'mrkdwn', text: `:star: Promoted to story idea by ${escapeMrkdwn(promotedBy)}` }],
   })
 
   await slackFetch('chat.update', {

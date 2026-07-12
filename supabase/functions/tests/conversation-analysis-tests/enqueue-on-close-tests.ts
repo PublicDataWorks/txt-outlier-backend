@@ -27,7 +27,8 @@ describe('conversation-handler enqueues conversation analysis on close', {
   it('enqueues a pending realtime analysis row when a conversation with authors is closed', async () => {
     const request = withAuthors(conversationCLosedRequest)
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    assertEquals(error, null)
 
     const rows = await analysisRowsFor(request.conversation.id)
     assertEquals(rows.length, 1)
@@ -39,7 +40,8 @@ describe('conversation-handler enqueues conversation analysis on close', {
     // The shared fixture has authors: [] by design.
     assertEquals(conversationCLosedRequest.conversation.authors.length, 0)
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: conversationCLosedRequest })
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: conversationCLosedRequest })
+    assertEquals(error, null)
 
     const rows = await analysisRowsFor(conversationCLosedRequest.conversation.id)
     assertEquals(rows.length, 0)
@@ -48,7 +50,8 @@ describe('conversation-handler enqueues conversation analysis on close', {
   it('does not enqueue anything when a conversation is reopened rather than closed', async () => {
     const request = withAuthors(conversationReopenedRequest)
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    assertEquals(error, null)
 
     const rows = await analysisRowsFor(request.conversation.id)
     assertEquals(rows.length, 0)
@@ -57,8 +60,10 @@ describe('conversation-handler enqueues conversation analysis on close', {
   it('does not create a duplicate row when the same conversation is closed twice', async () => {
     const request = withAuthors(conversationCLosedRequest)
 
-    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
-    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    const first = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    const second = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    assertEquals(first.error, null)
+    assertEquals(second.error, null)
 
     const rows = await analysisRowsFor(request.conversation.id)
     assertEquals(rows.length, 1)
