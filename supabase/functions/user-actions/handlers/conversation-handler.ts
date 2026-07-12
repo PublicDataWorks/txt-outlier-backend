@@ -4,6 +4,7 @@ import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { upsertConversation, upsertLabel } from './utils.ts'
 import { RequestBody, RequestConversation, RuleType } from '../types.ts'
 import {
+  conversationAnalyses,
   ConversationAssignee,
   ConversationAssigneeHistory,
   conversationHistory,
@@ -47,6 +48,30 @@ export const handleConversationStatusChanged = async (requestBody: RequestBody, 
     }
     await tx.insert(conversationHistory).values(convoHistory)
   })
+
+  if (changeType === RuleType.ConversationClosed) {
+    await enqueueConversationAnalysis(requestBody)
+  }
+}
+
+// Enqueues a pending analysis row for a closed SMS conversation. Runs after the transaction commits and must
+// never fail the webhook - the AI tagging pipeline is best-effort and picked up asynchronously by the cron queue.
+const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
+  try {
+    if (!requestBody.conversation.authors?.length) {
+      return
+    }
+    await supabase
+      .insert(conversationAnalyses)
+      .values({ conversationId: requestBody.conversation.id, status: 'pending', source: 'realtime' })
+      .onConflictDoNothing()
+  } catch (error) {
+    console.error(
+      `Error enqueueing conversation analysis for conversationId=${requestBody.conversation.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }. Stack: ${error instanceof Error ? error.stack : ''}`,
+    )
+  }
 }
 
 export const handleConversationAssigneeChange = async (requestBody: RequestBody) => {

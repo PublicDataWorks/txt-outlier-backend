@@ -1,0 +1,257 @@
+import { eq, sql } from 'drizzle-orm'
+import { withSupabase } from '@supabase/server'
+
+import AppResponse from '../_shared/misc/AppResponse.ts'
+import BadRequestError from '../_shared/exception/BadRequestError.ts'
+import Sentry from '../_shared/lib/Sentry.ts'
+import supabase from '../_shared/lib/supabase.ts'
+import { analysisTags, conversationAnalyses, conversations, conversationsAuthors } from '../_shared/drizzle/schema.ts'
+import { analyzeTranscript, getConversationTranscript, PROMPT_VERSION } from '../_shared/services/AnalysisService.ts'
+import { postAnalysisMessage } from '../_shared/services/SlackService.ts'
+
+const DEFAULT_BATCH_SIZE = 5
+const MAX_ATTEMPTS = 3
+
+type ProcessQueueBody = {
+  action: 'process-queue'
+  batchSize?: number
+}
+
+type SeedBackfillBody = {
+  action: 'seed-backfill'
+  limit?: number
+  before?: string
+  after?: string
+}
+
+type RequestBody = ProcessQueueBody | SeedBackfillBody
+
+type ClaimedRow = {
+  id: number
+  conversationId: string
+  attempts: number
+}
+
+// Atomically claims up to `batchSize` pending rows (realtime before backfill, oldest first within each source),
+// marking them 'processing' and bumping their attempt count so a crash mid-batch doesn't retry forever.
+const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
+  const claimed = await supabase.execute(sql.raw(`
+    UPDATE conversation_analyses
+    SET status = 'processing', attempts = attempts + 1
+    WHERE id IN (
+      SELECT id
+      FROM conversation_analyses
+      WHERE status = 'pending'
+      ORDER BY CASE source WHEN 'realtime' THEN 0 ELSE 1 END, created_at
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, conversation_id AS "conversationId", attempts
+  `))
+  return claimed as unknown as ClaimedRow[]
+}
+
+const loadActiveTags = () =>
+  supabase
+    .select({ name: analysisTags.name, description: analysisTags.description })
+    .from(analysisTags)
+    .where(eq(analysisTags.active, true))
+
+// twilio_messages has no FK to conversations, so the resident's phone number is derived the same way
+// LookupService does: any conversations_authors phone that isn't the Outlier number.
+const loadConversationMeta = async (
+  conversationId: string,
+): Promise<{ webUrl: string; authorPhone: string | null }> => {
+  const [conversation] = await supabase
+    .select({ webUrl: conversations.webUrl })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+
+  const authorRows = await supabase
+    .select({ phone: conversationsAuthors.authorPhoneNumber })
+    .from(conversationsAuthors)
+    .where(eq(conversationsAuthors.conversationId, conversationId))
+
+  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+  const authorPhone = authorRows.map((row) => row.phone).find((phone) => phone !== outlierPhone) ?? null
+
+  return { webUrl: conversation?.webUrl ?? '', authorPhone }
+}
+
+const markSkipped = (id: number) =>
+  supabase
+    .update(conversationAnalyses)
+    .set({ status: 'skipped', updatedAt: new Date().toISOString() })
+    .where(eq(conversationAnalyses.id, id))
+
+const markFailedOrRetry = (row: ClaimedRow, error: unknown) =>
+  supabase
+    .update(conversationAnalyses)
+    .set({
+      status: row.attempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
+      error: error instanceof Error ? error.message : String(error),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(conversationAnalyses.id, row.id))
+
+const processRow = async (row: ClaimedRow): Promise<void> => {
+  const transcript = await getConversationTranscript(row.conversationId)
+  const hasInboundMessage = transcript.some((message) => message.direction === 'inbound')
+  if (transcript.length === 0 || !hasInboundMessage) {
+    await markSkipped(row.id)
+    return
+  }
+
+  const tags = await loadActiveTags()
+  const result = await analyzeTranscript(transcript, tags)
+  const conversationMeta = await loadConversationMeta(row.conversationId)
+
+  const messageCount = transcript.length
+  const lastMessageAt = transcript[transcript.length - 1].timestamp
+
+  const slackMessage = await postAnalysisMessage(
+    {
+      id: row.id,
+      tag: result.tag,
+      summary: result.summary,
+      supportingQuote: result.supportingQuote,
+      unmetDemand: result.unmetDemand,
+      unmetDemandReason: result.unmetDemandReason,
+      confidence: result.confidence,
+    },
+    {
+      id: row.conversationId,
+      webUrl: conversationMeta.webUrl,
+      authorPhone: conversationMeta.authorPhone,
+      messageCount,
+      lastMessageAt,
+    },
+  )
+
+  await supabase
+    .update(conversationAnalyses)
+    .set({
+      status: 'completed',
+      tag: result.tag,
+      secondaryTags: result.secondaryTags,
+      summary: result.summary,
+      supportingQuote: result.supportingQuote,
+      unmetDemand: result.unmetDemand,
+      unmetDemandReason: result.unmetDemandReason,
+      confidence: result.confidence,
+      model: Deno.env.get('ANALYSIS_MODEL') ?? 'claude-sonnet-5',
+      promptVersion: PROMPT_VERSION,
+      messageCount,
+      lastMessageAt,
+      slackChannel: slackMessage.channel,
+      slackMessageTs: slackMessage.ts,
+      error: null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(conversationAnalyses.id, row.id))
+}
+
+const processQueue = async (batchSize: number): Promise<void> => {
+  const claimed = await claimPendingRows(batchSize)
+  // Sequential on purpose: one Anthropic call + one Slack post at a time keeps us well under rate limits.
+  for (const row of claimed) {
+    try {
+      await processRow(row)
+    } catch (error) {
+      console.error(
+        `Error analyzing conversation_analyses id=${row.id} conversationId=${row.conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }. Stack: ${error instanceof Error ? error.stack : ''}`,
+      )
+      Sentry.captureException(error)
+      await markFailedOrRetry(row, error)
+    }
+  }
+}
+
+const assertValidIsoBound = (value: string, field: string): string => {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestError(`Invalid ${field} date: ${value}`)
+  }
+  return parsed.toISOString()
+}
+
+// Seeds pending rows (source='backfill') for every conversation that has at least one inbound twilio message
+// (a message addressed to the Outlier number), optionally bounded by conversations.created_at.
+const seedBackfill = async (limit?: number, before?: string, after?: string): Promise<number> => {
+  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')!
+
+  const boundsClauses: string[] = []
+  if (after) boundsClauses.push(`AND c.created_at > $$${assertValidIsoBound(after, 'after')}$$`)
+  if (before) boundsClauses.push(`AND c.created_at < $$${assertValidIsoBound(before, 'before')}$$`)
+
+  let limitClause = ''
+  if (limit !== undefined) {
+    if (!Number.isInteger(limit) || limit <= 0) {
+      throw new BadRequestError(`Invalid limit: ${limit}`)
+    }
+    limitClause = `LIMIT ${limit}`
+  }
+
+  const inserted = await supabase.execute(sql.raw(`
+    INSERT INTO conversation_analyses (conversation_id, status, source)
+    SELECT c.id, 'pending', 'backfill'
+    FROM conversations c
+    WHERE EXISTS (
+      SELECT 1
+      FROM twilio_messages tm
+      JOIN conversations_authors ca ON ca.author_phone_number IN (tm.from_field, tm.to_field)
+      WHERE ca.conversation_id = c.id AND tm.to_field = $$${outlierPhone}$$
+    )
+    ${boundsClauses.join(' ')}
+    ORDER BY c.created_at ASC
+    ${limitClause}
+    ON CONFLICT (conversation_id) DO NOTHING
+    RETURNING id
+  `))
+  return inserted.length
+}
+
+Deno.serve(withSupabase({ auth: 'secret' }, async (req: Request) => {
+  let body: RequestBody
+  try {
+    body = await req.json()
+  } catch (_error) {
+    return AppResponse.badRequest('Invalid JSON body')
+  }
+
+  if (body.action === 'seed-backfill') {
+    try {
+      const seeded = await seedBackfill(body.limit, body.before, body.after)
+      return AppResponse.ok({ seeded })
+    } catch (error) {
+      console.error(
+        `Error in seed-backfill: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      if (error instanceof BadRequestError) {
+        return AppResponse.badRequest(error.message)
+      }
+      Sentry.captureException(error)
+      return AppResponse.internalServerError(error instanceof Error ? error.message : undefined)
+    }
+  }
+
+  if (body.action === 'process-queue') {
+    try {
+      await processQueue(
+        Number.isInteger(body.batchSize) && (body.batchSize as number) > 0 ? body.batchSize! : DEFAULT_BATCH_SIZE,
+      )
+    } catch (error) {
+      console.error(
+        `Error in conversation-analysis process-queue: ${error instanceof Error ? error.message : String(error)}. ` +
+          `Stack: ${error instanceof Error ? error.stack : ''}`,
+      )
+      // Cron job calls this function, so we don't want to throw an error
+      Sentry.captureException(error)
+    }
+    return AppResponse.ok()
+  }
+
+  return AppResponse.badRequest(`Unknown action: ${(body as { action?: string }).action}`)
+}))
