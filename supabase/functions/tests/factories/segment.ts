@@ -1,13 +1,16 @@
-import { audienceSegments, broadcastsSegments } from '../../_shared/drizzle/schema.ts'
-import supabase from '../../_shared/lib/supabase.ts'
+import {
+  audienceSegments,
+  broadcastsSegments,
+} from "../../_shared/drizzle/schema.ts";
+import supabase from "../../_shared/lib/supabase.ts";
 
 type CreateSegmentParams = {
-  broadcastId?: number
-  ratio?: number
-  name?: string
-  description?: string
-  query?: string
-}
+  broadcastId?: number;
+  ratio?: number;
+  name?: string;
+  description?: string;
+  query?: string;
+};
 
 export const createSegment = async ({
   broadcastId,
@@ -20,11 +23,12 @@ export const createSegment = async ({
   const [segment] = await supabase
     .insert(audienceSegments)
     .values({
-      name: name || 'Test',
-      description: description || 'Test description',
-      query: query || 'SELECT a.phone_number FROM public.authors a ORDER BY random()',
+      name: name || "Test",
+      description: description || "Test description",
+      query: query ||
+        "SELECT a.phone_number FROM public.authors a ORDER BY random()",
     })
-    .returning()
+    .returning();
   if (broadcastId) {
     // Create association with broadcast
     await supabase
@@ -36,7 +40,7 @@ export const createSegment = async ({
         firstMessage: null,
         secondMessage: null,
       })
-      .returning()
+      .returning();
   }
-  return segment
-}
+  return segment;
+};

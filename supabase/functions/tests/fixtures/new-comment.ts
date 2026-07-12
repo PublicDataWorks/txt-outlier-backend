@@ -1,19 +1,19 @@
-import { RequestBody } from '../../user-actions/types.ts'
+import { RequestBody } from "../../user-actions/types.ts";
 
 export const newCommentRequest: RequestBody = {
   rule: {
-    id: 'd94ca8be-0e0e-427c-be77-b415dfcb833c',
-    description: 'New comment',
-    type: 'new_comment',
+    id: "d94ca8be-0e0e-427c-be77-b415dfcb833c",
+    description: "New comment",
+    type: "new_comment",
   },
   conversation: {
-    id: 'e8196c2f-4bc9-4fa1-a018-6a4078362ed1',
+    id: "e8196c2f-4bc9-4fa1-a018-6a4078362ed1",
     created_at: 1704181890,
-    subject: 'test',
+    subject: "test",
     latest_message_subject: null,
     organization: {
-      id: '7deec8a7-439a-414c-a10a-059142216786',
-      name: 'Outlier Staging',
+      id: "7deec8a7-439a-414c-a10a-059142216786",
+      name: "Outlier Staging",
     },
     // @ts-ignore
     color: null, // FIXME: should be handle as well
@@ -27,9 +27,9 @@ export const newCommentRequest: RequestBody = {
     completed_tasks_count: 0,
     users: [
       {
-        id: '2d98b928-c3be-4cc6-8087-0baa2235e86e',
-        name: 'User 1',
-        email: 'user1@mail.com',
+        id: "2d98b928-c3be-4cc6-8087-0baa2235e86e",
+        name: "User 1",
+        email: "user1@mail.com",
         unassigned: false,
         closed: false,
         archived: true,
@@ -40,9 +40,9 @@ export const newCommentRequest: RequestBody = {
         snoozed: false,
       },
       {
-        id: '6335aa04-e15b-4e23-ad0e-e41cdc1295a5',
-        name: 'User 2',
-        email: 'user2@mail.com',
+        id: "6335aa04-e15b-4e23-ad0e-e41cdc1295a5",
+        name: "User 2",
+        email: "user2@mail.com",
         unassigned: false,
         closed: false,
         archived: true,
@@ -53,9 +53,9 @@ export const newCommentRequest: RequestBody = {
         snoozed: false,
       },
       {
-        id: '815e18a9-eab9-4b89-8227-de6518f5d987',
-        name: 'User 3',
-        email: 'user3@mail.com',
+        id: "815e18a9-eab9-4b89-8227-de6518f5d987",
+        name: "User 3",
+        email: "user3@mail.com",
         unassigned: false,
         closed: false,
         archived: false,
@@ -66,9 +66,9 @@ export const newCommentRequest: RequestBody = {
         snoozed: false,
       },
       {
-        id: 'cd89f926-901a-4d36-83eb-4f7e8881118d',
-        name: 'User 4',
-        email: 'user4@mail.com',
+        id: "cd89f926-901a-4d36-83eb-4f7e8881118d",
+        name: "User 4",
+        email: "user4@mail.com",
         unassigned: false,
         closed: false,
         archived: true,
@@ -81,9 +81,9 @@ export const newCommentRequest: RequestBody = {
     ],
     assignees: [
       {
-        id: '815e18a9-eab9-4b89-8227-de6518f5d987',
-        name: 'User 3',
-        email: 'user3@mail.com',
+        id: "815e18a9-eab9-4b89-8227-de6518f5d987",
+        name: "User 3",
+        email: "user3@mail.com",
         unassigned: false,
         closed: false,
         archived: false,
@@ -94,21 +94,23 @@ export const newCommentRequest: RequestBody = {
         snoozed: false,
       },
     ],
-    assignee_names: 'User 3',
-    assignee_emails: 'user3@mail.com',
-    shared_label_names: 'Spanish',
-    web_url: 'https://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1',
-    app_url: 'missive://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1',
+    assignee_names: "User 3",
+    assignee_emails: "user3@mail.com",
+    shared_label_names: "Spanish",
+    web_url:
+      "https://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1",
+    app_url:
+      "missive://mail.missiveapp.com/#inbox/conversations/e8196c2f-4bc9-4fa1-a018-6a4078362ed1",
     team: {
-      id: 'fb0b601e-7d6e-4248-8882-4f129fdfe43c',
-      name: 'Outlier Staging',
-      organization: '7deec8a7-439a-414c-a10a-059142216786',
+      id: "fb0b601e-7d6e-4248-8882-4f129fdfe43c",
+      name: "Outlier Staging",
+      organization: "7deec8a7-439a-414c-a10a-059142216786",
     },
     shared_labels: [],
   },
   comment: {
-    id: '88d9b8c1-395f-42ea-b63a-98d47cdd443a',
-    body: 'helu',
+    id: "88d9b8c1-395f-42ea-b63a-98d47cdd443a",
+    body: "helu",
     mentions: [],
     created_at: 1704339993,
     // @ts-ignore
@@ -116,10 +118,10 @@ export const newCommentRequest: RequestBody = {
     attachment: null,
     task: null,
     author: {
-      id: '815e18a9-eab9-4b89-8227-de6518f5d987',
-      email: 'user3@mail.com',
-      name: 'User 3',
-      avatar_url: 'https://files.missiveusercontent.com/12345',
+      id: "815e18a9-eab9-4b89-8227-de6518f5d987",
+      email: "user3@mail.com",
+      name: "User 3",
+      avatar_url: "https://files.missiveusercontent.com/12345",
     },
   },
-}
+};

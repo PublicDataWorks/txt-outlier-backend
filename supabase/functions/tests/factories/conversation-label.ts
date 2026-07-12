@@ -1,12 +1,12 @@
-import { conversationsLabels } from '../../_shared/drizzle/schema.ts'
-import supabase from '../../_shared/lib/supabase.ts'
-import { createConversation } from './conversation.ts'
+import { conversationsLabels } from "../../_shared/drizzle/schema.ts";
+import supabase from "../../_shared/lib/supabase.ts";
+import { createConversation } from "./conversation.ts";
 
 export type CreateConversationLabelParams = {
-  labelId: string
-  isArchived?: boolean
-  conversationId?: string
-}
+  labelId: string;
+  isArchived?: boolean;
+  conversationId?: string;
+};
 
 export const createConversationLabel = async ({
   labelId,
@@ -14,7 +14,7 @@ export const createConversationLabel = async ({
   conversationId,
 }: CreateConversationLabelParams) => {
   // Create a conversation if not provided
-  const conversation = conversationId ? null : await createConversation()
+  const conversation = conversationId ? null : await createConversation();
 
   const [result] = await supabase
     .insert(conversationsLabels)
@@ -23,7 +23,7 @@ export const createConversationLabel = async ({
       isArchived,
       conversationId: conversationId || conversation!.id,
     })
-    .returning()
+    .returning();
 
-  return result
-}
+  return result;
+};
