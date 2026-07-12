@@ -173,5 +173,6 @@ describe('conversation-analysis seed-backfill', { sanitizeOps: false, sanitizeRe
 
     assertInstanceOf(error, FunctionsHttpError)
     assertEquals(error.context.status, 400)
+    await error.context.body?.cancel()
   })
 })

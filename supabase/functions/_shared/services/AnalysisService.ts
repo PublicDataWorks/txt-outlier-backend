@@ -183,6 +183,10 @@ export const analyzeTranscript = async (
       `only what is shown below.\n\n${transcriptText}`
     : transcriptText
 
+  // Explicit controller + clearTimeout instead of AbortSignal.timeout(): the latter leaves its timer
+  // running after the response arrives, which leaks into whatever else the isolate (or a test) is doing.
+  const abortController = new AbortController()
+  const timeoutId = setTimeout(() => abortController.abort(new Error('Anthropic API request timed out')), ANTHROPIC_TIMEOUT_MS)
   let response: Response
   try {
     response = await fetch(ANTHROPIC_MESSAGES_URL, {
@@ -200,10 +204,12 @@ export const analyzeTranscript = async (
         tools: [RECORD_ANALYSIS_TOOL],
         tool_choice: { type: 'tool', name: 'record_analysis' },
       }),
-      signal: AbortSignal.timeout(ANTHROPIC_TIMEOUT_MS),
+      signal: abortController.signal,
     })
   } catch (error) {
     throw new Error(`Anthropic API request failed: ${error.message}`)
+  } finally {
+    clearTimeout(timeoutId)
   }
 
   if (!response.ok) {

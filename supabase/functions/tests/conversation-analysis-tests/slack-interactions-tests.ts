@@ -34,7 +34,7 @@ const postInteraction = async (payload: unknown, options: { signatureOverride?: 
   const timestamp = Math.floor(Date.now() / 1000).toString()
   const signature = options.signatureOverride ?? await sign(timestamp, body)
 
-  return await fetch(FUNCTION_URL, {
+  const response = await fetch(FUNCTION_URL, {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -43,6 +43,9 @@ const postInteraction = async (payload: unknown, options: { signatureOverride?: 
     },
     body,
   })
+  // Always drain the body so the test sanitizer doesn't flag an unconsumed response stream
+  const text = await response.text()
+  return { status: response.status, json: () => JSON.parse(text) }
 }
 
 const blockActionsPayload = (analysisId: number, user: Record<string, string>) => ({
@@ -170,5 +173,6 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
     })
 
     assertEquals(response.status, 200)
+    await response.body?.cancel()
   })
 })
