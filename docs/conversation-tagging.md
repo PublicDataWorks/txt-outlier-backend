@@ -6,28 +6,37 @@ dashboard.
 
 ## Overview
 
-The pipeline runs in five stages:
+The pipeline runs in six stages:
 
 1. **Close**: A conversation accumulates inbound/outbound Twilio messages. When Missive fires a `conversation_closed`
-   event, the `user-actions` webhook enqueues a `pending` `conversation_analyses` row for it.
+   event, the `user-actions` webhook enqueues a `pending` `conversation_analyses` row for it with
+   `process_after = now + 72 hours` — see [The 3-Day Delay](#the-3-day-delay-and-reopen-handling) below for why.
 2. **Queue**: Rows are inserted into `conversation_analyses` with `status = 'pending'`, either continuously (via the
    `user-actions` webhook on `conversation_closed`, as above) or in bulk via the `seed-backfill` action for
-   historical data. The `analyze-conversations` cron job only drains this queue — it doesn't decide what gets
-   queued.
+   historical data (which skips the delay — `process_after` defaults to now). The `analyze-conversations` cron job
+   only drains this queue — it doesn't decide what gets queued.
 3. **Cron**: The `analyze-conversations` cron job calls the `conversation-analysis` edge function every minute with
-   `action: 'process-queue'`, which claims a small batch of pending rows and processes them one at a time.
-4. **AI**: For each claimed row, the transcript is pulled from `twilio_messages`, sent to Claude with the active tag
-   taxonomy, and a structured result (tag, secondary tags, summary, supporting quote, unmet-demand flag) comes back.
-5. **Slack review / promote**: The result is posted to the configured Slack channel with a "Promote to story idea"
-   button. Editors review it there; clicking the button marks the analysis as promoted and updates the Slack message
-   in place.
+   `action: 'process-queue'`, which claims a small batch of pending rows whose `process_after` has elapsed and
+   processes them one at a time.
+4. **AI**: For each claimed row, the transcript is pulled fresh from `twilio_messages` (capturing any activity since
+   the conversation closed, not a stale close-time snapshot), sent to Claude with the active tag taxonomy and topic
+   list, and a structured result (impact tag, secondary tags, topic, summary, supporting quote, unmet-demand flag,
+   confidence) comes back.
+5. **Suppression**: Some tags (and low-confidence results) are filtered from Slack — see
+   [Suppression Rules](#suppression-rules) below. Everything is still recorded in `conversation_analyses` for
+   dashboard/analytics purposes; only the Slack post is skipped.
+6. **Slack review / promote**: Non-suppressed results are posted to the configured Slack channel with a "Promote to
+   story idea" button, using the [notification template](#notification-template) below. Editors review it there;
+   clicking the button marks the analysis as promoted and updates the Slack message in place.
 
 On top of the realtime pipeline, a **weekly digest** summarizes the last 7 days to Slack, and an **insights
 dashboard** exposes the same data (tags over time, unmet demand, promoted count) as a web page.
 
 ## Database Schema
 
-Added in `supabase/migrations/20260712090000_add_conversation_analysis.sql`.
+Added in `supabase/migrations/20260712090000_add_conversation_analysis.sql`, extended in
+`supabase/migrations/20260712170000_conversation_analysis_q2_taxonomy.sql` (the evidence-based taxonomy, `topic`,
+`process_after`, and `suppress_reason`).
 
 ### `conversation_analyses`
 
@@ -37,23 +46,30 @@ One row per conversation that has been queued for analysis (unique on `conversat
 |------------------------|------------------------------------------------------------------------------------|
 | `status`              | `pending` → `processing` → `completed` / `failed` / `skipped`                     |
 | `source`              | `realtime` or `backfill` — realtime rows are always processed first               |
+| `process_after`       | Row isn't claimed until this timestamp; realtime rows get `now + 72h`, backfill rows get `now` |
 | `attempts`            | Incremented each time the row is claimed; after 3 failed attempts it stays `failed` instead of going back to `pending` |
-| `tag` / `secondary_tags` | Primary tag (always one of the active `analysis_tags`, or `other`) and up to 2 secondary tags |
-| `summary`             | 2-3 sentence neutral summary                                                      |
-| `supporting_quote`    | Verbatim quote from an inbound (resident) message                                 |
+| `tag` / `secondary_tags` | Primary impact tag (one of the active `analysis_tags`, falling back to `no-impact` if the model proposes something unrecognized) and up to 2 secondary tags |
+| `topic`               | What the resident actually asked about, from a fixed topic list — see [Tag Taxonomy](#tag-taxonomy) |
+| `suppress_reason`     | Set (`tag:<name>` or `low-confidence`) when the result was filtered from Slack; `NULL` means it posted normally. Distinct from `error`, which is a processing failure |
+| `summary`             | 2-3 sentence neutral summary ("how we helped" in the Slack template)              |
+| `supporting_quote`    | Verbatim quote from an inbound (resident) message, never containing a phone number, address, or full name |
 | `unmet_demand` / `unmet_demand_reason` | Set when the resident asked for something the service couldn't provide or never answered |
-| `confidence`          | Model's confidence in the analysis, 0-1                                           |
+| `confidence`          | Model's confidence in the analysis, 0-1; below 0.5 is suppressed regardless of tag |
 | `model` / `prompt_version` | Recorded per row so we can compare quality across model/prompt changes       |
-| `slack_channel` / `slack_message_ts` | Identify the posted Slack message so it can be updated later (e.g. on promotion) |
+| `slack_channel` / `slack_message_ts` | Identify the posted Slack message so it can be updated later (e.g. on promotion); `NULL` for suppressed rows |
 | `promoted_at` / `promoted_by` | Set when someone clicks "Promote to story idea" in Slack                    |
 
-Indexes: `status`, `tag`, `created_at`, and a partial index on `unmet_demand` (`WHERE unmet_demand`) for the
-dashboard's unmet-demand queries.
+Indexes: `status`, `tag`, `topic`, `created_at`, a partial index on `process_after` (`WHERE status = 'pending'`) for
+the queue claim, and a partial index on `unmet_demand` (`WHERE unmet_demand`) for the dashboard's unmet-demand
+queries.
 
 ### `analysis_tags`
 
-The editable tag taxonomy used both to prompt Claude and to validate its primary tag choice. Seeded by the migration
-with a starter taxonomy for Outlier Media's Detroit SMS service — see [Tag Taxonomy](#tag-taxonomy) below.
+The editable **impact** tag taxonomy used both to prompt Claude and to validate its primary tag choice. Seeded with
+the evidence-based taxonomy derived from an audit of 776 hand-coded real conversations — see
+[Tag Taxonomy](#tag-taxonomy) below. The **topic** list is a separate, fixed set defined in
+`AnalysisService.TOPIC_TAGS` (not DB-backed, since it's a stable classification independent of the editable impact
+taxonomy).
 
 ## Edge Functions
 
@@ -63,11 +79,15 @@ with a starter taxonomy for Outlier Media's Detroit SMS service — see [Tag Tax
 (`{ auth: 'secret' }`).
 
 - **`{ "action": "process-queue", "batchSize"?: number }`** (default `batchSize` 5) — claims up to `batchSize`
-  pending rows (`FOR UPDATE SKIP LOCKED`, realtime before backfill, oldest first), marking each `processing` and
-  incrementing `attempts`. For each claimed row:
+  pending rows whose `process_after` has elapsed (`FOR UPDATE SKIP LOCKED`, realtime before backfill, oldest first),
+  marking each `processing` and incrementing `attempts`. For each claimed row:
+  - If the conversation has since reopened, the row is marked `skipped` (`suppress_reason =
+    'reopened-before-processing'`) without analyzing.
   - If the transcript is empty or has no inbound message, the row is marked `skipped` and nothing is posted to
     Slack.
-  - Otherwise the transcript is analyzed, the result is posted to Slack, and the row is marked `completed`.
+  - Otherwise the transcript is analyzed. If the result is suppressed (see [Suppression Rules](#suppression-rules)),
+    the row is marked `completed` with `suppress_reason` set and nothing is posted; otherwise the result is posted
+    to Slack and the row is marked `completed`.
   - On error, the row goes back to `pending` (to retry on the next cron tick) unless `attempts >= 3`, in which case
     it's marked `failed`.
   - Called every minute by the `analyze-conversations` cron job (see [Backfill](#running-a-historical-backfill)
@@ -191,35 +211,118 @@ Without `DASHBOARD_TOKEN` configured, the dashboard (and its `/data/*` JSON endp
 
 ## Tag Taxonomy
 
-The taxonomy lives in the `analysis_tags` table and is loaded fresh on every analysis run — no redeploy needed to
-change it. It's seeded by the migration with:
+The impact-tag taxonomy lives in the `analysis_tags` table and is loaded fresh on every analysis run — no redeploy
+needed to change it. It replaces an earlier generic placeholder taxonomy with one derived from a historical audit:
+two independent teams open-coded 776 real conversations by hand, and their findings were reconciled into the 10
+tags below, in priority order (use the first one that fits when more than one applies):
 
-| Tag                | Description                                                                          |
-|---------------------|----------------------------------------------------------------------------------------|
-| `housing`           | Housing conditions, evictions, landlord disputes, home repair, or housing assistance   |
-| `utilities`         | Water, gas, electric, internet, or other utility service issues and shutoffs           |
-| `employment`        | Job search, unemployment benefits, workplace issues, or job training                   |
-| `food-assistance`   | SNAP benefits, food banks, school meals, or other food assistance needs                |
-| `transportation`    | Public transit, DDOT/SMART bus routes, road conditions, or car-related needs           |
-| `health`            | Physical or mental health care access, insurance coverage, or public health concerns    |
-| `public-safety`     | Crime, policing, violence, or neighborhood safety concerns                             |
-| `education`         | Schools, enrollment, childcare, or other educational resources                         |
-| `legal-aid`         | Legal questions, court issues, tenant rights, or need for legal representation          |
-| `civic-info`        | Elections, voting, city services, government programs, or civic participation          |
-| `story-tip`         | A tip or lead for a potential Outlier Media news story                                 |
-| `service-feedback`  | Feedback, praise, or complaints about the Outlier Media SMS service itself             |
-| `other`             | Does not fit any other category in the taxonomy                                        |
+| # | Tag | What it means | Digest behavior |
+|---|-----|----------------|------------------|
+| 1 | `automation-failure` | A system bug independent of resident behavior — messages continuing after a confirmed STOP, duplicate sends, a menu loop the resident couldn't escape | **Posted** — routes to engineering visibility, never suppressed even though it's not a "good news" tag |
+| 2 | `noise-test` | Hostile, harassing, gibberish, or apparent test content with no real service value | Suppressed |
+| 3 | `wrong-audience` | Message reached someone it was never meant for (wrong number, minor, out-of-area, mismatched targeting) | Suppressed |
+| 4 | `unsubscribe` | Resident explicitly opted out (STOP), typically in response to an unsolicited broadcast | Suppressed |
+| 5 | `story-tip` | Resident surfaced information a reporter could turn into a story or investigation | Posted |
+| 6 | `reporter-engaged` | A named Outlier journalist or staff member gave a real, personalized response — not an automated or templated broadcast reply | Posted |
+| 7 | `unmet-demand` | Resident expressed a real, in-scope need the service didn't resolve in-thread | Posted |
+| 8 | `info-gap` | A concrete question was answered correctly via automation/keyword menu, no reporter time spent | Posted |
+| 9 | `user-sat` | Resident was connected to a program/referral and expressed explicit satisfaction or gratitude | Posted |
+| 10 | `no-impact` | Resident received a broadcast/one-off message and took no further action of any kind | Suppressed |
+
+**Why `automation-failure` isn't suppressed**: an earlier draft of this taxonomy suppressed it like the other
+"nothing to see here" tags. The historical audit's QA pass found this exact bug being introduced by the classifier —
+suppressing it hides a real, recurring engineering defect from the team instead of surfacing it, which defeats the
+purpose of flagging it as its own tag in the first place.
 
 To edit the taxonomy:
 
-- **Add a tag**: `INSERT INTO analysis_tags (name, description) VALUES ('new-tag', 'What this tag means');`
+- **Add a tag**: `INSERT INTO analysis_tags (name, description) VALUES ('new-tag', 'What this tag means');` — also
+  add it to `SUPPRESS_TAGS` in `AnalysisService.ts` if it should be filtered from Slack.
 - **Retire a tag** (without breaking historical rows that already reference it):
   `UPDATE analysis_tags SET active = false WHERE name = 'old-tag';`. Only `active = true` tags are offered to Claude
   as choices, but past `conversation_analyses.tag` values referencing a retired tag are untouched.
 - **Reactivate a tag**: `UPDATE analysis_tags SET active = true WHERE name = 'old-tag';`
-- **Edit a description**: `UPDATE analysis_tags SET description = '...' WHERE name = 'housing';` — this changes how
+- **Edit a description**: `UPDATE analysis_tags SET description = '...' WHERE name = 'info-gap';` — this changes how
   the tag is explained to Claude on the next analysis run, with no code change required.
 
 Whatever primary tag Claude returns is matched case-insensitively against the active taxonomy; if it doesn't match
-any active tag, the row is stored with `tag = 'other'` and Claude's original (unmatched) tag is kept as a secondary
-tag instead, so nothing is silently dropped.
+any active tag, the row is stored with `tag = 'no-impact'` (the closest analog to "we don't actually know what
+happened") and Claude's original (unmatched) proposal is kept as a secondary tag instead, so nothing is silently
+dropped.
+
+### Topics
+
+Separately from the impact tag, every analysis picks one **topic** from a fixed list (`TOPIC_TAGS` in
+`AnalysisService.ts`) describing what the resident actually asked about — Tax Foreclosure/REPAY, Property & Tax-Status
+Lookup, Landlord/Rental/Tenant, Home Repair, Elections, Water, Food/Shelter, Story Pitch, DTE/Utility, Land Contract,
+Benefits, Service Menu/General Inquiry, Broadcast/Opt-Out/Non-Substantive Content, or Other. The model is instructed
+to prioritize the resident's own words over whichever broadcast campaign the thread happens to contain — the audit's
+QA pass found the opposite bias (topic tagging skewing toward the most recent campaign) in an earlier prompt draft.
+
+## Suppression Rules
+
+A completed analysis is filtered from Slack (both the realtime post and the weekly digest's "top tags") when:
+
+- **Its tag is in `SUPPRESS_TAGS`**: `unsubscribe`, `wrong-audience`, `noise-test`, `no-impact` (see the table above).
+- **Its confidence is below `MIN_CONFIDENCE`** (0.5) — a genuinely ambiguous call, regardless of tag.
+
+Suppressed rows are still written to `conversation_analyses` with `status = 'completed'` and `suppress_reason` set
+(`tag:<name>` or `low-confidence`) — nothing about the analysis is lost, it just never reaches Slack. The dashboard
+and weekly-digest "suppressed" stat surface the volume so the rules can be tuned over time. This is separate from
+the earlier queue-level filters (message count, unsubscribed author, "no impact"/"unsubscribe" Missive labels) that
+some designs apply before analysis even runs — this implementation filters after analysis, at the tag/confidence
+level, so every closed conversation with resident replies gets analyzed and recorded even if never posted.
+
+## The 3-Day Delay and Reopen Handling
+
+Realtime closes are enqueued with `process_after = now + 72 hours`, so a conversation isn't summarized off a
+premature close — a resident who reopens the thread a day later still gets folded into the eventual analysis rather
+than producing a stale, incomplete summary. Backfill rows (`seed-backfill`) skip the delay entirely.
+
+- **Reopen before processing**: the `conversation_reopened` webhook cancels any still-`pending` analysis row for
+  that conversation (`status = 'skipped'`, `suppress_reason = 'reopened-before-processing'`).
+- **Re-close**: enqueueing again resets an existing row to `pending` with a fresh 72-hour timer and clears any prior
+  analysis result, unless a queue worker currently has it claimed (`status = 'processing'`) — in which case the
+  in-flight job is left to finish.
+- **Race at processing time**: because the delay is long, `processRow` re-checks the conversation's live `closed`
+  state (not the queue-time snapshot) immediately before analyzing, and always rebuilds the transcript fresh from
+  `twilio_messages` — so a reopen that lands in the gap between the cancel-on-reopen webhook and this tick is still
+  caught, and any post-close activity is captured in the eventual summary.
+
+## Notification Template
+
+Analysis Slack posts follow a fixed shape (see `buildAnalysisMessageBlocks` in `SlackService.ts`):
+
+```
+💡 INFO GAP FILLED — 14th this quarter
+Sarah helped a resident with Home Repair
+
+Topic: Home Repair
+How we helped: Sarah followed up over several days to explain which
+documents the city's application actually requires, so the resident
+could finish applying.
+
+Quotable:
+> Yes, thank you very much. I completed the application online on
+> Sunday and received confirmation. Thank you for following up.
+
+Closed by Sarah  •  18 messages  •  over 6 days  •  closed Jul 9  •  Open in Missive
+[Promote to story idea]
+```
+
+**Never included, under any circumstance**: the resident's phone number (not even masked — identity lives behind
+the "Open in Missive" link only), street address, full name, or any case/account number. The system prompt
+instructs the model never to include these even if they appear verbatim in the resident's own message; the
+supporting quote is the one place resident-authored text reaches Slack, so this is enforced at the prompt level.
+
+**Tone and length**: the model is asked for a neutral 2-3 sentence summary — short enough to skim, factual rather
+than promotional. "Closed by" is best-effort (see the caveat below); message count and duration come from the
+database, never from the model. The "Nth this quarter" ordinal counts completed, non-suppressed analyses with the
+same tag since the start of the current calendar quarter, including this one.
+
+`automation-failure` posts use a variant wording ("What happened" instead of "How we helped", no reporter
+attribution framing) since there's no human-interest narrative for a system bug — see `SlackService.ts`.
+
+**Caveat**: Missive's `conversation_closed` webhook doesn't reliably identify who clicked close — "Closed by" uses
+the conversation's assignee(s) at analysis time, which is accurate in the common case (reporters closing their own
+threads) but not a hard guarantee.

@@ -5,20 +5,39 @@ const SLACK_API_URL = 'https://slack.com/api'
 type AnalysisMessageInput = {
   id: number
   tag: string
+  topic: string
   summary: string
   supportingQuote: string
   unmetDemand: boolean
   unmetDemandReason: string | null
   confidence: number
+  // Ordinal count of this tag within the current quarter, including this analysis (e.g. 14 for "14th this quarter").
+  tagOrdinalThisQuarter: number
 }
 
 type ConversationMessageInput = {
   id: string
   webUrl: string
-  authorPhone: string | null
+  // Best-effort: Missive's close event doesn't reliably identify who clicked close, so this is the
+  // conversation's assignee(s) at analysis time, not a guaranteed record of who actually closed it.
+  closedBy: string | null
   messageCount: number | null
+  firstMessageAt: string | null
   lastMessageAt: string | null
+  closedAt: string | null
 }
+
+// Never include a resident phone number, address, or full name in a Slack post - identity lives
+// behind the "Open in Missive" link only. See docs/conversation-tagging.md.
+const TAG_DISPLAY: Record<string, { emoji: string; label: string }> = {
+  'reporter-engaged': { emoji: ':telephone_receiver:', label: 'REPORTER FOLLOWED UP' },
+  'info-gap': { emoji: ':bulb:', label: 'INFO GAP FILLED' },
+  'user-sat': { emoji: ':star:', label: 'RESIDENT SATISFIED' },
+  'story-tip': { emoji: ':newspaper:', label: 'STORY TIP' },
+  'unmet-demand': { emoji: ':warning:', label: 'UNMET DEMAND' },
+  'automation-failure': { emoji: ':wrench:', label: 'AUTOMATION FAILURE' },
+}
+const defaultTagDisplay = (tag: string) => ({ emoji: ':label:', label: tag.toUpperCase() })
 
 const slackFetch = async (method: string, body: Record<string, unknown>) => {
   const response = await fetch(`${SLACK_API_URL}/${method}`, {
@@ -37,20 +56,40 @@ const slackFetch = async (method: string, body: Record<string, unknown>) => {
   return data
 }
 
-const maskPhone = (phone: string | null): string => {
-  if (!phone) return 'unknown number'
-  const last4 = phone.replace(/\D/g, '').slice(-4)
-  return last4 ? `...${last4}` : 'unknown number'
-}
-
 const formatDate = (iso: string | null): string => {
   if (!iso) return 'unknown date'
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? 'unknown date' : date.toISOString().slice(0, 10)
+  return Number.isNaN(date.getTime())
+    ? 'unknown date'
+    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 const messageCountText = (count: number | null): string =>
   count === null ? 'unknown message count' : `${count} message${count === 1 ? '' : 's'}`
+
+const durationText = (firstIso: string | null, lastIso: string | null): string | null => {
+  if (!firstIso || !lastIso) return null
+  const first = new Date(firstIso).getTime()
+  const last = new Date(lastIso).getTime()
+  if (Number.isNaN(first) || Number.isNaN(last) || last < first) return null
+  const days = Math.round((last - first) / (24 * 60 * 60 * 1000))
+  return days <= 0 ? 'same day' : `over ${days} day${days === 1 ? '' : 's'}`
+}
+
+const ordinalSuffix = (n: number): string => {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return 'th'
+  switch (n % 10) {
+    case 1:
+      return 'st'
+    case 2:
+      return 'nd'
+    case 3:
+      return 'rd'
+    default:
+      return 'th'
+  }
+}
 
 const toBlockquote = (text: string): string => text.split('\n').map((line) => `> ${line}`).join('\n')
 
@@ -61,34 +100,56 @@ export const escapeMrkdwn = (text: string): string =>
 
 // Exported in case other callers (e.g. the weekly digest) want the same visual language, though the
 // process-queue flow only needs postAnalysisMessage.
+//
+// Template intentionally excludes any resident phone number, street address, or full name - see
+// docs/conversation-tagging.md. Duration/message-count come from the DB, never from the model.
 export const buildAnalysisMessageBlocks = (
   analysis: AnalysisMessageInput,
   conversation: ConversationMessageInput,
   // deno-lint-ignore no-explicit-any
 ): any[] => {
+  const display = TAG_DISPLAY[analysis.tag] ?? defaultTagDisplay(analysis.tag)
+  const ordinal = analysis.tagOrdinalThisQuarter
+  const attribution = conversation.closedBy ? escapeMrkdwn(conversation.closedBy) : 'The team'
+  const isBug = analysis.tag === 'automation-failure'
+
   // deno-lint-ignore no-explicit-any
   const blocks: any[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `:label: ${analysis.tag}`, emoji: true },
+      text: {
+        type: 'plain_text',
+        text: `${display.emoji} ${display.label}${
+          ordinal > 0 ? ` — ${ordinal}${ordinalSuffix(ordinal)} this quarter` : ''
+        }`,
+        emoji: true,
+      },
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: escapeMrkdwn(analysis.summary) },
-    },
-    {
-      type: 'section',
-      text: { type: 'mrkdwn', text: toBlockquote(escapeMrkdwn(analysis.supportingQuote)) },
-    },
-    {
-      type: 'context',
-      elements: [{
+      text: {
         type: 'mrkdwn',
-        text: `${maskPhone(conversation.authorPhone)}  •  ${messageCountText(conversation.messageCount)}  •  ` +
-          `${formatDate(conversation.lastMessageAt)}  •  <${conversation.webUrl}|Open in Missive>`,
-      }],
+        text: isBug
+          ? `A resident conversation shows a system bug, independent of anything the team did.`
+          : `${attribution} helped a resident with *${escapeMrkdwn(analysis.topic)}*`,
+      },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Topic:* ${escapeMrkdwn(analysis.topic)}\n` +
+          `*${isBug ? 'What happened' : 'How we helped'}:* ${escapeMrkdwn(analysis.summary)}`,
+      },
     },
   ]
+
+  if (analysis.supportingQuote) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Quotable:*\n${toBlockquote(escapeMrkdwn(analysis.supportingQuote))}` },
+    })
+  }
 
   if (analysis.unmetDemand) {
     blocks.push({
@@ -99,6 +160,17 @@ export const buildAnalysisMessageBlocks = (
       },
     })
   }
+
+  const durationSuffix = durationText(conversation.firstMessageAt, conversation.lastMessageAt)
+  blocks.push({
+    type: 'context',
+    elements: [{
+      type: 'mrkdwn',
+      text: `${isBug ? 'Detected' : `Closed by ${attribution}`}  •  ${messageCountText(conversation.messageCount)}` +
+        `${durationSuffix ? `  •  ${durationSuffix}` : ''}  •  closed ${formatDate(conversation.closedAt)}  •  ` +
+        `<${conversation.webUrl}|Open in Missive>`,
+    }],
+  })
 
   blocks.push({
     type: 'actions',
@@ -119,9 +191,10 @@ export const postAnalysisMessage = async (
   analysis: AnalysisMessageInput,
   conversation: ConversationMessageInput,
 ): Promise<{ channel: string; ts: string }> => {
+  const display = TAG_DISPLAY[analysis.tag] ?? defaultTagDisplay(analysis.tag)
   const data = await slackFetch('chat.postMessage', {
     channel: Deno.env.get('SLACK_ANALYSIS_CHANNEL_ID'),
-    text: `:label: ${analysis.tag} — new conversation analysis`,
+    text: `${display.label} — new conversation analysis`,
     blocks: buildAnalysisMessageBlocks(analysis, conversation),
   })
   return { channel: data.channel, ts: data.ts }

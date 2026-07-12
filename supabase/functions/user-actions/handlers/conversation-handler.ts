@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 
 import { upsertConversation, upsertLabel } from './utils.ts'
@@ -51,23 +51,70 @@ export const handleConversationStatusChanged = async (requestBody: RequestBody, 
 
   if (changeType === RuleType.ConversationClosed) {
     await enqueueConversationAnalysis(requestBody)
+  } else if (changeType === RuleType.ConversationReopened) {
+    await cancelPendingConversationAnalysis(requestBody)
   }
 }
 
-// Enqueues a pending analysis row for a closed SMS conversation. Runs after the transaction commits and must
-// never fail the webhook - the AI tagging pipeline is best-effort and picked up asynchronously by the cron queue.
+// Realtime closes wait this long before analysis, so a conversation isn't summarized on a premature
+// close - see docs/conversation-tagging.md. Backfill rows skip the delay (process_after defaults to now).
+const REALTIME_DELAY_HOURS = 72
+
+// Enqueues a pending analysis row for a closed SMS conversation, delayed by REALTIME_DELAY_HOURS. Runs
+// after the transaction commits and must never fail the webhook - the AI tagging pipeline is best-effort
+// and picked up asynchronously by the cron queue. A re-close (conversation_id already has a row from a
+// prior close/reopen cycle) resets it to pending with a fresh timer and clears any prior analysis result,
+// unless a queue worker currently has it claimed ('processing').
 const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
   try {
     if (!requestBody.conversation.authors?.length) {
       return
     }
-    await supabase
-      .insert(conversationAnalyses)
-      .values({ conversationId: requestBody.conversation.id, status: 'pending', source: 'realtime' })
-      .onConflictDoNothing()
+    await supabase.execute(sql`
+      INSERT INTO conversation_analyses (conversation_id, status, source, process_after)
+      VALUES (${requestBody.conversation.id}, 'pending', 'realtime', NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS}))
+      ON CONFLICT (conversation_id) DO UPDATE SET
+        status = 'pending',
+        source = 'realtime',
+        process_after = NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS}),
+        attempts = 0,
+        error = NULL,
+        tag = NULL,
+        secondary_tags = '{}',
+        topic = NULL,
+        summary = NULL,
+        supporting_quote = NULL,
+        unmet_demand = FALSE,
+        unmet_demand_reason = NULL,
+        confidence = NULL,
+        suppress_reason = NULL,
+        updated_at = NOW()
+      WHERE conversation_analyses.status <> 'processing'
+    `)
   } catch (error) {
     console.error(
       `Error enqueueing conversation analysis for conversationId=${requestBody.conversation.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }. Stack: ${error instanceof Error ? error.stack : ''}`,
+    )
+  }
+}
+
+// Cancels a not-yet-processed analysis row when a conversation reopens before its 3-day delay elapses.
+// A row already 'processing' is left alone - processRow re-checks the conversation's live closed state
+// before analyzing, so that in-flight case is still caught.
+const cancelPendingConversationAnalysis = async (requestBody: RequestBody) => {
+  try {
+    await supabase
+      .update(conversationAnalyses)
+      .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
+      .where(and(
+        eq(conversationAnalyses.conversationId, requestBody.conversation.id),
+        eq(conversationAnalyses.status, 'pending'),
+      ))
+  } catch (error) {
+    console.error(
+      `Error cancelling conversation analysis for conversationId=${requestBody.conversation.id}: ${
         error instanceof Error ? error.message : String(error)
       }. Stack: ${error instanceof Error ? error.stack : ''}`,
     )

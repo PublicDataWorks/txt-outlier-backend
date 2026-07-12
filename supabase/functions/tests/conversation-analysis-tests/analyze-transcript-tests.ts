@@ -28,6 +28,18 @@ const requestBodyFromCall = (fetchStub: sinon.SinonStub, callIndex = 0) => {
   return JSON.parse(init.body)
 }
 
+// Minimal fields every tool response needs; individual tests override what they're testing.
+const baseToolInput = {
+  tag: 'reporter-engaged',
+  secondary_tags: [] as string[],
+  topic: 'Home Repair',
+  summary: 's',
+  supporting_quote: 'q',
+  unmet_demand: false,
+  unmet_demand_reason: null as string | null,
+  confidence: 0.8,
+}
+
 describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, () => {
   let fetchStub: sinon.SinonStub
 
@@ -40,14 +52,16 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
   })
 
   const tags = [
-    { name: 'Housing', description: 'Housing conditions and repairs' },
-    { name: 'other', description: 'Does not fit any other category' },
+    { name: 'reporter-engaged', description: 'A named staff member personally engaged with the resident' },
+    { name: 'info-gap', description: 'A concrete question was answered via automation' },
   ]
 
   it('maps a taxonomy-matching tag to its canonical casing and converts snake_case fields to camelCase', async () => {
     fetchStub.resolves(anthropicToolResponse({
-      tag: 'HOUSING',
-      secondary_tags: ['other'],
+      ...baseToolInput,
+      tag: 'REPORTER-ENGAGED',
+      secondary_tags: ['info-gap'],
+      topic: 'Home Repair',
       summary: 'A summary.',
       supporting_quote: 'Please help',
       unmet_demand: true,
@@ -58,8 +72,9 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     const result = await analyzeTranscript([buildMessage(0, { body: 'Please help' })], tags)
 
     assertEquals(result, {
-      tag: 'Housing',
-      secondaryTags: ['other'],
+      tag: 'reporter-engaged',
+      secondaryTags: ['info-gap'],
+      topic: 'Home Repair',
       summary: 'A summary.',
       supportingQuote: 'Please help',
       unmetDemand: true,
@@ -68,48 +83,63 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     })
   })
 
-  it('falls back to "other" and appends the original tag to secondaryTags when it is not in the taxonomy', async () => {
+  it('falls back to "no-impact" and appends the original tag to secondaryTags when it is not in the taxonomy', async () => {
     fetchStub.resolves(anthropicToolResponse({
+      ...baseToolInput,
       tag: 'weather',
       secondary_tags: [],
       summary: 'A summary.',
       supporting_quote: 'It is raining',
-      unmet_demand: false,
-      unmet_demand_reason: null,
-      confidence: 0.5,
     }))
 
     const result = await analyzeTranscript([buildMessage(0)], tags)
 
-    assertEquals(result.tag, 'other')
+    assertEquals(result.tag, 'no-impact')
     assertEquals(result.secondaryTags, ['weather'])
   })
 
   it('does not duplicate the original tag in secondaryTags when it is already present (case-insensitively)', async () => {
     fetchStub.resolves(anthropicToolResponse({
+      ...baseToolInput,
       tag: 'Weather',
       secondary_tags: ['weather'],
       summary: 'A summary.',
       supporting_quote: 'It is raining',
-      unmet_demand: false,
-      unmet_demand_reason: null,
-      confidence: 0.5,
     }))
 
     const result = await analyzeTranscript([buildMessage(0)], tags)
 
-    assertEquals(result.tag, 'other')
+    assertEquals(result.tag, 'no-impact')
     assertEquals(result.secondaryTags, ['weather'])
+  })
+
+  it('falls back to "Other" when the model proposes a topic not in the fixed topic list', async () => {
+    fetchStub.resolves(anthropicToolResponse({
+      ...baseToolInput,
+      topic: 'Something Unrecognized',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    assertEquals(result.topic, 'Other')
+  })
+
+  it('matches a topic case-insensitively', async () => {
+    fetchStub.resolves(anthropicToolResponse({
+      ...baseToolInput,
+      topic: 'home repair',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    assertEquals(result.topic, 'Home Repair')
   })
 
   it('defaults unmetDemandReason to null when the model omits it', async () => {
     fetchStub.resolves(anthropicToolResponse({
-      tag: 'Housing',
-      secondary_tags: [],
-      summary: 'A summary.',
-      supporting_quote: 'Please help',
+      ...baseToolInput,
       unmet_demand: false,
-      confidence: 0.5,
+      unmet_demand_reason: undefined,
     }))
 
     const result = await analyzeTranscript([buildMessage(0)], tags)
@@ -118,15 +148,7 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
   })
 
   it('truncates to the most recent 100 messages and notes the truncation in the request sent to Anthropic', async () => {
-    fetchStub.resolves(anthropicToolResponse({
-      tag: 'other',
-      secondary_tags: [],
-      summary: 's',
-      supporting_quote: 'q',
-      unmet_demand: false,
-      unmet_demand_reason: null,
-      confidence: 0.5,
-    }))
+    fetchStub.resolves(anthropicToolResponse(baseToolInput))
 
     const transcript = Array.from({ length: 120 }, (_, index) => buildMessage(index))
     await analyzeTranscript(transcript, tags)
@@ -143,15 +165,7 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
   })
 
   it('drops the oldest messages until the transcript fits within the character budget', async () => {
-    fetchStub.resolves(anthropicToolResponse({
-      tag: 'other',
-      secondary_tags: [],
-      summary: 's',
-      supporting_quote: 'q',
-      unmet_demand: false,
-      unmet_demand_reason: null,
-      confidence: 0.5,
-    }))
+    fetchStub.resolves(anthropicToolResponse(baseToolInput))
 
     // 3 messages of 15,000 chars each = 45,000 total, over the 30,000 char budget. Dropping the oldest
     // (15,000 chars) brings the total to exactly 30,000, which satisfies the budget.
@@ -173,15 +187,7 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
   })
 
   it('sends the full transcript untruncated when it fits within both budgets', async () => {
-    fetchStub.resolves(anthropicToolResponse({
-      tag: 'other',
-      secondary_tags: [],
-      summary: 's',
-      supporting_quote: 'q',
-      unmet_demand: false,
-      unmet_demand_reason: null,
-      confidence: 0.5,
-    }))
+    fetchStub.resolves(anthropicToolResponse(baseToolInput))
 
     await analyzeTranscript([buildMessage(0, { body: 'hello there' })], tags)
 
@@ -214,13 +220,9 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
 
   it('throws when the tool output fails schema validation', async () => {
     fetchStub.resolves(anthropicToolResponse({
-      tag: 'Housing',
-      secondary_tags: [],
+      ...baseToolInput,
       // summary is required and intentionally omitted here
-      supporting_quote: 'q',
-      unmet_demand: false,
-      unmet_demand_reason: null,
-      confidence: 0.5,
+      summary: undefined,
     }))
 
     await assertRejects(

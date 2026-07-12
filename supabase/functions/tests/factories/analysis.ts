@@ -31,6 +31,9 @@ export type CreateConversationAnalysisParams = {
   promotedAt?: string | null
   promotedBy?: string | null
   createdAt?: string
+  topic?: string | null
+  processAfter?: string
+  suppressReason?: string | null
 }
 
 export const createConversationAnalysis = async ({
@@ -55,6 +58,9 @@ export const createConversationAnalysis = async ({
   promotedAt,
   promotedBy,
   createdAt,
+  topic,
+  processAfter,
+  suppressReason,
 }: CreateConversationAnalysisParams = {}): Promise<ConversationAnalysis> => {
   // Create a conversation if not provided (conversation_id is a required unique FK)
   const conversation = conversationId ? null : await createConversation()
@@ -66,29 +72,29 @@ export const createConversationAnalysis = async ({
     attempts,
     error,
     ...(createdAt ? { createdAt } : {}),
+    ...(processAfter ? { processAfter } : {}),
     tag: tag === undefined
       ? faker.random.arrayElement([
-        'housing',
-        'utilities',
-        'employment',
-        'food-assistance',
-        'transportation',
-        'health',
-        'public-safety',
-        'education',
-        'legal-aid',
-        'civic-info',
+        'reporter-engaged',
+        'info-gap',
+        'user-sat',
         'story-tip',
-        'service-feedback',
-        'other',
+        'unmet-demand',
+        'unsubscribe',
+        'no-impact',
+        'wrong-audience',
+        'automation-failure',
+        'noise-test',
       ])
       : tag,
     secondaryTags,
+    topic,
     summary: summary === undefined ? faker.lorem.sentence() : summary,
     supportingQuote,
     unmetDemand,
     unmetDemandReason,
     confidence,
+    suppressReason,
     model,
     promptVersion,
     messageCount,

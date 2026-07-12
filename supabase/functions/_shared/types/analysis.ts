@@ -9,6 +9,7 @@ export type TranscriptMessage = {
 export type AnalysisResult = {
   tag: string
   secondaryTags: string[]
+  topic: string
   summary: string
   supportingQuote: string
   unmetDemand: boolean

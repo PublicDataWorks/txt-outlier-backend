@@ -5,12 +5,14 @@ import AppResponse from '../_shared/misc/AppResponse.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { analysisTags, conversationAnalyses, conversations, conversationsAuthors } from '../_shared/drizzle/schema.ts'
+import { analysisTags, conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
 import {
   analyzeTranscript,
   DEFAULT_ANALYSIS_MODEL,
   getConversationTranscript,
+  MIN_CONFIDENCE,
   PROMPT_VERSION,
+  SUPPRESS_TAGS,
 } from '../_shared/services/AnalysisService.ts'
 import { postAnalysisMessage } from '../_shared/services/SlackService.ts'
 
@@ -62,7 +64,7 @@ const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
     WHERE id IN (
       SELECT id
       FROM conversation_analyses
-      WHERE status = 'pending'
+      WHERE (status = 'pending' AND process_after <= NOW())
         OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes')
       ORDER BY CASE source WHEN 'realtime' THEN 0 ELSE 1 END, created_at
       LIMIT ${batchSize}
@@ -80,23 +82,44 @@ const loadActiveTags = () =>
     .from(analysisTags)
     .where(eq(analysisTags.active, true))
 
-// twilio_messages has no FK to conversations, so the resident's phone number is derived the same way
-// LookupService does: any conversations_authors phone that isn't the Outlier number.
 const loadConversationMeta = async (
   conversationId: string,
-): Promise<{ webUrl: string; authorPhone: string | null }> => {
-  const rows = await supabase
-    .select({ webUrl: conversations.webUrl, authorPhone: conversationsAuthors.authorPhoneNumber })
+): Promise<{ webUrl: string; closedBy: string | null; closedAt: string | null; closed: boolean | null }> => {
+  const [conversation] = await supabase
+    .select({
+      webUrl: conversations.webUrl,
+      assigneeNames: conversations.assigneeNames,
+      updatedAt: conversations.updatedAt,
+      closed: conversations.closed,
+    })
     .from(conversations)
-    .leftJoin(conversationsAuthors, eq(conversationsAuthors.conversationId, conversations.id))
     .where(eq(conversations.id, conversationId))
 
-  const outlierPhone = requireOutlierPhone()
-  const authorPhone = rows
-    .map((row) => row.authorPhone)
-    .find((phone): phone is string => phone !== null && phone !== outlierPhone) ?? null
+  // Best-effort attribution: Missive's close event doesn't reliably identify who clicked close, so this
+  // is the assignee(s) at analysis time, not a guaranteed record of who actually closed it.
+  const closedBy = conversation?.assigneeNames?.split(',')[0]?.trim() || null
 
-  return { webUrl: rows[0]?.webUrl ?? '', authorPhone }
+  return {
+    webUrl: conversation?.webUrl ?? '',
+    closedBy,
+    closedAt: conversation?.updatedAt ?? null,
+    closed: conversation?.closed ?? null,
+  }
+}
+
+const startOfCurrentQuarter = (): string => {
+  const now = new Date()
+  const quarterMonth = Math.floor(now.getUTCMonth() / 3) * 3
+  return new Date(Date.UTC(now.getUTCFullYear(), quarterMonth, 1)).toISOString()
+}
+
+const countTagThisQuarter = async (tag: string): Promise<number> => {
+  const [row] = await supabase.execute(sql`
+    SELECT count(*)::int AS count
+    FROM conversation_analyses
+    WHERE status = 'completed' AND tag = ${tag} AND updated_at >= ${startOfCurrentQuarter()}
+  `)
+  return ((row as unknown as { count: number })?.count ?? 0) + 1
 }
 
 const markSkipped = (id: number) =>
@@ -123,10 +146,21 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     return
   }
 
-  const result = await analyzeTranscript(transcript, tags)
   const conversationMeta = await loadConversationMeta(row.conversationId)
+  // The 3-day delay means a reopen can land between enqueue and this tick even though the reopen
+  // handler cancels pending rows - re-check live state rather than trust the queue snapshot.
+  if (conversationMeta.closed === false) {
+    await supabase
+      .update(conversationAnalyses)
+      .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
+      .where(eq(conversationAnalyses.id, row.id))
+    return
+  }
+
+  const result = await analyzeTranscript(transcript, tags)
 
   const messageCount = transcript.length
+  const firstMessageAt = transcript[0].timestamp
   const lastMessageAt = transcript[transcript.length - 1].timestamp
 
   // A retry after a failed completion-write must not post to Slack again: reuse the message this row
@@ -135,23 +169,36 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   let slackMessage = row.slackChannel && row.slackMessageTs
     ? { channel: row.slackChannel, ts: row.slackMessageTs }
     : null
-  if (!slackMessage) {
+
+  // Suppressed tags (and low-confidence calls) are still recorded for stats/backfill analysis but
+  // never posted - see docs/conversation-tagging.md for the suppression rules this implements.
+  const suppressed = SUPPRESS_TAGS.includes(result.tag) || result.confidence < MIN_CONFIDENCE
+  const suppressReason = suppressed
+    ? (SUPPRESS_TAGS.includes(result.tag) ? `tag:${result.tag}` : 'low-confidence')
+    : null
+
+  if (!slackMessage && !suppressed) {
+    const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
     slackMessage = await postAnalysisMessage(
       {
         id: row.id,
         tag: result.tag,
+        topic: result.topic,
         summary: result.summary,
         supportingQuote: result.supportingQuote,
         unmetDemand: result.unmetDemand,
         unmetDemandReason: result.unmetDemandReason,
         confidence: result.confidence,
+        tagOrdinalThisQuarter,
       },
       {
         id: row.conversationId,
         webUrl: conversationMeta.webUrl,
-        authorPhone: conversationMeta.authorPhone,
+        closedBy: conversationMeta.closedBy,
         messageCount,
+        firstMessageAt,
         lastMessageAt,
+        closedAt: conversationMeta.closedAt,
       },
     )
     // Persist the Slack refs on their own, before the full completion update: if that update fails
@@ -168,17 +215,19 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       status: 'completed',
       tag: result.tag,
       secondaryTags: result.secondaryTags,
+      topic: result.topic,
       summary: result.summary,
       supportingQuote: result.supportingQuote,
       unmetDemand: result.unmetDemand,
       unmetDemandReason: result.unmetDemandReason,
       confidence: result.confidence,
+      suppressReason,
       model: Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL,
       promptVersion: PROMPT_VERSION,
       messageCount,
       lastMessageAt,
-      slackChannel: slackMessage.channel,
-      slackMessageTs: slackMessage.ts,
+      slackChannel: slackMessage?.channel ?? null,
+      slackMessageTs: slackMessage?.ts ?? null,
       error: null,
       updatedAt: new Date().toISOString(),
     })

@@ -437,11 +437,15 @@ export const conversationAnalyses = pgTable('conversation_analyses', {
   slackMessageTs: text('slack_message_ts'),
   promotedAt: timestamp('promoted_at', { withTimezone: true, mode: 'string' }),
   promotedBy: text('promoted_by'),
+  topic: text('topic'),
+  processAfter: timestamp('process_after', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  suppressReason: text('suppress_reason'),
 }, (table) => {
   return {
     statusIdx: index('idx_conversation_analyses_status').on(table.status),
     tagIdx: index('idx_conversation_analyses_tag').on(table.tag),
     createdAtIdx: index('idx_conversation_analyses_created_at').on(table.createdAt),
+    topicIdx: index('idx_conversation_analyses_topic').on(table.topic),
   }
 })
 

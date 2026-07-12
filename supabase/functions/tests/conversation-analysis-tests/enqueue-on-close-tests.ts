@@ -68,4 +68,66 @@ describe('conversation-handler enqueues conversation analysis on close', {
     const rows = await analysisRowsFor(request.conversation.id)
     assertEquals(rows.length, 1)
   })
+
+  it('delays processing by roughly 72 hours on a realtime close', async () => {
+    const request = withAuthors(conversationCLosedRequest)
+    const before = Date.now()
+
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    assertEquals(error, null)
+
+    const [row] = await analysisRowsFor(request.conversation.id)
+    const delayHours = (new Date(row.processAfter).getTime() - before) / (60 * 60 * 1000)
+    assertEquals(delayHours > 71.9 && delayHours < 72.1, true)
+  })
+
+  it('cancels a pending row when the conversation reopens before processing', async () => {
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+
+    const reopenRequest = withAuthors(conversationReopenedRequest)
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: reopenRequest })
+    assertEquals(error, null)
+
+    const [row] = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(row.status, 'skipped')
+    assertEquals(row.suppressReason, 'reopened-before-processing')
+  })
+
+  it('does not touch a row that is not pending when the conversation reopens', async () => {
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    await supabase
+      .update(conversationAnalyses)
+      .set({ status: 'completed' })
+      .where(eq(conversationAnalyses.conversationId, closeRequest.conversation.id))
+
+    const reopenRequest = withAuthors(conversationReopenedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: reopenRequest })
+
+    const [row] = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(row.status, 'completed')
+  })
+
+  it('resets a reopen-cancelled row to pending with a fresh timer on re-close', async () => {
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    const reopenRequest = withAuthors(conversationReopenedRequest)
+
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: reopenRequest })
+
+    const cancelled = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(cancelled[0].status, 'skipped')
+
+    const before = Date.now()
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    assertEquals(error, null)
+
+    const rows = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(rows.length, 1)
+    assertEquals(rows[0].status, 'pending')
+    assertEquals(rows[0].suppressReason, null)
+    const delayHours = (new Date(rows[0].processAfter).getTime() - before) / (60 * 60 * 1000)
+    assertEquals(delayHours > 71.9 && delayHours < 72.1, true)
+  })
 })

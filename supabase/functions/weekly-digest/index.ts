@@ -1,5 +1,5 @@
 import { withSupabase } from '@supabase/server'
-import { and, desc, eq, gte, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import supabase from '../_shared/lib/supabase.ts'
 import { conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
 import { escapeMrkdwn, postWeeklyDigest } from '../_shared/services/SlackService.ts'
@@ -12,6 +12,8 @@ const UNMET_DEMAND_EXAMPLES_LIMIT = 3
 
 type TagCount = { tag: string; count: number }
 
+// Suppressed tags (see AnalysisService.SUPPRESS_TAGS / docs/conversation-tagging.md) are excluded so the
+// digest highlights editorial/actionable signal rather than being dominated by unsubscribe volume.
 const getTagCounts = async (from: Date, to: Date): Promise<TagCount[]> => {
   const rows = await supabase
     .select({
@@ -22,6 +24,7 @@ const getTagCounts = async (from: Date, to: Date): Promise<TagCount[]> => {
     .where(
       and(
         eq(conversationAnalyses.status, 'completed'),
+        isNull(conversationAnalyses.suppressReason),
         gte(conversationAnalyses.updatedAt, from.toISOString()),
         lt(conversationAnalyses.updatedAt, to.toISOString()),
       ),
@@ -30,6 +33,21 @@ const getTagCounts = async (from: Date, to: Date): Promise<TagCount[]> => {
     .orderBy(desc(sql`count(*)`))
 
   return rows.filter((row): row is TagCount => row.tag !== null)
+}
+
+const getSuppressedCount = async (from: Date, to: Date): Promise<number> => {
+  const [row] = await supabase
+    .select({ count: sql<number>`count(*)::int` })
+    .from(conversationAnalyses)
+    .where(
+      and(
+        eq(conversationAnalyses.status, 'completed'),
+        sql`${conversationAnalyses.suppressReason} IS NOT NULL`,
+        gte(conversationAnalyses.updatedAt, from.toISOString()),
+        lt(conversationAnalyses.updatedAt, to.toISOString()),
+      ),
+    )
+  return row?.count ?? 0
 }
 
 const getCompletedCount = async (from: Date, to: Date): Promise<number> => {
@@ -122,6 +140,7 @@ const buildDigestBlocks = (data: {
   unmetDemandCount: number
   unmetDemandExamples: UnmetDemandExample[]
   promotedCount: number
+  suppressedCount: number
   // deno-lint-ignore no-explicit-any
 }): any[] => {
   // deno-lint-ignore no-explicit-any
@@ -143,6 +162,7 @@ const buildDigestBlocks = (data: {
           type: 'mrkdwn',
           text: `*Promoted to story ideas*\n${data.promotedCount}`,
         },
+        { type: 'mrkdwn', text: `*Suppressed (opt-outs, noise, etc.)*\n${data.suppressedCount}` },
       ],
     },
     { type: 'divider' },
@@ -166,7 +186,7 @@ const buildDigestBlocks = (data: {
     const exampleLines = data.unmetDemandExamples
       .map((example) => {
         const link = example.webUrl ? ` <${example.webUrl}|Open in Missive>` : ''
-        const tag = escapeMrkdwn(example.tag ?? 'other')
+        const tag = escapeMrkdwn(example.tag ?? 'unmet-demand')
         const summary = escapeMrkdwn(example.summary ?? 'No summary')
         return `• _${tag}_ — ${summary}${link}`
       })
@@ -235,12 +255,14 @@ const runWeeklyDigest = async (): Promise<void> => {
     unmetDemandCount,
     unmetDemandExamples,
     promotedCount,
+    suppressedCount,
   ] = await Promise.all([
     getTagCounts(windowStart, now),
     getTagCounts(priorWindowStart, windowStart),
     getUnmetDemandCount(windowStart, now),
     getUnmetDemandExamples(windowStart, now),
     getPromotedCount(windowStart, now),
+    getSuppressedCount(windowStart, now),
   ])
 
   const priorTagCounts = new Map(
@@ -254,6 +276,7 @@ const runWeeklyDigest = async (): Promise<void> => {
     unmetDemandCount,
     unmetDemandExamples,
     promotedCount,
+    suppressedCount,
   })
 
   await postWeeklyDigest(
