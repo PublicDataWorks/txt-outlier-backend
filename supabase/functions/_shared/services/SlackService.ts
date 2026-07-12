@@ -130,8 +130,13 @@ export const updateAnalysisMessagePromoted = async (channel: string, ts: string,
     limit: 1,
   })
   const existing = history.messages?.[0]
+  // conversations.history returns the latest message at-or-before `latest`, so a deleted message would
+  // silently yield a neighbor — updating that one would wipe an unrelated post.
+  if (!existing || existing.ts !== ts) {
+    throw new Error(`Slack message ts=${ts} not found in channel ${channel}`)
+  }
   // deno-lint-ignore no-explicit-any
-  const existingBlocks: any[] = existing?.blocks ?? []
+  const existingBlocks: any[] = existing.blocks ?? []
   const blocksWithoutActions = existingBlocks.filter((block) => block.type !== 'actions')
   blocksWithoutActions.push({
     type: 'context',
@@ -141,7 +146,7 @@ export const updateAnalysisMessagePromoted = async (channel: string, ts: string,
   await slackFetch('chat.update', {
     channel,
     ts,
-    text: existing?.text ?? 'Promoted to story idea',
+    text: existing.text ?? 'Promoted to story idea',
     blocks: blocksWithoutActions,
   })
 }

@@ -30,7 +30,17 @@ const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise
     return
   }
 
-  await updateAnalysisMessagePromoted(updated.slackChannel, updated.slackMessageTs, promotedBy)
+  try {
+    await updateAnalysisMessagePromoted(updated.slackChannel, updated.slackMessageTs, promotedBy)
+  } catch (error) {
+    // Roll the promotion back on a failed Slack update, otherwise the button stays visible in Slack while a
+    // re-click would be a promoted_at-guarded no-op, leaving the message stuck un-promoted forever.
+    await supabase
+      .update(conversationAnalyses)
+      .set({ promotedAt: null, promotedBy: null, updatedAt: new Date().toISOString() })
+      .where(eq(conversationAnalyses.id, analysisId))
+    throw error
+  }
 }
 
 Deno.serve(async (req) => {

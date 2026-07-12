@@ -1,4 +1,4 @@
-import { asc, eq, or } from 'drizzle-orm'
+import { asc, eq, inArray, or } from 'drizzle-orm'
 import { z } from 'zod'
 import supabase from '../lib/supabase.ts'
 import { conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
@@ -14,10 +14,20 @@ const MAX_TRANSCRIPT_MESSAGES = 100
 const MAX_TRANSCRIPT_CHARS = 30000
 
 // twilio_messages has no conversation_id column - it's linked to a conversation only indirectly, through
-// phone numbers shared with conversations_authors. The join below can match the same message twice (once via
-// from_field, once via to_field) when both participants are registered against the conversation, so we dedupe
-// by id client-side.
+// phone numbers shared with conversations_authors. The Outlier number can itself appear as a conversation
+// author, and matching on it would pull in every resident's messages, so the query is scoped strictly to the
+// resident phone(s) of this conversation.
 export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
+  const authorRows = await supabase
+    .select({ phone: conversationsAuthors.authorPhoneNumber })
+    .from(conversationsAuthors)
+    .where(eq(conversationsAuthors.conversationId, conversationId))
+
+  const residentPhones = [
+    ...new Set(authorRows.map((row) => row.phone).filter((phone) => phone !== OUTLIER_PHONE_NUMBER)),
+  ]
+  if (residentPhones.length === 0) return []
+
   const rows = await supabase
     .select({
       id: twilioMessages.id,
@@ -27,26 +37,19 @@ export const getConversationTranscript = async (conversationId: string): Promise
       toField: twilioMessages.toField,
     })
     .from(twilioMessages)
-    .innerJoin(
-      conversationsAuthors,
-      or(
-        eq(twilioMessages.fromField, conversationsAuthors.authorPhoneNumber),
-        eq(twilioMessages.toField, conversationsAuthors.authorPhoneNumber),
-      ),
-    )
-    .where(eq(conversationsAuthors.conversationId, conversationId))
+    .where(or(
+      inArray(twilioMessages.fromField, residentPhones),
+      inArray(twilioMessages.toField, residentPhones),
+    ))
     .orderBy(asc(twilioMessages.deliveredAt))
 
-  const seenIds = new Set<string>()
   const messages: TranscriptMessage[] = []
   for (const row of rows) {
-    if (seenIds.has(row.id)) continue
-    seenIds.add(row.id)
     if (!row.preview || row.preview.trim().length === 0) continue
 
     messages.push({
       body: row.preview,
-      direction: row.fromField === OUTLIER_PHONE_NUMBER ? 'outbound' : 'inbound',
+      direction: residentPhones.includes(row.fromField) ? 'inbound' : 'outbound',
       timestamp: row.deliveredAt,
       from: row.fromField,
       to: row.toField,

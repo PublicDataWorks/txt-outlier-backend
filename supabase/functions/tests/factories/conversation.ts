@@ -3,7 +3,11 @@ import { faker } from 'faker'
 import { conversations } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 
-export const createConversation = async () => {
+type CreateConversationParams = {
+  createdAt?: string
+}
+
+export const createConversation = async ({ createdAt }: CreateConversationParams = {}) => {
   const [result] = await supabase
     .insert(conversations)
     .values({
@@ -17,6 +21,7 @@ export const createConversation = async () => {
       attachmentsCount: 0,
       tasksCount: 0,
       completedTasksCount: 0,
+      ...(createdAt ? { createdAt } : {}),
     })
     .returning()
 

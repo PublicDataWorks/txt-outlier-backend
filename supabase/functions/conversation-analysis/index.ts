@@ -34,20 +34,23 @@ type ClaimedRow = {
 
 // Atomically claims up to `batchSize` pending rows (realtime before backfill, oldest first within each source),
 // marking them 'processing' and bumping their attempt count so a crash mid-batch doesn't retry forever.
+// Rows stuck in 'processing' (isolate killed before the row was finalized) are reclaimed after a 15-minute
+// lease; the attempts cap in processQueue keeps crash-looping rows from being retried forever.
 const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
-  const claimed = await supabase.execute(sql.raw(`
+  const claimed = await supabase.execute(sql`
     UPDATE conversation_analyses
-    SET status = 'processing', attempts = attempts + 1
+    SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
     WHERE id IN (
       SELECT id
       FROM conversation_analyses
       WHERE status = 'pending'
+        OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes')
       ORDER BY CASE source WHEN 'realtime' THEN 0 ELSE 1 END, created_at
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     )
     RETURNING id, conversation_id AS "conversationId", attempts
-  `))
+  `)
   return claimed as unknown as ClaimedRow[]
 }
 
@@ -62,20 +65,18 @@ const loadActiveTags = () =>
 const loadConversationMeta = async (
   conversationId: string,
 ): Promise<{ webUrl: string; authorPhone: string | null }> => {
-  const [conversation] = await supabase
-    .select({ webUrl: conversations.webUrl })
+  const rows = await supabase
+    .select({ webUrl: conversations.webUrl, authorPhone: conversationsAuthors.authorPhoneNumber })
     .from(conversations)
+    .leftJoin(conversationsAuthors, eq(conversationsAuthors.conversationId, conversations.id))
     .where(eq(conversations.id, conversationId))
 
-  const authorRows = await supabase
-    .select({ phone: conversationsAuthors.authorPhoneNumber })
-    .from(conversationsAuthors)
-    .where(eq(conversationsAuthors.conversationId, conversationId))
-
   const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
-  const authorPhone = authorRows.map((row) => row.phone).find((phone) => phone !== outlierPhone) ?? null
+  const authorPhone = rows
+    .map((row) => row.authorPhone)
+    .find((phone): phone is string => phone !== null && phone !== outlierPhone) ?? null
 
-  return { webUrl: conversation?.webUrl ?? '', authorPhone }
+  return { webUrl: rows[0]?.webUrl ?? '', authorPhone }
 }
 
 const markSkipped = (id: number) =>
@@ -94,7 +95,7 @@ const markFailedOrRetry = (row: ClaimedRow, error: unknown) =>
     })
     .where(eq(conversationAnalyses.id, row.id))
 
-const processRow = async (row: ClaimedRow): Promise<void> => {
+const processRow = async (row: ClaimedRow, tags: { name: string; description: string }[]): Promise<void> => {
   const transcript = await getConversationTranscript(row.conversationId)
   const hasInboundMessage = transcript.some((message) => message.direction === 'inbound')
   if (transcript.length === 0 || !hasInboundMessage) {
@@ -102,7 +103,6 @@ const processRow = async (row: ClaimedRow): Promise<void> => {
     return
   }
 
-  const tags = await loadActiveTags()
   const result = await analyzeTranscript(transcript, tags)
   const conversationMeta = await loadConversationMeta(row.conversationId)
 
@@ -153,10 +153,17 @@ const processRow = async (row: ClaimedRow): Promise<void> => {
 
 const processQueue = async (batchSize: number): Promise<void> => {
   const claimed = await claimPendingRows(batchSize)
+  if (claimed.length === 0) return
+
+  const tags = await loadActiveTags()
   // Sequential on purpose: one Anthropic call + one Slack post at a time keeps us well under rate limits.
   for (const row of claimed) {
+    if (row.attempts > MAX_ATTEMPTS) {
+      await markFailedOrRetry(row, new Error(`Exceeded ${MAX_ATTEMPTS} attempts (reclaimed stale processing row)`))
+      continue
+    }
     try {
-      await processRow(row)
+      await processRow(row, tags)
     } catch (error) {
       console.error(
         `Error analyzing conversation_analyses id=${row.id} conversationId=${row.conversationId}: ${
@@ -180,21 +187,20 @@ const assertValidIsoBound = (value: string, field: string): string => {
 // Seeds pending rows (source='backfill') for every conversation that has at least one inbound twilio message
 // (a message addressed to the Outlier number), optionally bounded by conversations.created_at.
 const seedBackfill = async (limit?: number, before?: string, after?: string): Promise<number> => {
-  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')!
-
-  const boundsClauses: string[] = []
-  if (after) boundsClauses.push(`AND c.created_at > $$${assertValidIsoBound(after, 'after')}$$`)
-  if (before) boundsClauses.push(`AND c.created_at < $$${assertValidIsoBound(before, 'before')}$$`)
-
-  let limitClause = ''
-  if (limit !== undefined) {
-    if (!Number.isInteger(limit) || limit <= 0) {
-      throw new BadRequestError(`Invalid limit: ${limit}`)
-    }
-    limitClause = `LIMIT ${limit}`
+  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+  if (!outlierPhone) {
+    throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
   }
 
-  const inserted = await supabase.execute(sql.raw(`
+  if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+    throw new BadRequestError(`Invalid limit: ${limit}`)
+  }
+
+  const afterClause = after ? sql`AND c.created_at > ${assertValidIsoBound(after, 'after')}` : sql``
+  const beforeClause = before ? sql`AND c.created_at < ${assertValidIsoBound(before, 'before')}` : sql``
+  const limitClause = limit !== undefined ? sql`LIMIT ${limit}` : sql``
+
+  const inserted = await supabase.execute(sql`
     INSERT INTO conversation_analyses (conversation_id, status, source)
     SELECT c.id, 'pending', 'backfill'
     FROM conversations c
@@ -202,14 +208,15 @@ const seedBackfill = async (limit?: number, before?: string, after?: string): Pr
       SELECT 1
       FROM twilio_messages tm
       JOIN conversations_authors ca ON ca.author_phone_number IN (tm.from_field, tm.to_field)
-      WHERE ca.conversation_id = c.id AND tm.to_field = $$${outlierPhone}$$
+      WHERE ca.conversation_id = c.id AND tm.to_field = ${outlierPhone}
     )
-    ${boundsClauses.join(' ')}
+    ${afterClause}
+    ${beforeClause}
     ORDER BY c.created_at ASC
     ${limitClause}
     ON CONFLICT (conversation_id) DO NOTHING
     RETURNING id
-  `))
+  `)
   return inserted.length
 }
 
