@@ -275,6 +275,12 @@ verify_jwt = false
 [functions.archive-double-failures]
 verify_jwt = false
 
+[functions.admin-action]
+verify_jwt = false
+
+[functions.user-actions]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327
