@@ -38,6 +38,8 @@ const shortenLinksInMessage = async (message: string, id: number): Promise<[stri
       return [message, false]
     }
 
+    const folderId = Deno.env.get('DUB_FOLDER_ID')!
+
     const linksResponse = await dub.links.list({ tagNames: [tagName] })
     const existingLinks = linksResponse.result
 
@@ -48,7 +50,7 @@ const shortenLinksInMessage = async (message: string, id: number): Promise<[stri
     // @ts-ignore - LinkSchema is not exported
     let newLinks = []
     if (urlsToCreate.length > 0) {
-      const bulkCreatePayload = urlsToCreate.map((url) => ({ url, tagNames: [tagName] }))
+      const bulkCreatePayload = urlsToCreate.map((url) => ({ url, tagNames: [tagName], folderId }))
       newLinks = await dub.links.createMany(bulkCreatePayload)
       console.log(`Created ${newLinks.length} new shortened links in bulk. Data: ${JSON.stringify(newLinks)}`)
     }
