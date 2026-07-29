@@ -136,6 +136,9 @@ const countTagThisQuarter = async (tag: string): Promise<number> => {
     SELECT count(*)::int AS count
     FROM conversation_analyses
     WHERE status = 'completed' AND tag = ${tag} AND updated_at >= ${startOfCurrentQuarter()}
+      -- Suppressed analyses never reached Slack, so counting them would inflate the newsroom-facing
+      -- "Nth this quarter" past the number of posts anyone actually saw.
+      AND suppress_reason IS NULL
   `)
   return ((row as unknown as { count: number })?.count ?? 0) + 1
 }
@@ -165,12 +168,18 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   }
 
   const conversationMeta = await loadConversationMeta(row.conversationId)
-  // The 3-day delay means a reopen can land between enqueue and this tick even though the reopen
-  // handler cancels pending rows - re-check live state rather than trust the queue snapshot.
-  if (conversationMeta.closed === false) {
+  // The 3-day delay means a reopen can land between enqueue and this tick even though the reopen handler
+  // cancels pending rows - re-check live state rather than trust the queue snapshot. Anything other than a
+  // definite `true` is ineligible: conversations.closed is nullable and plain message ingestion never sets
+  // it, so a NULL here means "never observed closed", not "closed".
+  if (conversationMeta.closed !== true) {
     await supabase
       .update(conversationAnalyses)
-      .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
+      .set({
+        status: 'skipped',
+        suppressReason: conversationMeta.closed === false ? 'reopened-before-processing' : 'not-closed',
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(conversationAnalyses.id, row.id))
     return
   }
@@ -203,7 +212,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     // Re-check immediately before publishing so a stale analysis of a since-reopened conversation is
     // recorded but never posted.
     const stillClosed = await loadConversationMeta(row.conversationId)
-    if (stillClosed.closed === false) {
+    if (stillClosed.closed !== true) {
       await supabase
         .update(conversationAnalyses)
         .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
@@ -340,10 +349,20 @@ const seedBackfill = async (limit?: number, before?: string, after?: string): Pr
         AND ca.author_phone_number <> ${outlierPhone}
         AND tm.to_field = ${outlierPhone}
     )
+      -- Only conversations we know are finished: the closed column is nullable and ordinary message
+      -- ingestion never populates it, so an active thread would otherwise be summarized mid-conversation.
+      AND c.closed IS TRUE
+      -- Excluded before the LIMIT applies. Otherwise a resumed bounded backfill spends its whole limit on
+      -- conversations that already have a row, ON CONFLICT discards every one, and it reports 0 seeded while
+      -- eligible conversations further down the ordering are never reached.
+      AND NOT EXISTS (
+        SELECT 1 FROM conversation_analyses existing WHERE existing.conversation_id = c.id
+      )
     ${afterClause}
     ${beforeClause}
     ORDER BY c.created_at ASC
     ${limitClause}
+    -- Still guards the race between two concurrent seed calls.
     ON CONFLICT (conversation_id) DO NOTHING
     RETURNING id
   `)

@@ -185,6 +185,7 @@ Four layers, in order:
 | Variable                    | Required | Purpose                                                                 |
 |------------------------------|----------|--------------------------------------------------------------------------|
 | `OPENAI_API_KEY`             | Yes      | OpenAI API key used to analyze transcripts.                              |
+| `OUTLIER_PHONE_NUMBER`       | Yes      | The service's own SMS number. Required to tell inbound from outbound messages — every analysis fails without it. |
 | `ANALYSIS_MODEL`             | No       | Model id for realtime (on-close) analysis. Defaults to `gpt-5.6-sol`.     |
 | `ANALYSIS_BACKFILL_MODEL`    | No       | Model id for `source = 'backfill'` rows. Defaults to `gpt-5.6-terra`.     |
 | `ANALYSIS_REASONING_EFFORT`  | No       | `reasoning.effort` passed to the model. Defaults to `medium`.             |
