@@ -39,6 +39,22 @@ const TAG_DISPLAY: Record<string, { emoji: string; label: string }> = {
 }
 const defaultTagDisplay = (tag: string) => ({ emoji: ':label:', label: tag.toUpperCase() })
 
+// Stable identifier for the "promoted to story idea" note, so code that rebuilds a message can recognize it
+// without depending on the note's wording.
+const PROMOTED_BLOCK_ID = 'analysis_promoted'
+
+// Slack rejects a section block whose text exceeds 3000 characters, failing the whole chat.postMessage call.
+// Nothing upstream enforces the prompt's "2-3 sentences": the schema accepts any string and the model has a
+// 25k-token output budget, so a rambling or prompt-injected response would otherwise make the post fail, the
+// row retry, and the analysis eventually land in 'failed'. Truncating costs a few words; failing loses the
+// whole notification.
+const SLACK_SECTION_TEXT_LIMIT = 3000
+
+// Applied to the assembled block text rather than the raw field, since the surrounding labels and markup
+// count toward the limit too.
+const truncateForSlack = (text: string): string =>
+  text.length <= SLACK_SECTION_TEXT_LIMIT ? text : `${text.slice(0, SLACK_SECTION_TEXT_LIMIT - 1)}…`
+
 const slackFetch = async (method: string, body: Record<string, unknown>) => {
   const response = await fetch(`${SLACK_API_URL}/${method}`, {
     method: 'POST',
@@ -138,8 +154,10 @@ export const buildAnalysisMessageBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Topic:* ${escapeMrkdwn(analysis.topic)}\n` +
-          `*${isBug ? 'What happened' : 'How we helped'}:* ${escapeMrkdwn(analysis.summary)}`,
+        text: truncateForSlack(
+          `*Topic:* ${escapeMrkdwn(analysis.topic)}\n` +
+            `*${isBug ? 'What happened' : 'How we helped'}:* ${escapeMrkdwn(analysis.summary)}`,
+        ),
       },
     },
   ]
@@ -147,7 +165,10 @@ export const buildAnalysisMessageBlocks = (
   if (analysis.supportingQuote) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Quotable:*\n${toBlockquote(escapeMrkdwn(analysis.supportingQuote))}` },
+      text: {
+        type: 'mrkdwn',
+        text: truncateForSlack(`*Quotable:*\n${toBlockquote(escapeMrkdwn(analysis.supportingQuote))}`),
+      },
     })
   }
 
@@ -156,7 +177,9 @@ export const buildAnalysisMessageBlocks = (
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `:warning: *Unmet demand:* ${escapeMrkdwn(analysis.unmetDemandReason ?? 'Not specified')}`,
+        text: truncateForSlack(
+          `:warning: *Unmet demand:* ${escapeMrkdwn(analysis.unmetDemandReason ?? 'Not specified')}`,
+        ),
       },
     })
   }
@@ -222,20 +245,12 @@ export const updateAnalysisMessage = async (
   const blocks = buildAnalysisMessageBlocks(analysis, conversation)
   // deno-lint-ignore no-explicit-any
   const existingBlocks: any[] = existing.blocks ?? []
-  // A missing actions block means this message was already promoted. Rebuilding from scratch would restore
-  // the promote button and drop the "promoted by" note, so carry the promoted treatment across instead.
-  const wasPromoted = existingBlocks.length > 0 && !existingBlocks.some((block) => block.type === 'actions')
-  const finalBlocks = wasPromoted
-    ? [
-      ...blocks.filter((block) => block.type !== 'actions'),
-      ...existingBlocks.filter((block) =>
-        block.type === 'context' &&
-        // deno-lint-ignore no-explicit-any
-        (block.elements ?? []).some((element: any) =>
-          typeof element.text === 'string' && element.text.includes(':star:')
-        )
-      ),
-    ]
+  // Identified by block_id rather than by the note's wording: matching on the ':star:' text would mean any
+  // future edit to that sentence silently restores the promote button and drops the note.
+  // deno-lint-ignore no-explicit-any
+  const promotedBlocks = existingBlocks.filter((block: any) => block.block_id === PROMOTED_BLOCK_ID)
+  const finalBlocks = promotedBlocks.length > 0
+    ? [...blocks.filter((block) => block.type !== 'actions'), ...promotedBlocks]
     : blocks
 
   await slackFetch('chat.update', {
@@ -267,6 +282,7 @@ export const updateAnalysisMessagePromoted = async (channel: string, ts: string,
   const blocksWithoutActions = existingBlocks.filter((block) => block.type !== 'actions')
   blocksWithoutActions.push({
     type: 'context',
+    block_id: PROMOTED_BLOCK_ID,
     elements: [{ type: 'mrkdwn', text: `:star: Promoted to story idea by ${escapeMrkdwn(promotedBy)}` }],
   })
 

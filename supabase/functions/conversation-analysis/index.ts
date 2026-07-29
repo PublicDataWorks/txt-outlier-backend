@@ -150,15 +150,28 @@ const markSkipped = (id: number) =>
     .set({ status: 'skipped', updatedAt: new Date().toISOString() })
     .where(eq(conversationAnalyses.id, id))
 
-const markFailedOrRetry = (row: ClaimedRow, error: unknown) =>
-  supabase
+// Exponential backoff before a retried row becomes claimable again. Without it, requeueing as 'pending'
+// leaves process_after in the past, so the every-minute cron reclaims the row on the very next tick: a brief
+// OpenAI or Slack 429/5xx would burn all three attempts inside three minutes and mark the row 'failed'
+// permanently, since nothing ever reselects failed rows. Spacing the attempts out means a short outage is
+// survived rather than discarding every analysis attempted during it.
+const RETRY_BACKOFF_MINUTES = [5, 30]
+
+const markFailedOrRetry = (row: ClaimedRow, error: unknown) => {
+  const exhausted = row.attempts >= MAX_ATTEMPTS
+  // attempts is already incremented by the claim, so attempt 1 waits RETRY_BACKOFF_MINUTES[0].
+  const backoffMinutes = RETRY_BACKOFF_MINUTES[Math.min(row.attempts - 1, RETRY_BACKOFF_MINUTES.length - 1)]
+
+  return supabase
     .update(conversationAnalyses)
     .set({
-      status: row.attempts >= MAX_ATTEMPTS ? 'failed' : 'pending',
+      status: exhausted ? 'failed' : 'pending',
       error: error instanceof Error ? error.message : String(error),
       updatedAt: new Date().toISOString(),
+      ...(exhausted ? {} : { processAfter: new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString() }),
     })
     .where(eq(conversationAnalyses.id, row.id))
+}
 
 const processRow = async (row: ClaimedRow, tags: { name: string; description: string }[]): Promise<void> => {
   const transcript = await getConversationTranscript(row.conversationId)
@@ -304,11 +317,25 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
 // lease before their first attempt and be reclaimed by the next cron tick - double-analyzing and
 // double-posting them. Touching updated_at right before each row makes the lease per-row rather than
 // per-batch.
-const refreshLease = (id: number) =>
-  supabase
+// Returns false when this worker no longer owns the row, in which case the caller must skip it.
+//
+// `attempts` doubles as the ownership token: the claim that handed us this row incremented it, so if another
+// worker has since reclaimed the row (its 15-minute lease expired while we worked through earlier rows in
+// the batch) the counter has moved on and this update matches nothing. A plain status check could not detect
+// that - a reclaim leaves the status 'processing' either way.
+//
+// This closes the window at the start of each row. A reclaim landing mid-OpenAI-call is still possible and
+// would need the lease renewed during the call itself; the per-row refresh plus the sequential loop keeps
+// that window to a single row's processing time.
+const refreshLease = async (row: ClaimedRow): Promise<boolean> => {
+  const refreshed = await supabase
     .update(conversationAnalyses)
     .set({ updatedAt: new Date().toISOString() })
-    .where(eq(conversationAnalyses.id, id))
+    .where(and(eq(conversationAnalyses.id, row.id), eq(conversationAnalyses.attempts, row.attempts)))
+    .returning({ id: conversationAnalyses.id })
+
+  return refreshed.length > 0
+}
 
 const processQueue = async (batchSize: number): Promise<void> => {
   // Loaded before claiming, deliberately. Claiming first would mean a transient failure here throws with the
@@ -326,7 +353,12 @@ const processQueue = async (batchSize: number): Promise<void> => {
       await markFailedOrRetry(row, new Error(`Exceeded ${MAX_ATTEMPTS} attempts (reclaimed stale processing row)`))
       continue
     }
-    await refreshLease(row.id)
+    if (!await refreshLease(row)) {
+      // Another worker reclaimed this row while we were working through the batch. Leave it to them rather
+      // than running a second OpenAI call and posting a duplicate Slack message.
+      console.warn(`Skipping conversation_analyses id=${row.id}: lease lost to another worker`)
+      continue
+    }
     try {
       await processRow(row, tags)
     } catch (error) {

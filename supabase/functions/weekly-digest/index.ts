@@ -303,8 +303,12 @@ Deno.serve(withSupabase({ auth: 'secret' }, async () => {
     await runWeeklyDigest()
     return AppResponse.ok()
   } catch (error) {
+    // Narrowed before access: a thrown non-Error (a rejected fetch string, say) would otherwise make the
+    // error path itself throw, losing both the log line and the Sentry report.
+    const message = error instanceof Error ? error.message : String(error)
+    const stack = error instanceof Error ? error.stack : undefined
     console.error(
-      `Error in weekly-digest: ${error.message}. Stack: ${error.stack}`,
+      `Error in weekly-digest: ${message}. Stack: ${stack}`,
     )
     Sentry.captureException(error)
     // Deliberately not a 200. The digest window is a rolling 7 days and the cron fires once a week, so a

@@ -471,6 +471,22 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertEquals(result.unmetDemandReason?.includes('24-001234'), false)
   })
 
+  it('leaves ordinary prose that happens to follow an identifier keyword', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Her case worker never called back about the policy change or the account balance.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    // The identifier must contain a digit. Without that rule these read as keyword-plus-identifier and the
+    // summary comes out as "case [account redacted]".
+    assertStringIncludes(result.summary, 'case worker')
+    assertStringIncludes(result.summary, 'policy change')
+    assertStringIncludes(result.summary, 'account balance')
+    assertEquals(result.summary.includes('redacted'), false)
+  })
+
   it('leaves year ranges and dollar figures alone when redacting identifiers', async () => {
     fetchStub.resolves(openAiResponse({
       ...basePayload,
@@ -569,8 +585,20 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertEquals(result.summary.includes('Jackson'), false)
     // "Bo" is too short to redact on its own: as a two-character target it would match far too much.
     assertStringIncludes(result.summary, 'Bo was not the caller')
-    // Word-boundary matching, so "job" survives despite sharing a prefix with the name.
-    assertStringIncludes(result.summary, 'job')
+  })
+
+  it('matches names on word boundaries rather than as substrings', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Jack asked about a jacket voucher and the hijack report.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags, { residentNames: ['Jack Morrison'] })
+
+    // The standalone name is redacted, but "jacket" and "hijack" only contain it as a substring.
+    assertEquals(result.summary.includes('Jack '), false)
+    assertStringIncludes(result.summary, 'jacket voucher')
+    assertStringIncludes(result.summary, 'hijack report')
   })
 
   it('replaces a full name as one unit rather than two adjacent labels', async () => {

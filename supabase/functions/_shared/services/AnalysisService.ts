@@ -291,10 +291,14 @@ const normalizeForQuoteMatch = (text: string): string =>
 const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
   // Keyword-anchored identifiers ("DTE account 123456789", "case #24-001234"). The keyword itself is kept -
   // "account [account redacted]" is still useful context - so only the identifier is replaced, via $1.
+  //
+  // The lookahead requiring a digit in the identifier is what keeps ordinary prose intact: without it,
+  // "case worker", "policy change", and "account balance" all read as keyword-plus-identifier and get
+  // mangled into "case [account redacted]". Real case and account numbers always contain a digit.
   {
     label: '$1[account redacted]',
     pattern:
-      /\b((?:account|acct|case|claim|parcel|policy|ticket|invoice|reference|confirmation)\s*(?:#|no\.?|number|id)?\s*[:#]?\s*)([A-Za-z0-9][A-Za-z0-9-]{3,})/gi,
+      /\b((?:account|acct|case|claim|parcel|policy|ticket|invoice|reference|confirmation)\s*(?:#|no\.?|number|id)?\s*[:#]?\s*)((?=[A-Za-z0-9-]*\d)[A-Za-z0-9][A-Za-z0-9-]{3,})/gi,
   },
   // 10-digit North American numbers with common separators, optional +1 and extension-free.
   { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g },
@@ -512,10 +516,15 @@ export const analyzeTranscript = async (
   // from the DB at request time, so these remain as cheap defence rather than trusted invariants.
   const matchedTag = tags.find((tag) => tag.name.toLowerCase() === output.tag.toLowerCase())
   const matchedTopic = TOPIC_TAGS.find((topic) => topic.toLowerCase() === output.topic.toLowerCase())
-  const secondaryTags = output.secondary_tags
-    .map((secondary) => tagNames.find((name) => name.toLowerCase() === secondary.toLowerCase()))
-    .filter((name): name is string => Boolean(name) && name !== matchedTag?.name)
-    .slice(0, 2)
+  // Deduped before the cap: nothing stops the model returning the same secondary tag twice, and both copies
+  // would otherwise be persisted and rendered, wasting one of the two slots on a repeat.
+  const secondaryTags = [
+    ...new Set(
+      output.secondary_tags
+        .map((secondary) => tagNames.find((name) => name.toLowerCase() === secondary.toLowerCase()))
+        .filter((name): name is string => Boolean(name) && name !== matchedTag?.name),
+    ),
+  ].slice(0, 2)
 
   // Checked against the truncated window rather than the full transcript: the model can only legitimately
   // quote what it was actually shown, so a "quote" matching only a dropped message is a coincidence at best.
