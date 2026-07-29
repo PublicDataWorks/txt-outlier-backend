@@ -1,7 +1,7 @@
 import { asc, eq, inArray, or } from 'drizzle-orm'
 import { z } from 'zod'
 import supabase from '../lib/supabase.ts'
-import { conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
+import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
 import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
 
 export const PROMPT_VERSION = 'q2-v2-openai'
@@ -272,9 +272,9 @@ const normalizeForQuoteMatch = (text: string): string =>
 // The prompt already tells the model to leave these out, but a prompt is not an enforcement mechanism and
 // the Slack template's "no resident identifiers" property is one we actually want to hold.
 //
-// Deliberately NOT attempting regex name detection: there is no reliable pattern for it and the false
-// positives ("Wayne County", "Detroit Water") would mangle legitimate summaries. Names remain a
-// prompt-level instruction only - see docs/conversation-tagging.md.
+// Names are handled separately, by redactKnownNames below, rather than by a pattern here: there is no
+// reliable regex for a name, and the false positives ("Wayne County", "Detroit Water") would mangle
+// legitimate summaries. See docs/conversation-tagging.md.
 const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
   // 10-digit North American numbers with common separators, optional +1 and extension-free.
   { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g },
@@ -292,6 +292,52 @@ const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
 
 export const redactPii = (text: string): string =>
   PII_PATTERNS.reduce((redacted, { label, pattern }) => redacted.replace(pattern, label), text)
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Resident names, unlike phones and addresses, can't be recognized by shape - but we don't have to guess.
+// `authors.name` tells us exactly which names belong to this conversation's residents, so we redact those
+// specific strings and nothing else. That keeps the Slack template's "no resident identifiers" property
+// enforced in code rather than resting on the prompt, without the false positives a generic name pattern
+// would cause.
+//
+// Both the full name and its individual parts are redacted: the model paraphrases, so a resident recorded
+// as "Jane Doe" may surface as just "Jane". Parts shorter than 3 characters are skipped (initials would
+// match far too much). A resident whose name is also an ordinary word ("Free") will over-redact that word
+// within their own conversation - accepted deliberately, since a visible "[name redacted]" costs less than
+// publishing an identifier.
+export const redactKnownNames = (text: string, names: string[]): string => {
+  const targets = new Set<string>()
+  for (const name of names) {
+    const trimmed = name?.trim()
+    if (!trimmed) continue
+    if (trimmed.length >= 3) targets.add(trimmed)
+    for (const part of trimmed.split(/\s+/)) {
+      if (part.length >= 3) targets.add(part)
+    }
+  }
+
+  // Longest first, so "Jane Doe" is replaced as a unit instead of becoming two adjacent labels.
+  return [...targets]
+    .sort((a, b) => b.length - a.length)
+    .reduce(
+      (redacted, target) => redacted.replace(new RegExp(`\\b${escapeRegExp(target)}\\b`, 'gi'), '[name redacted]'),
+      text,
+    )
+}
+
+// The names of every non-Outlier author on the conversation, for redactKnownNames.
+export const getResidentNames = async (conversationId: string): Promise<string[]> => {
+  const rows = await supabase
+    .select({ name: authors.name, phone: authors.phoneNumber })
+    .from(conversationsAuthors)
+    .innerJoin(authors, eq(authors.phoneNumber, conversationsAuthors.authorPhoneNumber))
+    .where(eq(conversationsAuthors.conversationId, conversationId))
+
+  return rows
+    .filter((row) => row.phone !== OUTLIER_PHONE_NUMBER && row.name)
+    .map((row) => row.name as string)
+}
 
 // Structured Outputs can guarantee the shape of a quote but not its provenance, and the historical audit
 // caught the model citing details that were not in the transcript. A quote that isn't actually present in
@@ -348,7 +394,7 @@ const extractOutputText = (data: any): string => {
 export const analyzeTranscript = async (
   transcript: TranscriptMessage[],
   tags: { name: string; description: string }[],
-  options: { model?: string } = {},
+  options: { model?: string; residentNames?: string[] } = {},
 ): Promise<AnalysisResult> => {
   if (tags.length === 0) {
     // An empty taxonomy would produce an empty `enum`, which the API rejects outright.
@@ -456,16 +502,18 @@ export const analyzeTranscript = async (
     )
   }
 
+  // Every model-authored string is redacted once, here, so the DB row, the Slack post, the weekly digest,
+  // and the dashboard all inherit the same guarantee rather than each re-implementing it.
+  const redact = (text: string): string => redactKnownNames(redactPii(text), options.residentNames ?? [])
+
   return {
     tag: matchedTag?.name ?? 'no-impact',
     secondaryTags,
     topic: matchedTopic ?? 'Other',
-    // Every model-authored string is redacted once, here, so the DB row, the Slack post, the weekly digest,
-    // and the dashboard all inherit the same guarantee rather than each re-implementing it.
-    summary: redactPii(output.summary),
-    supportingQuote: redactPii(verifiedQuote),
+    summary: redact(output.summary),
+    supportingQuote: redact(verifiedQuote),
     unmetDemand: output.unmet_demand,
-    unmetDemandReason: output.unmet_demand_reason ? redactPii(output.unmet_demand_reason) : null,
+    unmetDemandReason: output.unmet_demand_reason ? redact(output.unmet_demand_reason) : null,
     confidence: output.confidence,
   }
 }

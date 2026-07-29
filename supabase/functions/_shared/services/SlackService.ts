@@ -200,6 +200,52 @@ export const postAnalysisMessage = async (
   return { channel: data.channel, ts: data.ts }
 }
 
+// Rewrites an already-posted analysis message in place. Needed on the retry path: if the Slack post and the
+// slack-ref write both succeed but the completion write fails, the retry re-runs the model and can land on a
+// different tag or summary. Without this the channel would keep showing the first result while the database,
+// digest, and dashboard reflect the second - and the promote button would act on a row reviewers never saw.
+export const updateAnalysisMessage = async (
+  channel: string,
+  ts: string,
+  analysis: AnalysisMessageInput,
+  conversation: ConversationMessageInput,
+): Promise<void> => {
+  const display = TAG_DISPLAY[analysis.tag] ?? defaultTagDisplay(analysis.tag)
+  const history = await slackFetch('conversations.history', { channel, latest: ts, inclusive: true, limit: 1 })
+  const existing = history.messages?.[0]
+  // Same guard as updateAnalysisMessagePromoted: history returns the latest message at-or-before `latest`,
+  // so a deleted message would yield a neighbor and updating it would wipe an unrelated post.
+  if (!existing || existing.ts !== ts) {
+    throw new Error(`Slack message ts=${ts} not found in channel ${channel}`)
+  }
+
+  const blocks = buildAnalysisMessageBlocks(analysis, conversation)
+  // deno-lint-ignore no-explicit-any
+  const existingBlocks: any[] = existing.blocks ?? []
+  // A missing actions block means this message was already promoted. Rebuilding from scratch would restore
+  // the promote button and drop the "promoted by" note, so carry the promoted treatment across instead.
+  const wasPromoted = existingBlocks.length > 0 && !existingBlocks.some((block) => block.type === 'actions')
+  const finalBlocks = wasPromoted
+    ? [
+      ...blocks.filter((block) => block.type !== 'actions'),
+      ...existingBlocks.filter((block) =>
+        block.type === 'context' &&
+        // deno-lint-ignore no-explicit-any
+        (block.elements ?? []).some((element: any) =>
+          typeof element.text === 'string' && element.text.includes(':star:')
+        )
+      ),
+    ]
+    : blocks
+
+  await slackFetch('chat.update', {
+    channel,
+    ts,
+    text: `${display.label} — new conversation analysis`,
+    blocks: finalBlocks,
+  })
+}
+
 export const updateAnalysisMessagePromoted = async (channel: string, ts: string, promotedBy: string): Promise<void> => {
   // chat.update replaces the whole message, so we first fetch the currently posted blocks (rather than
   // reconstructing them from scratch, since this function only receives channel/ts/promotedBy), drop the

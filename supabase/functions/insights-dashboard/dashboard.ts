@@ -179,6 +179,8 @@ export const DASHBOARD_HTML = `<!doctype html>
 <script>
 (function () {
   var TOP_TAG_LIMIT = 8
+  // Shared by the request and the x-axis generation, so the axis always spans exactly what was asked for.
+  var CHART_WEEKS = 12
   var SERIES_COLORS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8']
 
   var params = new URLSearchParams(window.location.search)
@@ -237,9 +239,31 @@ export const DASHBOARD_HTML = `<!doctype html>
     document.getElementById('tile-promoted').textContent = formatNumber(data.promotedTotal)
   }
 
-  function bucketTopTagsPlusOther(rows) {
+  // The API returns no row for a week with zero completed analyses. Deriving the x-axis only from weeks
+  // present in the response would silently drop those weeks and draw nonconsecutive dates side by side,
+  // which reads as continuous activity instead of a gap. Generate the full requested sequence instead.
+  //
+  // Week starts are Monday, UTC, matching the server's date_trunc('week', ...) buckets. The generated
+  // sequence is unioned with the weeks actually present rather than replacing them, so a boundary
+  // disagreement between this and the server's timezone can never discard real data.
+  function expectedWeekStarts(weekCount) {
+    var monday = new Date()
+    monday.setUTCHours(0, 0, 0, 0)
+    // getUTCDay(): 0=Sunday. Shift back to the Monday of the current week.
+    monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+
+    var result = []
+    for (var i = weekCount - 1; i >= 0; i--) {
+      var week = new Date(monday.getTime() - i * 7 * 24 * 60 * 60 * 1000)
+      result.push(week.toISOString().slice(0, 10))
+    }
+    return result
+  }
+
+  function bucketTopTagsPlusOther(rows, weekCount) {
     var totalsByTag = {}
     var weekSet = {}
+    expectedWeekStarts(weekCount).forEach(function (week) { weekSet[week] = true })
     rows.forEach(function (row) {
       if (!row.tag) return
       totalsByTag[row.tag] = (totalsByTag[row.tag] || 0) + row.count
@@ -305,7 +329,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       return
     }
 
-    var bucketed = bucketTopTagsPlusOther(rows)
+    var bucketed = bucketTopTagsPlusOther(rows, CHART_WEEKS)
     var ink = cssVar('--text-secondary')
     var gridline = cssVar('--gridline')
 
@@ -367,7 +391,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 
   Promise.all([
     fetchJson('data/summary'),
-    fetchJson('data/tags-over-time?weeks=12'),
+    fetchJson('data/tags-over-time?weeks=' + CHART_WEEKS),
     fetchJson('data/unmet-demand?limit=50')
   ]).then(function (results) {
     renderSummary(results[0])
@@ -380,7 +404,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 
   if (window.matchMedia) {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-      fetchJson('data/tags-over-time?weeks=12').then(renderChart).catch(function () {})
+      fetchJson('data/tags-over-time?weeks=' + CHART_WEEKS).then(renderChart).catch(function () {})
     })
   }
 })()

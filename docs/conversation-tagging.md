@@ -250,6 +250,15 @@ The `weekly-conversation-digest` cron job runs **every Monday at 14:00 UTC** and
 function, which posts a summary of the previous 7 days to `SLACK_ANALYSIS_CHANNEL_ID` (see
 [Edge Functions](#weekly-digest) above for what it includes).
 
+A week in which nothing completed still posts, and still reports the promotion count: promotions are counted over
+their own `promoted_at` window, so editors can promote older analyses during an otherwise quiet week.
+
+**Known limitation — a failed digest is not re-delivered.** The window is a rolling 7 days and the cron fires once
+a week, so if a query or the Slack call fails, that week's digest is lost; the next run computes a fresh window.
+The function returns a 5xx (rather than swallowing the error as a 200) so the failure is visible to monitoring and
+Sentry, but nothing retries it automatically. Adding real retry means a second schedule plus a record of the last
+successful post to avoid double-posting — deliberately not built yet.
+
 ## Dashboard
 
 The dashboard at `GET /insights-dashboard` is meant for internal use — it has no login of its own. `DASHBOARD_TOKEN`
@@ -366,8 +375,21 @@ Closed by Sarah  •  18 messages  •  over 6 days  •  closed Jul 9  •  Ope
 
 **Never included, under any circumstance**: the resident's phone number (not even masked — identity lives behind
 the "Open in Missive" link only), street address, full name, or any case/account number. The system prompt
-instructs the model never to include these even if they appear verbatim in the resident's own message; the
-supporting quote is the one place resident-authored text reaches Slack, so this is enforced at the prompt level.
+instructs the model never to include these even if they appear verbatim in the resident's own message, but a
+prompt is not an enforcement mechanism, so every model-authored string (`summary`, `supporting_quote`,
+`unmet_demand_reason`) is also redacted in code before it is returned — once, in `analyzeTranscript`, so the DB
+row, the Slack post, the digest, and the dashboard all inherit the same guarantee. Two mechanisms:
+
+- **Pattern-based** (`redactPii`): phone numbers, street addresses, and Michigan ZIPs (`48xxx`/`49xxx` only, so
+  ordinary 5-digit figures like dollar amounts survive). Replaced with `[phone redacted]` and friends.
+- **Name-based** (`redactKnownNames`): names are not recognizable by shape, so instead of guessing at a pattern
+  we read `authors.name` for this conversation's residents and redact exactly those strings. Both the full name
+  and its individual parts of 3+ characters are matched (the model paraphrases, so "Jane Doe" may surface as just
+  "Jane"), longest-first so a full name becomes one `[name redacted]` rather than two adjacent labels. Because
+  the targets come from the database rather than a generic name pattern, organizations and places ("Wayne County",
+  "Detroit Water") are never touched. A resident whose name is also an ordinary word will over-redact that word
+  within their own conversation — accepted deliberately, since a visible `[name redacted]` costs less than
+  publishing an identifier. Residents with no `authors.name` on record fall back to prompt-level protection only.
 
 **Tone and length**: the model is asked for a neutral 2-3 sentence summary — short enough to skim, factual rather
 than promotional. "Closed by" is best-effort (see the caveat below); message count and duration come from the

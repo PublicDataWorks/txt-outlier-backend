@@ -447,6 +447,76 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertStringIncludes(result.summary, '12 permits')
   })
 
+  it('redacts the residents own names from every model-authored field', async () => {
+    const residentBody = 'This is Jane Doe, my water was shut off'
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Jane Doe asked about a water shutoff. Doe was referred to the assistance program.',
+      supporting_quote: residentBody,
+      unmet_demand: true,
+      unmet_demand_reason: 'Jane never got a callback',
+    }))
+
+    const result = await analyzeTranscript(
+      [buildMessage(0, { body: residentBody })],
+      tags,
+      { residentNames: ['Jane Doe'] },
+    )
+
+    // Full name, and each part on its own, since the model paraphrases rather than quoting the name as given.
+    assertEquals(result.summary.includes('Jane Doe'), false)
+    assertEquals(result.summary.includes('Doe'), false)
+    assertStringIncludes(result.summary, '[name redacted]')
+    assertEquals(result.supportingQuote.includes('Jane Doe'), false)
+    assertEquals(result.unmetDemandReason?.includes('Jane'), false)
+  })
+
+  it('leaves place names alone when redacting resident names', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Ella was referred to Wayne County and the Detroit Water department.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags, { residentNames: ['Ella Watts'] })
+
+    // The whole point of sourcing names from authors.name instead of a name pattern: only this
+    // conversation's actual resident is redacted, so organizations and places survive.
+    assertEquals(result.summary.includes('Ella'), false)
+    assertStringIncludes(result.summary, 'Wayne County')
+    assertStringIncludes(result.summary, 'Detroit Water')
+  })
+
+  it('is a no-op when the resident has no name on record', async () => {
+    fetchStub.resolves(openAiResponse({ ...basePayload, summary: 'Resident asked about a water shutoff.' }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags, { residentNames: [] })
+
+    assertEquals(result.summary, 'Resident asked about a water shutoff.')
+  })
+
+  it('skips name parts shorter than three characters', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Jackson called about a job; Bo was not the caller.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags, { residentNames: ['Bo Jackson'] })
+
+    assertEquals(result.summary.includes('Jackson'), false)
+    // "Bo" is too short to redact on its own: as a two-character target it would match far too much.
+    assertStringIncludes(result.summary, 'Bo was not the caller')
+    // Word-boundary matching, so "job" survives despite sharing a prefix with the name.
+    assertStringIncludes(result.summary, 'job')
+  })
+
+  it('replaces a full name as one unit rather than two adjacent labels', async () => {
+    fetchStub.resolves(openAiResponse({ ...basePayload, summary: 'Maria Gonzalez asked about a tax bill.' }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags, { residentNames: ['Maria Gonzalez'] })
+
+    assertStringIncludes(result.summary, '[name redacted] asked about a tax bill.')
+  })
+
   it('does not log the dropped quote text, which may itself carry PII', async () => {
     const warnStub = sandbox.stub(console, 'warn')
     fetchStub.resolves(openAiResponse({ ...basePayload, supporting_quote: 'my number is 313-555-0199' }))

@@ -135,19 +135,24 @@ app.get(`${FUNCTION_PATH}data/unmet-demand`, async (c) => {
       }
     }
 
+    // Backfilled rows carry the backfill run's created_at, not the conversation's date, so ordering and
+    // displaying by created_at would date every historical conversation to the day we backfilled it and
+    // let those rows crowd genuinely recent ones out of the limit. Same expression the tiles use.
+    const activityDate = sql`coalesce(${conversationAnalyses.lastMessageAt}, ${conversationAnalyses.createdAt})`
+
     const rows = await supabase
       .select({
         id: conversationAnalyses.id,
         tag: conversationAnalyses.tag,
         summary: conversationAnalyses.summary,
         reason: conversationAnalyses.unmetDemandReason,
-        createdAt: conversationAnalyses.createdAt,
+        createdAt: activityDate,
         missiveUrl: conversations.webUrl,
       })
       .from(conversationAnalyses)
       .innerJoin(conversations, eq(conversationAnalyses.conversationId, conversations.id))
       .where(and(eq(conversationAnalyses.status, 'completed'), eq(conversationAnalyses.unmetDemand, true)))
-      .orderBy(desc(conversationAnalyses.createdAt))
+      .orderBy(desc(activityDate))
       .limit(limit)
 
     return AppResponse.ok(rows)

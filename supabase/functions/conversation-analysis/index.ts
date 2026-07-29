@@ -10,12 +10,13 @@ import { RuleType } from '../user-actions/types.ts'
 import {
   analyzeTranscript,
   getConversationTranscript,
+  getResidentNames,
   MIN_CONFIDENCE,
   PROMPT_VERSION,
   resolveAnalysisModel,
   SUPPRESS_TAGS,
 } from '../_shared/services/AnalysisService.ts'
-import { postAnalysisMessage } from '../_shared/services/SlackService.ts'
+import { postAnalysisMessage, updateAnalysisMessage } from '../_shared/services/SlackService.ts'
 
 const DEFAULT_BATCH_SIZE = 5
 const MAX_BATCH_SIZE = 50
@@ -186,7 +187,10 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
 
   // Realtime closes get the flagship tier; bulk backfill uses the cheaper one (see AnalysisService).
   const model = resolveAnalysisModel(row.source)
-  const result = await analyzeTranscript(transcript, tags, { model })
+  // The residents' own names, so model-authored text can be checked against them rather than against a
+  // guessed name pattern - see redactKnownNames.
+  const residentNames = await getResidentNames(row.conversationId)
+  const result = await analyzeTranscript(transcript, tags, { model, residentNames })
 
   const messageCount = transcript.length
   const firstMessageAt = transcript[0].timestamp
@@ -206,11 +210,15 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     ? (SUPPRESS_TAGS.includes(result.tag) ? `tag:${result.tag}` : 'low-confidence')
     : null
 
-  if (!slackMessage && !suppressed) {
-    // The model call can take up to OPENAI_TIMEOUT_MS, and a reopen landing in that window can't be
-    // cancelled by the reopen handler (it only touches 'pending' rows, and this one is 'processing').
-    // Re-check immediately before publishing so a stale analysis of a since-reopened conversation is
-    // recorded but never posted.
+  // The model call can take up to OPENAI_TIMEOUT_MS, and a reopen landing in that window can't be
+  // cancelled by the reopen handler (it only touches 'pending' rows, and this one is 'processing').
+  // Re-check before writing anything, so a stale analysis of a since-reopened conversation is neither
+  // posted nor recorded as 'completed' for the dashboard and digest to count. This deliberately covers
+  // the suppressed path too - a suppressed row never reaches Slack, but it does reach analytics.
+  //
+  // Skipped when this row already posted to Slack: that message is public and its promote button is live,
+  // so the row has to be finalized to stay consistent with what reviewers can already see.
+  if (!slackMessage) {
     const stillClosed = await loadConversationMeta(row.conversationId)
     if (stillClosed.closed !== true) {
       await supabase
@@ -219,29 +227,33 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
         .where(eq(conversationAnalyses.id, row.id))
       return
     }
+  }
 
+  const analysisMessage = {
+    id: row.id,
+    tag: result.tag,
+    topic: result.topic,
+    summary: result.summary,
+    supportingQuote: result.supportingQuote,
+    unmetDemand: result.unmetDemand,
+    unmetDemandReason: result.unmetDemandReason,
+    confidence: result.confidence,
+  }
+  const conversationMessage = {
+    id: row.conversationId,
+    webUrl: conversationMeta.webUrl,
+    closedBy: conversationMeta.closedBy,
+    messageCount,
+    firstMessageAt,
+    lastMessageAt,
+    closedAt: conversationMeta.closedAt,
+  }
+
+  if (!slackMessage && !suppressed) {
     const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
     slackMessage = await postAnalysisMessage(
-      {
-        id: row.id,
-        tag: result.tag,
-        topic: result.topic,
-        summary: result.summary,
-        supportingQuote: result.supportingQuote,
-        unmetDemand: result.unmetDemand,
-        unmetDemandReason: result.unmetDemandReason,
-        confidence: result.confidence,
-        tagOrdinalThisQuarter,
-      },
-      {
-        id: row.conversationId,
-        webUrl: conversationMeta.webUrl,
-        closedBy: conversationMeta.closedBy,
-        messageCount,
-        firstMessageAt,
-        lastMessageAt,
-        closedAt: conversationMeta.closedAt,
-      },
+      { ...analysisMessage, tagOrdinalThisQuarter },
+      conversationMessage,
     )
     // Persist the Slack refs on their own, before the full completion update: if that update fails
     // and the row is retried, the refs are what prevents a duplicate post.
@@ -249,6 +261,17 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       .update(conversationAnalyses)
       .set({ slackChannel: slackMessage.channel, slackMessageTs: slackMessage.ts, updatedAt: new Date().toISOString() })
       .where(eq(conversationAnalyses.id, row.id))
+  } else if (slackMessage) {
+    // Retry of a row that already posted. The model has just been re-run and may have returned a different
+    // tag or summary, so rewrite the existing message rather than leaving the channel showing the first
+    // result while the DB records the second.
+    const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
+    await updateAnalysisMessage(
+      slackMessage.channel,
+      slackMessage.ts,
+      { ...analysisMessage, tagOrdinalThisQuarter },
+      conversationMessage,
+    )
   }
 
   await supabase

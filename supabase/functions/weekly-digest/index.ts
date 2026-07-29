@@ -230,6 +230,14 @@ const runWeeklyDigest = async (): Promise<void> => {
   const total = await getCompletedCount(windowStart, now)
 
   if (total === 0) {
+    // Promotions are counted over their own promoted_at window, so editors can promote older analyses in a
+    // week where nothing new completed. Reporting "quiet week" alone would hide that activity entirely.
+    const promotedCount = await getPromotedCount(windowStart, now)
+    const promotedNote = promotedCount > 0
+      ? ` ${promotedCount} older ${promotedCount === 1 ? 'analysis was' : 'analyses were'} promoted to ` +
+        `${promotedCount === 1 ? 'a story idea' : 'story ideas'} this week.`
+      : ''
+
     await postWeeklyDigest(
       [
         {
@@ -244,11 +252,11 @@ const runWeeklyDigest = async (): Promise<void> => {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: 'Quiet week — no conversations were analyzed in the last 7 days.',
+            text: `Quiet week — no conversations were analyzed in the last 7 days.${promotedNote}`,
           },
         },
       ],
-      'Weekly conversation insights: quiet week, no conversations analyzed.',
+      `Weekly conversation insights: quiet week, no conversations analyzed, ${promotedCount} promoted.`,
     )
     return
   }
@@ -293,12 +301,17 @@ const runWeeklyDigest = async (): Promise<void> => {
 Deno.serve(withSupabase({ auth: 'secret' }, async () => {
   try {
     await runWeeklyDigest()
+    return AppResponse.ok()
   } catch (error) {
     console.error(
       `Error in weekly-digest: ${error.message}. Stack: ${error.stack}`,
     )
-    // Cron job calls this function, so we don't want to throw an error
     Sentry.captureException(error)
+    // Deliberately not a 200. The digest window is a rolling 7 days and the cron fires once a week, so a
+    // failed delivery is lost rather than retried - reporting success would make that loss invisible.
+    // Surfacing a 5xx lets the caller and monitoring see it. NOTE: this makes the failure observable, it
+    // does not re-deliver; an automatic retry needs a second schedule plus a record of the last successful
+    // post to avoid double-posting. See docs/conversation-tagging.md.
+    return AppResponse.internalServerError()
   }
-  return AppResponse.ok()
 }))
