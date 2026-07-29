@@ -27,10 +27,22 @@ const fetchRow = async (id: number) => {
   return row
 }
 
-// The rows below never reach analyzeTranscript/postAnalysisMessage (they either have no transcript or no
-// inbound message), so process-queue can be exercised end-to-end here without ever touching the OpenAI
-// or Slack APIs - claimPendingRows, the realtime/backfill ordering, and the empty-transcript skip path are
-// all real DB behavior, not mocked.
+// The rows below never reach analyzeTranscript/postAnalysisMessage (they have no transcript, no inbound
+// message, or a conversation that is not closed), so process-queue can be exercised end-to-end here
+// without ever touching the OpenAI or Slack APIs - claimPendingRows, the realtime/backfill ordering, the
+// empty-transcript skip path, and the closed-state guard are all real DB behavior, not mocked.
+
+// An analyzable transcript: a resident who has texted in to the Outlier number. `closed` is left to the
+// caller so the closed-state guard can be exercised without reaching the OpenAI call.
+const createConversationWithInboundMessage = async (residentPhone: string, closed?: boolean) => {
+  const conversation = await createConversation(closed === undefined ? {} : { closed })
+  // authors rows must exist first: conversations_authors and twilio_messages both FK on authors.phone_number
+  await createAuthor(residentPhone)
+  await createAuthor(OUTLIER_PHONE_NUMBER)
+  await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
+  await createTwilioMessage({ fromField: residentPhone, toField: OUTLIER_PHONE_NUMBER })
+  return conversation
+}
 
 describe('conversation-analysis process-queue', { sanitizeOps: false, sanitizeResources: false }, () => {
   it('claims realtime rows before backfill rows regardless of creation order', async () => {
@@ -132,6 +144,30 @@ describe('conversation-analysis process-queue', { sanitizeOps: false, sanitizeRe
     const updated = await fetchRow(row.id)
     assertEquals(updated.status, 'skipped')
     assertEquals(updated.attempts, 1)
+  })
+
+  it('skips an analyzable row whose conversation was never observed closed', async () => {
+    const conversation = await createConversationWithInboundMessage('+13135553333')
+    const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending' })
+
+    await invokeProcessQueue()
+
+    const updated = await fetchRow(row.id)
+    assertEquals(updated.status, 'skipped')
+    assertEquals(updated.suppressReason, 'not-closed')
+    assertEquals(updated.error, null)
+  })
+
+  it('skips an analyzable row whose conversation was reopened before processing', async () => {
+    const conversation = await createConversationWithInboundMessage('+13135554444', false)
+    const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending' })
+
+    await invokeProcessQueue()
+
+    const updated = await fetchRow(row.id)
+    assertEquals(updated.status, 'skipped')
+    assertEquals(updated.suppressReason, 'reopened-before-processing')
+    assertEquals(updated.error, null)
   })
 
   it('does nothing and still responds ok when there are no pending rows', async () => {

@@ -17,9 +17,10 @@ const FUNCTION_NAME = 'conversation-analysis/'
 // Matches OUTLIER_PHONE_NUMBER in tests/.env.edge_testing, which configures the served function process.
 const OUTLIER_PHONE_NUMBER = '+15555550100'
 
-// A conversation seed-backfill should pick up: a resident who has texted in to the Outlier number.
+// A conversation seed-backfill should pick up: closed, with a resident who has texted in to the Outlier
+// number. `closed: true` is required - the seed query only takes conversations we know are finished.
 const createEligibleConversation = async (createdAt?: string) => {
-  const conversation = await createConversation({ createdAt })
+  const conversation = await createConversation({ createdAt, closed: true })
   const residentPhone = `+1313555${Math.floor(1000 + Math.random() * 8999)}`
   // authors rows must exist first: conversations_authors and twilio_messages both FK on authors.phone_number
   await createAuthor(residentPhone)
@@ -49,7 +50,8 @@ describe('conversation-analysis seed-backfill', { sanitizeOps: false, sanitizeRe
   })
 
   it('does not seed a conversation whose only twilio message is outbound from the Outlier number', async () => {
-    const conversation = await createConversation()
+    // Closed, so the message direction is the only reason this is excluded.
+    const conversation = await createConversation({ closed: true })
     const residentPhone = '+13135551111'
     await createAuthor(residentPhone)
     await createAuthor(OUTLIER_PHONE_NUMBER)
@@ -67,7 +69,45 @@ describe('conversation-analysis seed-backfill', { sanitizeOps: false, sanitizeRe
   })
 
   it('does not seed a conversation with no twilio messages at all', async () => {
-    await createConversation()
+    await createConversation({ closed: true })
+
+    const { data } = await serviceClient.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { action: 'seed-backfill' },
+    })
+
+    assertEquals(data.seeded, 0)
+    const rows = await supabase.select().from(conversationAnalyses)
+    assertEquals(rows.length, 0)
+  })
+
+  // The two cases below cover the `closed IS TRUE` filter. Without it, an active thread would be
+  // summarized and posted to Slack mid-conversation.
+  it('does not seed an otherwise-eligible conversation that was never observed closed', async () => {
+    const conversation = await createConversation()
+    const residentPhone = '+13135553333'
+    await createAuthor(residentPhone)
+    await createAuthor(OUTLIER_PHONE_NUMBER)
+    await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
+    await createTwilioMessage({ fromField: residentPhone, toField: OUTLIER_PHONE_NUMBER })
+
+    const { data } = await serviceClient.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { action: 'seed-backfill' },
+    })
+
+    assertEquals(data.seeded, 0)
+    const rows = await supabase.select().from(conversationAnalyses)
+    assertEquals(rows.length, 0)
+  })
+
+  it('does not seed an otherwise-eligible conversation that is explicitly open', async () => {
+    const conversation = await createConversation({ closed: false })
+    const residentPhone = '+13135554444'
+    await createAuthor(residentPhone)
+    await createAuthor(OUTLIER_PHONE_NUMBER)
+    await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
+    await createTwilioMessage({ fromField: residentPhone, toField: OUTLIER_PHONE_NUMBER })
 
     const { data } = await serviceClient.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
