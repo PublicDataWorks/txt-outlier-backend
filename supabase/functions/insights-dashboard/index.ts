@@ -46,6 +46,11 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
     const last7Start = new Date(now.getTime() - 7 * DAY_MS).toISOString()
     const last30Start = new Date(now.getTime() - 30 * DAY_MS).toISOString()
 
+    // Recent-period tiles bucket by the conversation's own activity date, not the analysis row's
+    // created_at: a backfill inserts historical rows today, which would otherwise make years of history
+    // appear in "Last 7 days". Matches the tags-over-time endpoint's expression.
+    const activityDate = sql`coalesce(${conversationAnalyses.lastMessageAt}, ${conversationAnalyses.createdAt})`
+
     const [[totalRow], [last7Row], [unmetRow], [promotedRow]] = await Promise.all([
       supabase
         .select({ count: sql<number>`count(*)::int` })
@@ -54,14 +59,14 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
       supabase
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAnalyses)
-        .where(and(eq(conversationAnalyses.status, 'completed'), gte(conversationAnalyses.createdAt, last7Start))),
+        .where(and(eq(conversationAnalyses.status, 'completed'), gte(activityDate, last7Start))),
       supabase
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAnalyses)
         .where(and(
           eq(conversationAnalyses.status, 'completed'),
           eq(conversationAnalyses.unmetDemand, true),
-          gte(conversationAnalyses.createdAt, last30Start),
+          gte(activityDate, last30Start),
         )),
       supabase
         .select({ count: sql<number>`count(*)::int` })

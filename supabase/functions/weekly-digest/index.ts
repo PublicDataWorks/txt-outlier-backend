@@ -71,6 +71,9 @@ const getUnmetDemandCount = async (from: Date, to: Date): Promise<number> => {
     .where(
       and(
         eq(conversationAnalyses.status, 'completed'),
+        // Suppressed rows are withheld from realtime Slack posts and top-tag counts; surfacing their
+        // model-written summaries here would route around that guarantee.
+        isNull(conversationAnalyses.suppressReason),
         eq(conversationAnalyses.unmetDemand, true),
         gte(conversationAnalyses.updatedAt, from.toISOString()),
         lt(conversationAnalyses.updatedAt, to.toISOString()),
@@ -103,6 +106,7 @@ const getUnmetDemandExamples = async (
     .where(
       and(
         eq(conversationAnalyses.status, 'completed'),
+        isNull(conversationAnalyses.suppressReason),
         eq(conversationAnalyses.unmetDemand, true),
         gte(conversationAnalyses.updatedAt, from.toISOString()),
         lt(conversationAnalyses.updatedAt, to.toISOString()),

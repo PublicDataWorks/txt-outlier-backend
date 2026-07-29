@@ -239,6 +239,9 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
       true,
     )
     assertEquals(content.includes('msg-119'), true)
+    // 'msg-0' is not a substring of msg-10..msg-19 or msg-100..msg-119 (the dash breaks the match), so this
+    // genuinely proves the window drops from the front rather than just ending up 100 long.
+    assertEquals(content.includes('msg-0'), false)
   })
 
   it('drops the oldest messages until the transcript fits within the character budget', async () => {
@@ -382,5 +385,92 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
       'No active analysis tags available',
     )
     assertEquals(fetchStub.called, false)
+  })
+
+  it('fails fast when OPENAI_API_KEY is unset instead of sending "Bearer undefined"', async () => {
+    const envStub = sandbox.stub(Deno.env, 'get')
+    envStub.withArgs('OPENAI_API_KEY').returns(undefined)
+    envStub.callThrough()
+
+    await assertRejects(
+      () => analyzeTranscript([buildMessage(0)], tags),
+      Error,
+      'OPENAI_API_KEY environment variable is not set',
+    )
+    assertEquals(fetchStub.called, false)
+  })
+
+  it('keeps a quote whose only difference is a curly apostrophe or unicode dash', async () => {
+    fetchStub.resolves(openAiResponse({ ...basePayload, supporting_quote: 'I don’t have money — at all' }))
+
+    const result = await analyzeTranscript(
+      [buildMessage(0, { body: "I don't have money - at all right now" })],
+      tags,
+    )
+
+    assertEquals(result.supportingQuote, 'I don’t have money — at all')
+  })
+
+  it('redacts phone numbers from the summary, quote, and unmet-demand reason', async () => {
+    const residentBody = 'Call me at 313-555-0199 about the bill'
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Resident asked to be called at 313-555-0199 regarding a water bill.',
+      supporting_quote: residentBody,
+      unmet_demand: true,
+      unmet_demand_reason: 'Could not reach them on 3135550199',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0, { body: residentBody })], tags)
+
+    assertEquals(result.summary.includes('313-555-0199'), false)
+    assertStringIncludes(result.summary, '[phone redacted]')
+    // Verbatim-but-PII-bearing quotes pass the provenance check, so redaction is the layer that catches them.
+    assertEquals(result.supportingQuote.includes('313-555-0199'), false)
+    assertEquals(result.unmetDemandReason?.includes('3135550199'), false)
+  })
+
+  it('redacts street addresses and Michigan ZIPs but leaves ordinary numbers alone', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Resident at 4577 Beniteau Street, Detroit 48214 needs $8,000 for a transmission and 12 permits.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    assertEquals(result.summary.includes('4577 Beniteau Street'), false)
+    assertEquals(result.summary.includes('48214'), false)
+    assertStringIncludes(result.summary, '[address redacted]')
+    assertStringIncludes(result.summary, '[zip redacted]')
+    // Dollar amounts and small counts are not PII and must survive intact.
+    assertStringIncludes(result.summary, '$8,000')
+    assertStringIncludes(result.summary, '12 permits')
+  })
+
+  it('does not log the dropped quote text, which may itself carry PII', async () => {
+    const warnStub = sandbox.stub(console, 'warn')
+    fetchStub.resolves(openAiResponse({ ...basePayload, supporting_quote: 'my number is 313-555-0199' }))
+
+    await analyzeTranscript([buildMessage(0, { body: 'unrelated content' })], tags)
+
+    assertEquals(warnStub.called, true)
+    assertEquals(warnStub.getCall(0).args.join(' ').includes('313-555-0199'), false)
+  })
+
+  it('does not put response payload content into the no-output-text error', async () => {
+    fetchStub.resolves(
+      new Response(
+        JSON.stringify({
+          id: 'resp_123',
+          status: 'completed',
+          output: [{ type: 'reasoning', summary: [] }],
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const error = await assertRejects(() => analyzeTranscript([buildMessage(0)], tags), Error)
+    assertStringIncludes(error.message, 'resp_123')
+    assertStringIncludes(error.message, 'item types=[reasoning]')
   })
 })

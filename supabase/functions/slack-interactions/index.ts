@@ -17,9 +17,12 @@ const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise
 
   // Guarded by `promotedAt IS NULL` so a duplicate click (or Slack retry) is a no-op: only the first
   // request to reach here updates the row, and returns it - later ones see zero rows returned.
+  // Deliberately does NOT touch updated_at: the weekly digest and dashboard treat it as "when the pipeline
+  // last analyzed this row", so bumping it on a promotion click would pull an old conversation back into the
+  // current 7-day window and distort week-over-week deltas. promoted_at is the promotion's own timestamp.
   const [updated] = await supabase
     .update(conversationAnalyses)
-    .set({ promotedAt: now, promotedBy, updatedAt: now })
+    .set({ promotedAt: now, promotedBy })
     .where(and(eq(conversationAnalyses.id, analysisId), isNull(conversationAnalyses.promotedAt)))
     .returning({
       slackChannel: conversationAnalyses.slackChannel,
@@ -37,7 +40,7 @@ const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise
     // re-click would be a promoted_at-guarded no-op, leaving the message stuck un-promoted forever.
     await supabase
       .update(conversationAnalyses)
-      .set({ promotedAt: null, promotedBy: null, updatedAt: new Date().toISOString() })
+      .set({ promotedAt: null, promotedBy: null })
       .where(eq(conversationAnalyses.id, analysisId))
     throw error
   }

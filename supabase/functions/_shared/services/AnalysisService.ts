@@ -255,8 +255,43 @@ const AnalysisOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
 })
 
-// Normalizes whitespace so a quote that differs only in line breaks or spacing still matches.
-const normalizeForQuoteMatch = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase()
+// Models routinely "helpfully" substitute typographic characters even when asked to copy verbatim, so fold
+// the common variants together before comparing - otherwise a genuine quote gets dropped over a curly
+// apostrophe. Whitespace and case are normalized for the same reason.
+const normalizeForQuoteMatch = (text: string): string =>
+  text
+    .replace(/[‘’ʼ′]/g, "'")
+    .replace(/[“”″]/g, '"')
+    .replace(/[‐-―−]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+// Deterministic PII backstop for every model-authored string that reaches Slack, the dashboard, or the DB.
+// The prompt already tells the model to leave these out, but a prompt is not an enforcement mechanism and
+// the Slack template's "no resident identifiers" property is one we actually want to hold.
+//
+// Deliberately NOT attempting regex name detection: there is no reliable pattern for it and the false
+// positives ("Wayne County", "Detroit Water") would mangle legitimate summaries. Names remain a
+// prompt-level instruction only - see docs/conversation-tagging.md.
+const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
+  // 10-digit North American numbers with common separators, optional +1 and extension-free.
+  { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g },
+  // Bare 10/11-digit runs (e.g. "3135550199") that a resident may type without separators.
+  { label: '[phone redacted]', pattern: /\b1?\d{10}\b/g },
+  // House number + optional street words + a street-type suffix.
+  {
+    label: '[address redacted]',
+    pattern:
+      /\b\d{1,6}\s+(?:[A-Za-z0-9.'\-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|cir|circle)\b\.?/gi,
+  },
+  // Michigan ZIPs only (48xxx/49xxx), so ordinary 5-digit figures like dollar amounts survive intact.
+  { label: '[zip redacted]', pattern: /\b4[89]\d{3}(?:-\d{4})?\b/g },
+]
+
+export const redactPii = (text: string): string =>
+  PII_PATTERNS.reduce((redacted, { label, pattern }) => redacted.replace(pattern, label), text)
 
 // Structured Outputs can guarantee the shape of a quote but not its provenance, and the historical audit
 // caught the model citing details that were not in the transcript. A quote that isn't actually present in
@@ -297,7 +332,15 @@ const extractOutputText = (data: any): string => {
   // shape change in the item list doesn't take the pipeline down.
   const text = textPart?.text ?? (typeof data.output_text === 'string' ? data.output_text : undefined)
   if (!text) {
-    throw new Error(`OpenAI response did not include structured output text: ${JSON.stringify(data)}`)
+    // Log the response's shape, never its content: this payload carries the model's summary and quote,
+    // both derived from a resident's private SMS, and processRow persists error strings into
+    // conversation_analyses.error.
+    // deno-lint-ignore no-explicit-any
+    const itemTypes = (data.output ?? []).map((item: any) => item.type).join(',')
+    throw new Error(
+      `OpenAI response did not include structured output text (id=${data.id}, status=${data.status}, ` +
+        `item types=[${itemTypes}])`,
+    )
   }
   return text
 }
@@ -324,7 +367,7 @@ export const analyzeTranscript = async (
     : transcriptText
 
   const tagNames = tags.map((tag) => tag.name)
-  const model = options.model ?? Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL
+  const model = options.model ?? resolveAnalysisModel('realtime')
 
   // Explicit controller + clearTimeout instead of AbortSignal.timeout(): the latter leaves its timer
   // running after the response arrives, which leaks into whatever else the isolate (or a test) is doing.
@@ -333,9 +376,15 @@ export const analyzeTranscript = async (
     () => abortController.abort(new Error('OpenAI API request timed out')),
     OPENAI_TIMEOUT_MS,
   )
-  let response: Response
+  // The body is consumed inside the try/finally on purpose: clearing the timer as soon as headers arrive
+  // would leave response.json()/text() unbounded, and a stalled body stream would hang this worker
+  // indefinitely rather than for a single cron tick.
+  let data: unknown
+  // Captured rather than thrown inside the try so the catch below doesn't re-wrap it into a doubled
+  // "request failed: request failed" message; rethrown once the timer is cleared.
+  let httpErrorMessage: string | null = null
   try {
-    response = await fetch(OPENAI_RESPONSES_URL, {
+    const response = await fetch(OPENAI_RESPONSES_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -354,25 +403,30 @@ export const analyzeTranscript = async (
       }),
       signal: abortController.signal,
     })
+
+    if (!response.ok) {
+      // OpenAI error bodies describe the request's shape, not the transcript, so this one is safe to surface.
+      httpErrorMessage = `OpenAI API request failed with status ${response.status}: ${await response.text()}`
+    } else {
+      data = await response.json()
+    }
   } catch (error) {
-    throw new Error(`OpenAI API request failed: ${error.message}`)
+    throw new Error(`OpenAI API request failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     clearTimeout(timeoutId)
   }
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    throw new Error(`OpenAI API request failed with status ${response.status}: ${errorBody}`)
+  if (httpErrorMessage) {
+    throw new Error(httpErrorMessage)
   }
 
-  const data = await response.json()
   const outputText = extractOutputText(data)
 
   let rawOutput: unknown
   try {
     rawOutput = JSON.parse(outputText)
   } catch (_error) {
-    throw new Error(`OpenAI structured output was not valid JSON: ${outputText.slice(0, 500)}`)
+    // Length only - the text is model output derived from resident SMS content.
+    throw new Error(`OpenAI structured output was not valid JSON (${outputText.length} chars)`)
   }
 
   const parsed = AnalysisOutputSchema.safeParse(rawOutput)
@@ -392,11 +446,13 @@ export const analyzeTranscript = async (
 
   // Checked against the truncated window rather than the full transcript: the model can only legitimately
   // quote what it was actually shown, so a "quote" matching only a dropped message is a coincidence at best.
-  const supportingQuote = verifyQuoteIsVerbatim(output.supporting_quote, messages) ? output.supporting_quote : ''
-  if (output.supporting_quote && !supportingQuote) {
+  const verifiedQuote = verifyQuoteIsVerbatim(output.supporting_quote, messages) ? output.supporting_quote : ''
+  if (output.supporting_quote && !verifiedQuote) {
+    // Deliberately does not log the quote text: it is unverified content that may itself carry the PII the
+    // rest of this function exists to keep out of durable stores.
     console.warn(
-      `Dropping supporting quote that does not appear verbatim in any inbound message: ` +
-        `"${output.supporting_quote.slice(0, 120)}"`,
+      `Dropping supporting quote that does not appear verbatim in any inbound message ` +
+        `(${output.supporting_quote.length} chars)`,
     )
   }
 
@@ -404,10 +460,12 @@ export const analyzeTranscript = async (
     tag: matchedTag?.name ?? 'no-impact',
     secondaryTags,
     topic: matchedTopic ?? 'Other',
-    summary: output.summary,
-    supportingQuote,
+    // Every model-authored string is redacted once, here, so the DB row, the Slack post, the weekly digest,
+    // and the dashboard all inherit the same guarantee rather than each re-implementing it.
+    summary: redactPii(output.summary),
+    supportingQuote: redactPii(verifiedQuote),
     unmetDemand: output.unmet_demand,
-    unmetDemandReason: output.unmet_demand_reason ?? null,
+    unmetDemandReason: output.unmet_demand_reason ? redactPii(output.unmet_demand_reason) : null,
     confidence: output.confidence,
   }
 }

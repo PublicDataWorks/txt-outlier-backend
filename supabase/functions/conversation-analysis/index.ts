@@ -1,11 +1,12 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { withSupabase } from '@supabase/server'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { analysisTags, conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
+import { analysisTags, conversationAnalyses, conversationHistory, conversations } from '../_shared/drizzle/schema.ts'
+import { RuleType } from '../user-actions/types.ts'
 import {
   analyzeTranscript,
   getConversationTranscript,
@@ -90,11 +91,23 @@ const loadConversationMeta = async (
     .select({
       webUrl: conversations.webUrl,
       assigneeNames: conversations.assigneeNames,
-      updatedAt: conversations.updatedAt,
       closed: conversations.closed,
     })
     .from(conversations)
     .where(eq(conversations.id, conversationId))
+
+  // conversations.updated_at is never written by the webhook ingest path (adaptConversation doesn't set it),
+  // so the close time has to come from the history row handleConversationStatusChanged records. Falling back
+  // to NULL renders as "unknown date" rather than inventing a timestamp.
+  const [closeEvent] = await supabase
+    .select({ createdAt: conversationHistory.createdAt })
+    .from(conversationHistory)
+    .where(and(
+      eq(conversationHistory.conversationId, conversationId),
+      eq(conversationHistory.changeType, RuleType.ConversationClosed),
+    ))
+    .orderBy(desc(conversationHistory.createdAt))
+    .limit(1)
 
   // Best-effort attribution: Missive's close event doesn't reliably identify who clicked close, so this
   // is the assignee(s) at analysis time, not a guaranteed record of who actually closed it.
@@ -103,7 +116,7 @@ const loadConversationMeta = async (
   return {
     webUrl: conversation?.webUrl ?? '',
     closedBy,
-    closedAt: conversation?.updatedAt ?? null,
+    closedAt: closeEvent?.createdAt ?? null,
     closed: conversation?.closed ?? null,
   }
 }
@@ -185,6 +198,19 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     : null
 
   if (!slackMessage && !suppressed) {
+    // The model call can take up to OPENAI_TIMEOUT_MS, and a reopen landing in that window can't be
+    // cancelled by the reopen handler (it only touches 'pending' rows, and this one is 'processing').
+    // Re-check immediately before publishing so a stale analysis of a since-reopened conversation is
+    // recorded but never posted.
+    const stillClosed = await loadConversationMeta(row.conversationId)
+    if (stillClosed.closed === false) {
+      await supabase
+        .update(conversationAnalyses)
+        .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
+        .where(eq(conversationAnalyses.id, row.id))
+      return
+    }
+
     const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
     slackMessage = await postAnalysisMessage(
       {
@@ -241,6 +267,17 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     .where(eq(conversationAnalyses.id, row.id))
 }
 
+// The stale-processing lease is measured from updated_at, but rows are processed sequentially and each can
+// spend up to OPENAI_TIMEOUT_MS in the model call. A large batch would therefore let later rows age past the
+// lease before their first attempt and be reclaimed by the next cron tick - double-analyzing and
+// double-posting them. Touching updated_at right before each row makes the lease per-row rather than
+// per-batch.
+const refreshLease = (id: number) =>
+  supabase
+    .update(conversationAnalyses)
+    .set({ updatedAt: new Date().toISOString() })
+    .where(eq(conversationAnalyses.id, id))
+
 const processQueue = async (batchSize: number): Promise<void> => {
   const claimed = await claimPendingRows(batchSize)
   if (claimed.length === 0) return
@@ -252,6 +289,7 @@ const processQueue = async (batchSize: number): Promise<void> => {
       await markFailedOrRetry(row, new Error(`Exceeded ${MAX_ATTEMPTS} attempts (reclaimed stale processing row)`))
       continue
     }
+    await refreshLease(row.id)
     try {
       await processRow(row, tags)
     } catch (error) {
@@ -292,10 +330,15 @@ const seedBackfill = async (limit?: number, before?: string, after?: string): Pr
     SELECT c.id, 'pending', 'backfill'
     FROM conversations c
     WHERE EXISTS (
+      -- The Outlier number is itself a conversations_authors row on SMS conversations, so joining on
+      -- either side of the message would let any inbound message anywhere satisfy this for every
+      -- conversation. Correlate strictly on the resident (from) side, mirroring getConversationTranscript.
       SELECT 1
-      FROM twilio_messages tm
-      JOIN conversations_authors ca ON ca.author_phone_number IN (tm.from_field, tm.to_field)
-      WHERE ca.conversation_id = c.id AND tm.to_field = ${outlierPhone}
+      FROM conversations_authors ca
+      JOIN twilio_messages tm ON tm.from_field = ca.author_phone_number
+      WHERE ca.conversation_id = c.id
+        AND ca.author_phone_number <> ${outlierPhone}
+        AND tm.to_field = ${outlierPhone}
     )
     ${afterClause}
     ${beforeClause}
