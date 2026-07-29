@@ -24,7 +24,7 @@
   broadcast schedules and content via the Missive broadcast sidebar.
 - **Personalized Campaign Messages**: Send individualized messages to recipients where each person receives a unique
   custom message, using database triggers to automatically process and queue messages.
-- **AI Conversation Tagging**: Use the `conversation-analysis` edge function to have Claude tag, summarize, and flag
+- **AI Conversation Tagging**: Use the `conversation-analysis` edge function to have an OpenAI model tag, summarize, and flag
   unmet demand in finished SMS conversations, posting each result to Slack for review with a promote-to-story-idea
   button, plus a weekly digest and insights dashboard. See [Conversation Tagging Documentation](docs/conversation-tagging.md).
 
@@ -111,7 +111,7 @@ The following edge functions are utilized within the broadcast and campaign syst
 9. **broadcast-sidebar**: Used by the broadcast sidebar on Missive to get a list of broadcasts and let admins update
    upcoming broadcast message content.
 10. **campaign**: API to get/create/update/delete campaign.
-11. **conversation-analysis**: Claims and analyzes pending `conversation_analyses` rows with Claude and posts results
+11. **conversation-analysis**: Claims and analyzes pending `conversation_analyses` rows via OpenAI and posts results
     to Slack, called by the `analyze-conversations` cron job; also seeds backfill rows for historical conversations.
 12. **slack-interactions**: Slack interactivity endpoint that handles the "Promote to story idea" button click.
 13. **weekly-digest**: Posts a weekly summary of tagged conversations to Slack, called by the

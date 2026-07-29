@@ -4,8 +4,22 @@ import supabase from '../lib/supabase.ts'
 import { conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
 import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
 
-export const PROMPT_VERSION = 'q2-v1'
-export const DEFAULT_ANALYSIS_MODEL = 'claude-sonnet-5'
+export const PROMPT_VERSION = 'q2-v2-openai'
+
+// gpt-5.6 tiers (Sol > Terra > Luna). Realtime closes are a handful a day, so the cost difference is
+// negligible there and tag quality - which the whole newsroom sees in Slack - wins; bulk backfill runs
+// thousands of rows for aggregate analysis, where Terra's half-price is the better trade.
+// NB: the bare 'gpt-5.6' alias routes to Sol, so the tier is always named explicitly here.
+export const DEFAULT_ANALYSIS_MODEL = 'gpt-5.6-sol'
+export const DEFAULT_BACKFILL_MODEL = 'gpt-5.6-terra'
+// 'medium' is the sweet spot for this task: the taxonomy's hard calls (templated broadcast vs. real
+// reporter engagement) need some deliberation, but this is classification, not research.
+export const DEFAULT_REASONING_EFFORT = 'medium'
+
+export const resolveAnalysisModel = (source: string): string =>
+  source === 'backfill'
+    ? Deno.env.get('ANALYSIS_BACKFILL_MODEL') ?? DEFAULT_BACKFILL_MODEL
+    : Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL
 
 // Tags that are filtered from Slack/the weekly digest by default (see docs/conversation-tagging.md).
 // Deliberately excludes 'automation-failure': a historical audit found the opposite rule being applied
@@ -33,8 +47,16 @@ export const TOPIC_TAGS = [
   'Other',
 ]
 
-const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
-const ANTHROPIC_TIMEOUT_MS = 30_000
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
+// Reasoning models think before answering, so the ceiling is well above the ~60s a non-reasoning call
+// would need. The queue processes rows sequentially on a 1-minute cron, so a slow call costs us a tick,
+// not a backlog.
+const OPENAI_TIMEOUT_MS = 120_000
+// Ceiling for reasoning + visible output combined - OpenAI recommends reserving at least 25k for reasoning
+// models. It's a ceiling, not a target: our JSON payload is a few hundred tokens and we only pay for what
+// is actually generated, so the headroom costs nothing and keeps a deliberating model from being truncated
+// mid-answer (which surfaces as status 'incomplete').
+const MAX_OUTPUT_TOKENS = 25_000
 const OUTLIER_PHONE_NUMBER = Deno.env.get('OUTLIER_PHONE_NUMBER')
 
 // Most recent N messages / M chars we'll ever send to the model, to keep prompts bounded.
@@ -152,28 +174,48 @@ that Outlier could not provide or that went unanswered in the transcript; when t
 unmet_demand_reason, otherwise set unmet_demand_reason to null. Set confidence to your confidence in this \
 analysis, from 0 (low) to 1 (high) - use below 0.5 only when the transcript is genuinely ambiguous.
 
-Call the record_analysis tool exactly once with your findings.`
+Respond with a single JSON object matching the required schema. Choose at most 2 secondary tags; return an \
+empty array when no secondary theme applies.`
 }
 
-const RECORD_ANALYSIS_TOOL = {
-  name: 'record_analysis',
-  description: 'Record the structured analysis of an SMS conversation between Outlier Media and a Detroit resident.',
-  input_schema: {
+// Strict Structured Outputs schema. Constraining tag/topic with `enum` is the main reliability win over
+// the previous free-string-plus-fallback approach: the API itself guarantees a value from the live taxonomy,
+// so an unrecognized tag is no longer possible. Strict mode rejects `maxItems`/`minItems`, so the
+// "at most 2 secondary tags" cap is stated in the prompt and enforced in code below.
+const buildAnalysisFormat = (tagNames: string[], topicNames: string[]) => ({
+  type: 'json_schema',
+  name: 'conversation_analysis',
+  strict: true,
+  schema: {
     type: 'object',
+    additionalProperties: false,
+    // Strict mode requires every property to be listed in `required`; nullability is expressed with a
+    // union type (unmet_demand_reason) rather than by omitting the key.
+    required: [
+      'tag',
+      'secondary_tags',
+      'topic',
+      'summary',
+      'supporting_quote',
+      'unmet_demand',
+      'unmet_demand_reason',
+      'confidence',
+    ],
     properties: {
       tag: {
         type: 'string',
-        description: 'The single primary tag chosen from the provided taxonomy.',
+        enum: tagNames,
+        description: 'The single primary tag that best describes the conversation outcome.',
       },
       secondary_tags: {
         type: 'array',
-        items: { type: 'string' },
-        maxItems: 2,
-        description: 'Up to two additional relevant tags from the taxonomy.',
+        items: { type: 'string', enum: tagNames },
+        description: 'Up to two additional relevant tags. Empty array when no secondary theme applies.',
       },
       topic: {
         type: 'string',
-        description: 'The single topic chosen from the provided topic list describing what the resident asked about.',
+        enum: topicNames,
+        description: 'The single topic describing what the resident actually asked about.',
       },
       summary: {
         type: 'string',
@@ -181,7 +223,8 @@ const RECORD_ANALYSIS_TOOL = {
       },
       supporting_quote: {
         type: 'string',
-        description: 'A quote copied verbatim from one of the inbound (resident) messages.',
+        description: 'A quote copied verbatim from one of the inbound (resident) messages, with no phone number, ' +
+          'street address, or full name. Empty string if no suitable quote exists.',
       },
       unmet_demand: {
         type: 'boolean',
@@ -196,34 +239,83 @@ const RECORD_ANALYSIS_TOOL = {
         description: 'Confidence in this analysis, from 0 to 1.',
       },
     },
-    required: [
-      'tag',
-      'secondary_tags',
-      'topic',
-      'summary',
-      'supporting_quote',
-      'unmet_demand',
-      'unmet_demand_reason',
-      'confidence',
-    ],
   },
-}
+})
 
-const ToolOutputSchema = z.object({
+// Structured Outputs already guarantees this shape; validating anyway keeps a malformed or truncated
+// payload from reaching the DB, and normalizes the values the rest of the pipeline depends on.
+const AnalysisOutputSchema = z.object({
   tag: z.string().min(1),
-  secondary_tags: z.array(z.string()).max(2).default([]),
+  secondary_tags: z.array(z.string()).default([]),
   topic: z.string().min(1),
   summary: z.string().min(1),
-  supporting_quote: z.string().min(1),
+  supporting_quote: z.string(),
   unmet_demand: z.boolean(),
   unmet_demand_reason: z.string().nullable().optional(),
   confidence: z.number().min(0).max(1),
 })
 
+// Normalizes whitespace so a quote that differs only in line breaks or spacing still matches.
+const normalizeForQuoteMatch = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase()
+
+// Structured Outputs can guarantee the shape of a quote but not its provenance, and the historical audit
+// caught the model citing details that were not in the transcript. A quote that isn't actually present in
+// an inbound message is dropped rather than published to Slack under a resident's voice.
+const verifyQuoteIsVerbatim = (quote: string, transcript: TranscriptMessage[]): boolean => {
+  const needle = normalizeForQuoteMatch(quote)
+  if (!needle) return false
+  return transcript
+    .filter((message) => message.direction === 'inbound')
+    .some((message) => normalizeForQuoteMatch(message.body).includes(needle))
+}
+
+// The Responses API returns a list of output items; the assistant's structured payload lives in the
+// `message` item, which carries either an `output_text` part or a `refusal`.
+// deno-lint-ignore no-explicit-any
+const extractOutputText = (data: any): string => {
+  if (data.status === 'incomplete') {
+    throw new Error(
+      `OpenAI response was incomplete: ${JSON.stringify(data.incomplete_details ?? {})}. ` +
+        `Consider raising max_output_tokens (currently ${MAX_OUTPUT_TOKENS}).`,
+    )
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const message = (data.output ?? []).find((item: any) => item.type === 'message')
+  // deno-lint-ignore no-explicit-any
+  const parts: any[] = message?.content ?? []
+
+  // deno-lint-ignore no-explicit-any
+  const refusal = parts.find((part: any) => part.type === 'refusal')
+  if (refusal) {
+    throw new Error(`OpenAI refused the analysis request: ${refusal.refusal}`)
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const textPart = parts.find((part: any) => part.type === 'output_text')
+  // `output_text` is also exposed as a top-level convenience field by some clients; fall back to it so a
+  // shape change in the item list doesn't take the pipeline down.
+  const text = textPart?.text ?? (typeof data.output_text === 'string' ? data.output_text : undefined)
+  if (!text) {
+    throw new Error(`OpenAI response did not include structured output text: ${JSON.stringify(data)}`)
+  }
+  return text
+}
+
 export const analyzeTranscript = async (
   transcript: TranscriptMessage[],
   tags: { name: string; description: string }[],
+  options: { model?: string } = {},
 ): Promise<AnalysisResult> => {
+  if (tags.length === 0) {
+    // An empty taxonomy would produce an empty `enum`, which the API rejects outright.
+    throw new Error('No active analysis tags available: cannot build the analysis schema')
+  }
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY environment variable is not set')
+  }
+
   const { messages, truncated } = truncateTranscript(transcript)
   const transcriptText = formatTranscript(messages)
   const userContent = truncated
@@ -231,79 +323,89 @@ export const analyzeTranscript = async (
       `only what is shown below.\n\n${transcriptText}`
     : transcriptText
 
+  const tagNames = tags.map((tag) => tag.name)
+  const model = options.model ?? Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL
+
   // Explicit controller + clearTimeout instead of AbortSignal.timeout(): the latter leaves its timer
   // running after the response arrives, which leaks into whatever else the isolate (or a test) is doing.
   const abortController = new AbortController()
   const timeoutId = setTimeout(
-    () => abortController.abort(new Error('Anthropic API request timed out')),
-    ANTHROPIC_TIMEOUT_MS,
+    () => abortController.abort(new Error('OpenAI API request timed out')),
+    OPENAI_TIMEOUT_MS,
   )
   let response: Response
   try {
-    response = await fetch(ANTHROPIC_MESSAGES_URL, {
+    response = await fetch(OPENAI_RESPONSES_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': Deno.env.get('ANTHROPIC_API_KEY')!,
-        'anthropic-version': '2023-06-01',
+        'authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL,
-        max_tokens: 1024,
-        system: buildSystemPrompt(tags),
-        messages: [{ role: 'user', content: userContent }],
-        tools: [RECORD_ANALYSIS_TOOL],
-        tool_choice: { type: 'tool', name: 'record_analysis' },
+        model,
+        instructions: buildSystemPrompt(tags),
+        input: userContent,
+        reasoning: { effort: Deno.env.get('ANALYSIS_REASONING_EFFORT') ?? DEFAULT_REASONING_EFFORT },
+        max_output_tokens: MAX_OUTPUT_TOKENS,
+        text: { format: buildAnalysisFormat(tagNames, TOPIC_TAGS) },
+        // These transcripts are residents' private SMS conversations - opt out of server-side retention
+        // rather than leaving copies in OpenAI's 30-day response store.
+        store: false,
       }),
       signal: abortController.signal,
     })
   } catch (error) {
-    throw new Error(`Anthropic API request failed: ${error.message}`)
+    throw new Error(`OpenAI API request failed: ${error.message}`)
   } finally {
     clearTimeout(timeoutId)
   }
 
   if (!response.ok) {
     const errorBody = await response.text()
-    throw new Error(`Anthropic API request failed with status ${response.status}: ${errorBody}`)
+    throw new Error(`OpenAI API request failed with status ${response.status}: ${errorBody}`)
   }
 
   const data = await response.json()
-  const content: { type: string; name?: string; input?: unknown }[] = data.content ?? []
-  const toolUse = content.find((block) => block.type === 'tool_use' && block.name === 'record_analysis')
-  if (!toolUse) {
-    throw new Error(`Anthropic response did not include a record_analysis tool call: ${JSON.stringify(data)}`)
+  const outputText = extractOutputText(data)
+
+  let rawOutput: unknown
+  try {
+    rawOutput = JSON.parse(outputText)
+  } catch (_error) {
+    throw new Error(`OpenAI structured output was not valid JSON: ${outputText.slice(0, 500)}`)
   }
 
-  const parsed = ToolOutputSchema.safeParse(toolUse.input)
+  const parsed = AnalysisOutputSchema.safeParse(rawOutput)
   if (!parsed.success) {
-    throw new Error(`Anthropic tool output failed validation: ${parsed.error.message}`)
+    throw new Error(`OpenAI structured output failed validation: ${parsed.error.message}`)
   }
   const output = parsed.data
 
+  // `enum` in the schema makes an off-taxonomy value practically impossible, but the taxonomy is loaded
+  // from the DB at request time, so these remain as cheap defence rather than trusted invariants.
   const matchedTag = tags.find((tag) => tag.name.toLowerCase() === output.tag.toLowerCase())
-  let secondaryTags = [...output.secondary_tags]
-  let tag = output.tag
-  if (!matchedTag) {
-    // The taxonomy has no catch-all tag (unlike the old placeholder's 'other'), so an unmatched proposal
-    // falls back to 'no-impact' - the closest analog to "we don't actually know what happened" - while
-    // preserving the model's original proposal as a secondary tag for review, keeping the documented cap of 2.
-    if (!secondaryTags.some((secondary) => secondary.toLowerCase() === output.tag.toLowerCase())) {
-      secondaryTags = [output.tag, ...secondaryTags].slice(0, 2)
-    }
-    tag = 'no-impact'
-  } else {
-    tag = matchedTag.name
+  const matchedTopic = TOPIC_TAGS.find((topic) => topic.toLowerCase() === output.topic.toLowerCase())
+  const secondaryTags = output.secondary_tags
+    .map((secondary) => tagNames.find((name) => name.toLowerCase() === secondary.toLowerCase()))
+    .filter((name): name is string => Boolean(name) && name !== matchedTag?.name)
+    .slice(0, 2)
+
+  // Checked against the truncated window rather than the full transcript: the model can only legitimately
+  // quote what it was actually shown, so a "quote" matching only a dropped message is a coincidence at best.
+  const supportingQuote = verifyQuoteIsVerbatim(output.supporting_quote, messages) ? output.supporting_quote : ''
+  if (output.supporting_quote && !supportingQuote) {
+    console.warn(
+      `Dropping supporting quote that does not appear verbatim in any inbound message: ` +
+        `"${output.supporting_quote.slice(0, 120)}"`,
+    )
   }
 
-  const matchedTopic = TOPIC_TAGS.find((topic) => topic.toLowerCase() === output.topic.toLowerCase())
-
   return {
-    tag,
+    tag: matchedTag?.name ?? 'no-impact',
     secondaryTags,
     topic: matchedTopic ?? 'Other',
     summary: output.summary,
-    supportingQuote: output.supporting_quote,
+    supportingQuote,
     unmetDemand: output.unmet_demand,
     unmetDemandReason: output.unmet_demand_reason ?? null,
     confidence: output.confidence,

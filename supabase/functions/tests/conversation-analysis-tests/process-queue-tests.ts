@@ -28,7 +28,7 @@ const fetchRow = async (id: number) => {
 }
 
 // The rows below never reach analyzeTranscript/postAnalysisMessage (they either have no transcript or no
-// inbound message), so process-queue can be exercised end-to-end here without ever touching the Anthropic
+// inbound message), so process-queue can be exercised end-to-end here without ever touching the OpenAI
 // or Slack APIs - claimPendingRows, the realtime/backfill ordering, and the empty-transcript skip path are
 // all real DB behavior, not mocked.
 

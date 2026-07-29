@@ -8,10 +8,10 @@ import supabase from '../_shared/lib/supabase.ts'
 import { analysisTags, conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
 import {
   analyzeTranscript,
-  DEFAULT_ANALYSIS_MODEL,
   getConversationTranscript,
   MIN_CONFIDENCE,
   PROMPT_VERSION,
+  resolveAnalysisModel,
   SUPPRESS_TAGS,
 } from '../_shared/services/AnalysisService.ts'
 import { postAnalysisMessage } from '../_shared/services/SlackService.ts'
@@ -49,6 +49,7 @@ type ClaimedRow = {
   id: number
   conversationId: string
   attempts: number
+  source: string
   slackChannel: string | null
   slackMessageTs: string | null
 }
@@ -70,7 +71,7 @@ const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, conversation_id AS "conversationId", attempts,
+    RETURNING id, conversation_id AS "conversationId", attempts, source,
       slack_channel AS "slackChannel", slack_message_ts AS "slackMessageTs"
   `)
   return claimed as unknown as ClaimedRow[]
@@ -161,7 +162,9 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     return
   }
 
-  const result = await analyzeTranscript(transcript, tags)
+  // Realtime closes get the flagship tier; bulk backfill uses the cheaper one (see AnalysisService).
+  const model = resolveAnalysisModel(row.source)
+  const result = await analyzeTranscript(transcript, tags, { model })
 
   const messageCount = transcript.length
   const firstMessageAt = transcript[0].timestamp
@@ -226,7 +229,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       unmetDemandReason: result.unmetDemandReason,
       confidence: result.confidence,
       suppressReason,
-      model: Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL,
+      model,
       promptVersion: PROMPT_VERSION,
       messageCount,
       lastMessageAt,
@@ -243,7 +246,7 @@ const processQueue = async (batchSize: number): Promise<void> => {
   if (claimed.length === 0) return
 
   const tags = await loadActiveTags()
-  // Sequential on purpose: one Anthropic call + one Slack post at a time keeps us well under rate limits.
+  // Sequential on purpose: one OpenAI call + one Slack post at a time keeps us well under rate limits.
   for (const row of claimed) {
     if (row.attempts > MAX_ATTEMPTS) {
       await markFailedOrRetry(row, new Error(`Exceeded ${MAX_ATTEMPTS} attempts (reclaimed stale processing row)`))

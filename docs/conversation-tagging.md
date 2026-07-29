@@ -1,7 +1,7 @@
 # AI Conversation Tagging
 
 This document describes the AI conversation tagging system: how finished SMS conversations with Detroit residents are
-automatically tagged and summarized by Claude, reviewed by the team in Slack, and rolled up into a weekly digest and
+automatically tagged and summarized by an OpenAI model, reviewed by the team in Slack, and rolled up into a weekly
 dashboard.
 
 ## Overview
@@ -19,9 +19,11 @@ The pipeline runs in six stages:
    `action: 'process-queue'`, which claims a small batch of pending rows whose `process_after` has elapsed and
    processes them one at a time.
 4. **AI**: For each claimed row, the transcript is pulled fresh from `twilio_messages` (capturing any activity since
-   the conversation closed, not a stale close-time snapshot), sent to Claude with the active tag taxonomy and topic
-   list, and a structured result (impact tag, secondary tags, topic, summary, supporting quote, unmet-demand flag,
-   confidence) comes back.
+   the conversation closed, not a stale close-time snapshot) and sent to the OpenAI Responses API with the active tag
+   taxonomy and topic list. Structured Outputs (`strict: true`, with the taxonomy as an `enum`) guarantees a result
+   with a valid impact tag, secondary tags, topic, summary, supporting quote, unmet-demand flag, and confidence.
+   The supporting quote is then verified to appear verbatim in an inbound message before it can reach Slack — see
+   [Model and Reliability](#model-and-reliability).
 5. **Suppression**: Some tags (and low-confidence results) are filtered from Slack — see
    [Suppression Rules](#suppression-rules) below. Everything is still recorded in `conversation_analyses` for
    dashboard/analytics purposes; only the Slack post is skipped.
@@ -65,7 +67,7 @@ queries.
 
 ### `analysis_tags`
 
-The editable **impact** tag taxonomy used both to prompt Claude and to validate its primary tag choice. Seeded with
+The editable **impact** tag taxonomy used both to prompt the model and to constrain its primary tag choice. Seeded with
 the evidence-based taxonomy derived from an audit of 776 hand-coded real conversations — see
 [Tag Taxonomy](#tag-taxonomy) below. The **topic** list is a separate, fixed set defined in
 `AnalysisService.TOPIC_TAGS` (not DB-backed, since it's a stable classification independent of the editable impact
@@ -130,12 +132,62 @@ analyses were promoted to story ideas this week. Posts the result as a Slack Blo
 parameter or it returns `401`, and requests are rejected outright if `DASHBOARD_TOKEN` isn't set. See
 [Dashboard](#dashboard) below.
 
+## Model and Reliability
+
+Analysis calls go to the **OpenAI Responses API** (`POST /v1/responses`) — OpenAI's recommended endpoint for new
+work, and the one the GPT-5.6 family's features are built around. `AnalysisService.ts` calls it with plain `fetch`;
+there's no SDK dependency.
+
+### Model tiers
+
+The pipeline picks a tier from the row's `source`, so no caller has to think about it:
+
+| `source` | Env var | Default | Rationale |
+|-----------|---------|---------|-----------|
+| `realtime` | `ANALYSIS_MODEL` | `gpt-5.6-sol` | A handful of conversations close per day, so the cost delta is cents. Every post is team-visible and drives "promote to story idea" calls, so tag quality is what matters. |
+| `backfill` | `ANALYSIS_BACKFILL_MODEL` | `gpt-5.6-terra` | Thousands of rows feeding aggregate analysis, where Terra costs half as much and a few points of accuracy wash out. |
+
+Note that the bare `gpt-5.6` alias routes to Sol — the code always names a tier explicitly so an upstream alias
+change can't silently move which model runs. `ANALYSIS_REASONING_EFFORT` (default `medium`) maps to
+`reasoning.effort`; drop it to `low` for faster/cheaper runs, raise it if the taxonomy's judgment calls start
+slipping.
+
+### What makes the output trustworthy
+
+Four layers, in order:
+
+1. **Structured Outputs with `strict: true`.** The request sends a JSON Schema with `additionalProperties: false`
+   and every field in `required`. The API guarantees a conforming response — there's no prose-parsing or
+   retry-on-malformed-JSON path.
+2. **The taxonomy is an `enum`.** Active `analysis_tags` names are injected as the `enum` for `tag` and
+   `secondary_tags`, and `TOPIC_TAGS` as the `enum` for `topic`. An off-taxonomy tag is therefore not something
+   the model *can* return. (Strict mode rejects some JSON Schema keywords, so the "at most 2 secondary tags" cap
+   lives in the prompt and is enforced in code rather than as `maxItems`.)
+3. **Verbatim quote verification.** Structured Outputs can guarantee a quote's *shape* but not its *provenance*,
+   and the historical audit caught the model citing details absent from the transcript. Every returned
+   `supporting_quote` is checked against the inbound messages (whitespace- and case-normalized); one that doesn't
+   appear is dropped and logged, so a fabricated quote can never be published in a resident's voice. The Slack
+   template already omits the "Quotable" block when the quote is empty.
+4. **Defensive re-validation in code.** The response is still parsed with zod and re-matched against the taxonomy,
+   so a schema drift or a tag retired mid-flight degrades to `no-impact` / `Other` rather than writing junk.
+
+### Failure modes
+
+- `status: "incomplete"` (the model hit `max_output_tokens`, currently 25,000 — a ceiling covering reasoning plus
+  visible output) throws with `incomplete_details` so the row retries on the next tick.
+- A `refusal` content part throws with the refusal text rather than being treated as an empty analysis.
+- Requests carry a 120s timeout, generous because reasoning models spend time thinking before emitting tokens.
+- `store: false` is set on every call — these are residents' private SMS transcripts, so they're kept out of
+  OpenAI's server-side response store.
+
 ## Environment Variables
 
 | Variable                    | Required | Purpose                                                                 |
 |------------------------------|----------|--------------------------------------------------------------------------|
-| `ANTHROPIC_API_KEY`          | Yes      | Claude API key used to analyze transcripts.                              |
-| `ANALYSIS_MODEL`             | No       | Model id to use for analysis. Defaults to `claude-sonnet-5`.              |
+| `OPENAI_API_KEY`             | Yes      | OpenAI API key used to analyze transcripts.                              |
+| `ANALYSIS_MODEL`             | No       | Model id for realtime (on-close) analysis. Defaults to `gpt-5.6-sol`.     |
+| `ANALYSIS_BACKFILL_MODEL`    | No       | Model id for `source = 'backfill'` rows. Defaults to `gpt-5.6-terra`.     |
+| `ANALYSIS_REASONING_EFFORT`  | No       | `reasoning.effort` passed to the model. Defaults to `medium`.             |
 | `SLACK_BOT_TOKEN`            | Yes      | Bot token used for `chat.postMessage`, `chat.update`, `conversations.history`. |
 | `SLACK_ANALYSIS_CHANNEL_ID`  | Yes      | Channel (or channel ID) the analysis messages and weekly digest are posted to. |
 | `SLACK_SIGNING_SECRET`       | Yes      | Used to verify requests hitting `slack-interactions` actually came from Slack. |
@@ -188,7 +240,7 @@ running the same call again is safe, since existing rows are left untouched (`ON
 
 At 5 rows/minute, a backlog of N conversations takes roughly N / 5 minutes to fully drain — for example, 5,000
 seeded conversations take about 17 hours. To go faster temporarily, call `conversation-analysis` directly with a
-larger `batchSize` (e.g. `{ "action": "process-queue", "batchSize": 50 }`), keeping in mind this increases Claude
+larger `batchSize` (e.g. `{ "action": "process-queue", "batchSize": 50 }`), keeping in mind this increases OpenAI
 and Slack API usage proportionally.
 
 ## Weekly Digest
@@ -239,16 +291,17 @@ To edit the taxonomy:
 - **Add a tag**: `INSERT INTO analysis_tags (name, description) VALUES ('new-tag', 'What this tag means');` — also
   add it to `SUPPRESS_TAGS` in `AnalysisService.ts` if it should be filtered from Slack.
 - **Retire a tag** (without breaking historical rows that already reference it):
-  `UPDATE analysis_tags SET active = false WHERE name = 'old-tag';`. Only `active = true` tags are offered to Claude
-  as choices, but past `conversation_analyses.tag` values referencing a retired tag are untouched.
+  `UPDATE analysis_tags SET active = false WHERE name = 'old-tag';`. Only `active = true` tags are offered to the
+  model as choices, but past `conversation_analyses.tag` values referencing a retired tag are untouched.
 - **Reactivate a tag**: `UPDATE analysis_tags SET active = true WHERE name = 'old-tag';`
 - **Edit a description**: `UPDATE analysis_tags SET description = '...' WHERE name = 'info-gap';` — this changes how
-  the tag is explained to Claude on the next analysis run, with no code change required.
+  the tag is explained to the model on the next analysis run, with no code change required.
 
-Whatever primary tag Claude returns is matched case-insensitively against the active taxonomy; if it doesn't match
+The active taxonomy is passed to the model as a JSON Schema `enum`, so the returned primary tag is guaranteed to be
+one of them. The response is still matched case-insensitively against the taxonomy as a defensive check; if it somehow
+doesn't match
 any active tag, the row is stored with `tag = 'no-impact'` (the closest analog to "we don't actually know what
-happened") and Claude's original (unmatched) proposal is kept as a secondary tag instead, so nothing is silently
-dropped.
+happened"). Secondary tags are likewise filtered to known taxonomy names and capped at 2.
 
 ### Topics
 

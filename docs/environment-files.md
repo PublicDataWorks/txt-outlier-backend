@@ -40,8 +40,10 @@ Added to `/supabase/functions/.env` for the [AI Conversation Tagging](conversati
 
 | Variable                    | Required | Purpose                                                                 |
 |------------------------------|----------|--------------------------------------------------------------------------|
-| `ANTHROPIC_API_KEY`          | Yes      | Claude API key used to analyze conversation transcripts.                 |
-| `ANALYSIS_MODEL`             | No       | Model id used for analysis. Defaults to `claude-sonnet-5`.                |
+| `OPENAI_API_KEY`             | Yes      | OpenAI API key used to analyze conversation transcripts.                 |
+| `ANALYSIS_MODEL`             | No       | Model id for realtime analysis. Defaults to `gpt-5.6-sol`.               |
+| `ANALYSIS_BACKFILL_MODEL`    | No       | Model id for backfill rows. Defaults to `gpt-5.6-terra`.                 |
+| `ANALYSIS_REASONING_EFFORT`  | No       | `reasoning.effort` for the analysis call. Defaults to `medium`.          |
 | `SLACK_BOT_TOKEN`            | Yes      | Slack bot token (`chat:write` and `channels:history`/`groups:history` scopes) used to post, update, and read messages. |
 | `SLACK_ANALYSIS_CHANNEL_ID`  | Yes      | Slack channel that receives analysis posts and the weekly digest.        |
 | `SLACK_SIGNING_SECRET`       | Yes      | Verifies that requests to `slack-interactions` came from Slack.          |
