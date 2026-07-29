@@ -12,6 +12,7 @@ import { dubMock } from '../_mock/dub.ts'
 
 // Create a sandbox for managing all the stubs
 const sandbox = sinon.createSandbox()
+const folderId = 'fold_123'
 
 describe('DubLinkShortener', () => {
   beforeEach(() => {
@@ -24,6 +25,7 @@ describe('DubLinkShortener', () => {
     const envStub = sandbox.stub(Deno.env, 'get')
     envStub.callThrough()
     envStub.withArgs('DUB_TAG_NAME').returns('txt-messages')
+    envStub.withArgs('DUB_FOLDER_ID').returns(folderId)
 
     dubMock.links.list.reset()
     dubMock.links.createMany.reset()
@@ -66,6 +68,7 @@ describe('DubLinkShortener', () => {
       sinon.assert.calledWith(dubMock.links.createMany, [{
         url: 'https://example.com',
         tagNames: [tagName],
+        folderId,
       }])
     })
 
@@ -104,6 +107,7 @@ describe('DubLinkShortener', () => {
       sinon.assert.calledWith(dubMock.links.createMany, [{
         url: 'https://example.org',
         tagNames: [tagName],
+        folderId,
       }])
 
       // Verify createMany was called exactly once
@@ -169,7 +173,7 @@ describe('DubLinkShortener', () => {
 
       // Both URLs should be sent for creation
       sinon.assert.calledWith(dubMock.links.createMany, [
-        { url: 'https://github.com/PublicDataWorks/txt-outlier-backend/pull/85', tagNames: [tagName] },
+        { url: 'https://github.com/PublicDataWorks/txt-outlier-backend/pull/85', tagNames: [tagName], folderId },
       ])
     })
 
@@ -216,9 +220,9 @@ describe('DubLinkShortener', () => {
 
       // Should call createMany once with all three URLs
       sinon.assert.calledWith(dubMock.links.createMany, [
-        { url: 'https://example.com', tagNames: [tagName] },
-        { url: 'https://example.org', tagNames: [tagName] },
-        { url: 'https://example.net', tagNames: [tagName] },
+        { url: 'https://example.com', tagNames: [tagName], folderId },
+        { url: 'https://example.org', tagNames: [tagName], folderId },
+        { url: 'https://example.net', tagNames: [tagName], folderId },
       ])
     })
 
@@ -259,8 +263,8 @@ describe('DubLinkShortener', () => {
 
       // Verify createMany was called with both URLs
       sinon.assert.calledWith(dubMock.links.createMany, [
-        { url: 'https://example.com', tagNames: [tagName] },
-        { url: 'https://example.org', tagNames: [tagName] },
+        { url: 'https://example.com', tagNames: [tagName], folderId },
+        { url: 'https://example.org', tagNames: [tagName], folderId },
       ])
     })
 
@@ -295,7 +299,7 @@ describe('DubLinkShortener', () => {
 
       // Verify createMany was called with the URL
       sinon.assert.calledWith(dubMock.links.createMany, [
-        { url: 'https://google.com', tagNames: [tagName] },
+        { url: 'https://google.com', tagNames: [tagName], folderId },
       ])
     })
 
@@ -347,7 +351,7 @@ describe('DubLinkShortener', () => {
 
       assertEquals(result, 'Check https://dub.sh/abc123 and https://[invalid here')
       assertEquals(changed, true)
-      sinon.assert.calledWith(dubMock.links.createMany, [{ url: 'https://example.com', tagNames: [tagName] }])
+      sinon.assert.calledWith(dubMock.links.createMany, [{ url: 'https://example.com', tagNames: [tagName], folderId }])
     })
 
     it('should handle mix of excluded and malformed URLs', async () => {
@@ -377,7 +381,7 @@ describe('DubLinkShortener', () => {
 
       assertEquals(result, 'Check https://dub.sh/abc123 and https://bit.ly/abc and https://[invalid here')
       assertEquals(changed, true)
-      sinon.assert.calledWith(dubMock.links.createMany, [{ url: 'https://example.com', tagNames: [tagName] }])
+      sinon.assert.calledWith(dubMock.links.createMany, [{ url: 'https://example.com', tagNames: [tagName], folderId }])
     })
 
     it('should handle error scenarios gracefully', async () => {
