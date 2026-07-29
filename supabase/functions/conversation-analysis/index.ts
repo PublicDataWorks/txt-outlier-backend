@@ -311,10 +311,15 @@ const refreshLease = (id: number) =>
     .where(eq(conversationAnalyses.id, id))
 
 const processQueue = async (batchSize: number): Promise<void> => {
+  // Loaded before claiming, deliberately. Claiming first would mean a transient failure here throws with the
+  // whole batch already marked 'processing' and no per-row error handling reached; every stale-lease reclaim
+  // would then bump each row's attempt count until they hit MAX_ATTEMPTS and were marked failed, without a
+  // single model request having been made.
+  const tags = await loadActiveTags()
+
   const claimed = await claimPendingRows(batchSize)
   if (claimed.length === 0) return
 
-  const tags = await loadActiveTags()
   // Sequential on purpose: one OpenAI call + one Slack post at a time keeps us well under rate limits.
   for (const row of claimed) {
     if (row.attempts > MAX_ATTEMPTS) {

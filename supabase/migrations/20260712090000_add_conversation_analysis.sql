@@ -58,6 +58,23 @@ ON CONFLICT (name) DO NOTHING;
 
 -----------------------------------------------
 
+-- conversation_analyses holds resident-derived content: model summaries, verbatim quotes from inbound SMS,
+-- and unmet-demand detail. The Data API exposes the public schema and the anon/authenticated roles hold a
+-- SELECT grant on new tables, so without RLS any holder of the publishable anon key could read all of it
+-- directly and bypass DASHBOARD_TOKEN entirely.
+--
+-- Enabled with NO policies, deliberately: this matches the `conversations` table (RLS on, no policy) rather
+-- than `authors`/`twilio_messages`, which carry a permissive anon SELECT policy. No policy means no role
+-- subject to RLS can read these tables at all.
+--
+-- This does not affect the pipeline or the dashboard: every edge function reaches Postgres through
+-- DB_POOL_URL as the database owner, and table owners/superusers bypass RLS. The dashboard's data is served
+-- by insights-dashboard through that same connection, gated by DASHBOARD_TOKEN.
+ALTER TABLE conversation_analyses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analysis_tags ENABLE ROW LEVEL SECURITY;
+
+-----------------------------------------------
+
 CREATE OR REPLACE FUNCTION public.trigger_conversation_analysis_queue()
 RETURNS void AS $$
 DECLARE

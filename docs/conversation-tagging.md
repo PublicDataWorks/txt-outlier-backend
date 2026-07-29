@@ -152,6 +152,10 @@ change can't silently move which model runs. `ANALYSIS_REASONING_EFFORT` (defaul
 `reasoning.effort`; drop it to `low` for faster/cheaper runs, raise it if the taxonomy's judgment calls start
 slipping.
 
+All three of these are read through a helper that treats an empty or whitespace-only value as unset and falls
+back to the default. That matters because `.env-example` lists them as bare `KEY=` lines: a copied file would
+otherwise resolve to `''`, which is not nullish and would override the default with an empty model ID.
+
 ### What makes the output trustworthy
 
 Four layers, in order:
@@ -380,8 +384,13 @@ prompt is not an enforcement mechanism, so every model-authored string (`summary
 `unmet_demand_reason`) is also redacted in code before it is returned — once, in `analyzeTranscript`, so the DB
 row, the Slack post, the digest, and the dashboard all inherit the same guarantee. Two mechanisms:
 
-- **Pattern-based** (`redactPii`): phone numbers, street addresses, and Michigan ZIPs (`48xxx`/`49xxx` only, so
-  ordinary 5-digit figures like dollar amounts survive). Replaced with `[phone redacted]` and friends.
+- **Pattern-based** (`redactPii`): phone numbers, street addresses, Michigan ZIPs (`48xxx`/`49xxx` only, so
+  ordinary 5-digit figures like dollar amounts survive), and case/account/meter numbers — both
+  keyword-anchored (`DTE account 123456789`, `case #24-001234`, keeping the keyword for context) and bare
+  (`24-001234`, or any run of 7+ digits, which is above ZIPs, years, dollar figures, and small counts).
+  Patterns are applied in a fixed order so the specific rule wins: keyword-anchored identifiers first, then
+  phones, then the generic long-digit rule — which is why a 10-digit number is still labelled
+  `[phone redacted]` rather than `[account redacted]`.
 - **Name-based** (`redactKnownNames`): names are not recognizable by shape, so instead of guessing at a pattern
   we read `authors.name` for this conversation's residents and redact exactly those strings. Both the full name
   and its individual parts of 3+ characters are matched (the model paraphrases, so "Jane Doe" may surface as just

@@ -3,7 +3,13 @@ import { assertEquals, assertRejects, assertStringIncludes } from 'jsr:@std/asse
 import * as sinon from 'npm:sinon'
 
 import '../setup.ts'
-import { analyzeTranscript, DEFAULT_ANALYSIS_MODEL, TOPIC_TAGS } from '../../_shared/services/AnalysisService.ts'
+import {
+  analyzeTranscript,
+  DEFAULT_ANALYSIS_MODEL,
+  DEFAULT_REASONING_EFFORT,
+  resolveAnalysisModel,
+  TOPIC_TAGS,
+} from '../../_shared/services/AnalysisService.ts'
 import type { TranscriptMessage } from '../../_shared/types/analysis.ts'
 
 const sandbox = sinon.createSandbox()
@@ -445,6 +451,64 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     // Dollar amounts and small counts are not PII and must survive intact.
     assertStringIncludes(result.summary, '$8,000')
     assertStringIncludes(result.summary, '12 permits')
+  })
+
+  it('redacts case, account, and meter numbers', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Their DTE account 123456789 was flagged and water meter 8837412 needs replacing.',
+      unmet_demand: true,
+      unmet_demand_reason: 'Filed under case #24-001234 with no response',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    assertEquals(result.summary.includes('123456789'), false)
+    assertEquals(result.summary.includes('8837412'), false)
+    assertStringIncludes(result.summary, '[account redacted]')
+    // The keyword is deliberately kept - "account [account redacted]" is still useful context.
+    assertStringIncludes(result.summary, 'account [account redacted]')
+    assertEquals(result.unmetDemandReason?.includes('24-001234'), false)
+  })
+
+  it('leaves year ranges and dollar figures alone when redacting identifiers', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'The 2024-2025 budget allocated $1,250 across 15 districts over 12 days.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    // A bare case number needs exactly two leading digits, so a four-digit year range is not one.
+    assertStringIncludes(result.summary, '2024-2025')
+    assertStringIncludes(result.summary, '$1,250')
+    assertStringIncludes(result.summary, '15 districts')
+    assertEquals(result.summary.includes('redacted'), false)
+  })
+
+  it('still labels a phone number as a phone rather than an account', async () => {
+    fetchStub.resolves(openAiResponse({ ...basePayload, summary: 'Reached them on 3135550199 about the bill.' }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    // The generic long-digit rule runs after the phone rules precisely so this stays a phone.
+    assertStringIncludes(result.summary, '[phone redacted]')
+    assertEquals(result.summary.includes('[account redacted]'), false)
+  })
+
+  it('falls back to the default model and effort when the env vars are set but blank', async () => {
+    // .env-example ships these as bare `KEY=` lines, so a copied file yields '' rather than undefined.
+    const envStub = sandbox.stub(Deno.env, 'get').callThrough()
+    envStub.withArgs('ANALYSIS_MODEL').returns('')
+    envStub.withArgs('ANALYSIS_REASONING_EFFORT').returns('')
+
+    fetchStub.resolves(openAiResponse(basePayload))
+    // Mirrors the real caller, which resolves the model before handing it to analyzeTranscript.
+    await analyzeTranscript([buildMessage(0)], tags, { model: resolveAnalysisModel('realtime') })
+
+    const body = JSON.parse(fetchStub.firstCall.args[1].body)
+    assertEquals(body.model, DEFAULT_ANALYSIS_MODEL)
+    assertEquals(body.reasoning.effort, DEFAULT_REASONING_EFFORT)
   })
 
   it('redacts the residents own names from every model-authored field', async () => {

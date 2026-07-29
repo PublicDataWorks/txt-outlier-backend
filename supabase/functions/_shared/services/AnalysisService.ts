@@ -16,10 +16,20 @@ export const DEFAULT_BACKFILL_MODEL = 'gpt-5.6-terra'
 // reporter engagement) need some deliberation, but this is classification, not research.
 export const DEFAULT_REASONING_EFFORT = 'medium'
 
+// `??` is not enough for these: .env-example ships the optional analysis settings as bare `KEY=` lines, and
+// an operator who copies it verbatim gets '' rather than undefined. An empty string is not nullish, so it
+// would win over the default and every request would carry an empty model ID or effort value.
+const envOrDefault = (name: string, fallback: string): string => {
+  const value = Deno.env.get(name)?.trim()
+  return value ? value : fallback
+}
+
 export const resolveAnalysisModel = (source: string): string =>
   source === 'backfill'
-    ? Deno.env.get('ANALYSIS_BACKFILL_MODEL') ?? DEFAULT_BACKFILL_MODEL
-    : Deno.env.get('ANALYSIS_MODEL') ?? DEFAULT_ANALYSIS_MODEL
+    ? envOrDefault('ANALYSIS_BACKFILL_MODEL', DEFAULT_BACKFILL_MODEL)
+    : envOrDefault('ANALYSIS_MODEL', DEFAULT_ANALYSIS_MODEL)
+
+export const resolveReasoningEffort = (): string => envOrDefault('ANALYSIS_REASONING_EFFORT', DEFAULT_REASONING_EFFORT)
 
 // Tags that are filtered from Slack/the weekly digest by default (see docs/conversation-tagging.md).
 // Deliberately excludes 'automation-failure': a historical audit found the opposite rule being applied
@@ -275,7 +285,17 @@ const normalizeForQuoteMatch = (text: string): string =>
 // Names are handled separately, by redactKnownNames below, rather than by a pattern here: there is no
 // reliable regex for a name, and the false positives ("Wayne County", "Detroit Water") would mangle
 // legitimate summaries. See docs/conversation-tagging.md.
+// Order matters: these are applied in sequence, so the more specific pattern has to come first or the
+// broader one will have already consumed the text (a keyword-anchored account number before the bare
+// digit-run rule, phones before the generic long-digit rule).
 const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
+  // Keyword-anchored identifiers ("DTE account 123456789", "case #24-001234"). The keyword itself is kept -
+  // "account [account redacted]" is still useful context - so only the identifier is replaced, via $1.
+  {
+    label: '$1[account redacted]',
+    pattern:
+      /\b((?:account|acct|case|claim|parcel|policy|ticket|invoice|reference|confirmation)\s*(?:#|no\.?|number|id)?\s*[:#]?\s*)([A-Za-z0-9][A-Za-z0-9-]{3,})/gi,
+  },
   // 10-digit North American numbers with common separators, optional +1 and extension-free.
   { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g },
   // Bare 10/11-digit runs (e.g. "3135550199") that a resident may type without separators.
@@ -286,6 +306,13 @@ const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
     pattern:
       /\b\d{1,6}\s+(?:[A-Za-z0-9.'\-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|cir|circle)\b\.?/gi,
   },
+  // Bare case-number shapes ("24-001234") that appear without a keyword in front of them. Requires exactly
+  // two leading digits, so a year range like "2024-2025" is untouched.
+  { label: '[account redacted]', pattern: /\b\d{2}-\d{4,6}\b/g },
+  // Any remaining long digit run: account, case, and meter numbers that carry no keyword and no separators.
+  // Runs after the phone rules (which claim 10- and 11-digit runs) so a phone is still labelled as a phone.
+  // 7 is the floor because ZIPs, years, dollar figures, and small counts all sit below it.
+  { label: '[account redacted]', pattern: /\b\d{7,}\b/g },
   // Michigan ZIPs only (48xxx/49xxx), so ordinary 5-digit figures like dollar amounts survive intact.
   { label: '[zip redacted]', pattern: /\b4[89]\d{3}(?:-\d{4})?\b/g },
 ]
@@ -440,7 +467,7 @@ export const analyzeTranscript = async (
         model,
         instructions: buildSystemPrompt(tags),
         input: userContent,
-        reasoning: { effort: Deno.env.get('ANALYSIS_REASONING_EFFORT') ?? DEFAULT_REASONING_EFFORT },
+        reasoning: { effort: resolveReasoningEffort() },
         max_output_tokens: MAX_OUTPUT_TOKENS,
         text: { format: buildAnalysisFormat(tagNames, TOPIC_TAGS) },
         // These transcripts are residents' private SMS conversations - opt out of server-side retention

@@ -98,7 +98,11 @@ app.get(`${FUNCTION_PATH}data/tags-over-time`, async (c) => {
       }
     }
 
-    const since = new Date(Date.now() - weeks * 7 * DAY_MS).toISOString()
+    // Aligned to the Monday that starts the oldest requested week, not `now - weeks*7 days`. A plain
+    // rolling cutoff lands mid-week on any day but Monday, so date_trunc('week') would emit an extra
+    // partial bucket one Monday earlier - rendering 13 bars for a 12-week request, the oldest of them a
+    // fragment. The client generates exactly `weeks` Monday labels, so the two must agree.
+    const since = sql`date_trunc('week', NOW()) - make_interval(weeks => ${weeks - 1})`
     // Bucket by the conversation's actual activity date (last message, falling back to created_at for
     // conversations with none) rather than the analysis row's created_at, so backfilled analyses land on
     // the week they really happened instead of the week they were seeded.
