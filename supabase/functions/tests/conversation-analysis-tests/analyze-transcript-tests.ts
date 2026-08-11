@@ -270,6 +270,25 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertEquals(content.includes('MSG3'), true)
   })
 
+  it('carries the latest inbound message into a window that truncation left all-outbound', async () => {
+    fetchStub.resolves(openAiResponse(basePayload))
+
+    // One early resident reply, then a long outbound tail. The most-recent-100 window is entirely ours, so
+    // without the carry-back the model would classify a conversation while seeing nothing the resident said.
+    const transcript = [
+      buildMessage(0, { body: 'RESIDENT-ASK', direction: 'inbound' }),
+      ...Array.from({ length: 120 }, (_, index) => buildMessage(index + 1, { direction: 'outbound' })),
+    ]
+    await analyzeTranscript(transcript, tags)
+
+    const content = requestBodyFromCall(fetchStub).input as string
+
+    // Labelled RESIDENT, so it reaches the model as the resident's own words rather than as our copy.
+    assertStringIncludes(content, 'RESIDENT: RESIDENT-ASK')
+    // The recent outbound tail is still there - the carry-back adds context, it doesn't replace the window.
+    assertStringIncludes(content, 'msg-120')
+  })
+
   it('sends the full transcript untruncated when it fits within both budgets', async () => {
     fetchStub.resolves(openAiResponse(basePayload))
 
@@ -469,6 +488,48 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     // The keyword is deliberately kept - "account [account redacted]" is still useful context.
     assertStringIncludes(result.summary, 'account [account redacted]')
     assertEquals(result.unmetDemandReason?.includes('24-001234'), false)
+  })
+
+  it('redacts a parenthesized area code with no separator after it', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Reach them at (313)555-0199 or (313)5550199 about the bill.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    // The general phone rule requires a separator after the area code, so these formats need their own.
+    assertEquals(result.summary.includes('555-0199'), false)
+    assertEquals(result.summary.includes('5550199'), false)
+    assertStringIncludes(result.summary, '[phone redacted]')
+  })
+
+  it('redacts street names longer than three words', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Resident lives at 123 Martin Luther King Jr Blvd and needs repairs.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    assertEquals(result.summary.includes('Martin Luther King'), false)
+    assertStringIncludes(result.summary, '[address redacted]')
+  })
+
+  it('redacts names containing non-ASCII letters', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'José asked about a shutoff and Дмитрий followed up.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags, {
+      residentNames: ['José Ramirez', 'Дмитрий Ivanov'],
+    })
+
+    // ASCII \b does not treat é or Cyrillic letters as word characters, so these escaped redaction entirely
+    // until the boundary check became Unicode-aware.
+    assertEquals(result.summary.includes('José'), false)
+    assertEquals(result.summary.includes('Дмитрий'), false)
   })
 
   it('leaves ordinary prose that happens to follow an identifier keyword', async () => {

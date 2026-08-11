@@ -177,6 +177,19 @@ const truncateTranscript = (
     truncated = true
   }
 
+  // Both trims above keep the most recent messages, which can leave a window containing only our own
+  // outbound traffic: an old resident reply followed by a long broadcast tail. processRow admitted this
+  // conversation precisely because the full transcript has an inbound message, so a window without one would
+  // have the model classify and summarize a conversation while seeing nothing the resident actually said -
+  // inviting a `no-impact` tag or an invented topic. Carry the latest inbound message back in so the request
+  // always contains the resident's own words.
+  if (truncated && !messages.some((message) => message.direction === 'inbound')) {
+    const latestInbound = [...transcript].reverse().find((message) => message.direction === 'inbound')
+    if (latestInbound) {
+      messages = [latestInbound, ...messages]
+    }
+  }
+
   return { messages, truncated }
 }
 
@@ -335,15 +348,23 @@ const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
     pattern:
       /\b((?:account|acct|case|claim|parcel|policy|ticket|invoice|reference|confirmation)\s*(?:#|no\.?|number|id)?\s*[:#]?\s*)((?=[A-Za-z0-9-]*\d)[A-Za-z0-9][A-Za-z0-9-]{3,})/gi,
   },
+  // Parenthesized area code, where the closing paren is the only delimiter: "(313)555-0199",
+  // "(313)5550199". Kept separate from the rule below, which requires an explicit separator after the
+  // area code and so cannot match these.
+  { label: '[phone redacted]', pattern: /\(\d{3}\)[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g },
   // 10-digit North American numbers with common separators, optional +1 and extension-free.
   { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g },
   // Bare 10/11-digit runs (e.g. "3135550199") that a resident may type without separators.
   { label: '[phone redacted]', pattern: /\b1?\d{10}\b/g },
-  // House number + optional street words + a street-type suffix.
+  // House number + optional street words + a street-type suffix. Allows up to five words in the street name
+  // so real Detroit names like "123 Martin Luther King Jr Blvd" are covered; at {0,3} that address escaped
+  // redaction entirely. The wider window can also catch an ordinary phrase that happens to run
+  // number-words-suffix ("12 people walked down the road"), which is the right way to be wrong here: a
+  // visible "[address redacted]" costs less than publishing where a resident lives.
   {
     label: '[address redacted]',
     pattern:
-      /\b\d{1,6}\s+(?:[A-Za-z0-9.'\-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|cir|circle)\b\.?/gi,
+      /\b\d{1,6}\s+(?:[A-Za-z0-9.'\-]+\s+){0,5}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|cir|circle)\b\.?/gi,
   },
   // Bare case-number shapes ("24-001234") that appear without a keyword in front of them. Requires exactly
   // two leading digits, so a year range like "2024-2025" is untouched.
@@ -384,10 +405,19 @@ export const redactKnownNames = (text: string, names: string[]): string => {
   }
 
   // Longest first, so "Jane Doe" is replaced as a unit instead of becoming two adjacent labels.
+  //
+  // Unicode-aware lookarounds rather than \b: \b is defined over ASCII [A-Za-z0-9_], so a name ending in a
+  // non-ASCII letter never satisfies the trailing \b and escaped redaction entirely - "Jose" was redacted
+  // while "José" was published. \p{L}/\p{N} under the u flag treat accented and non-Latin letters as letters,
+  // which is what "part of a word" has to mean for resident names.
   return [...targets]
     .sort((a, b) => b.length - a.length)
     .reduce(
-      (redacted, target) => redacted.replace(new RegExp(`\\b${escapeRegExp(target)}\\b`, 'gi'), '[name redacted]'),
+      (redacted, target) =>
+        redacted.replace(
+          new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(target)}(?![\\p{L}\\p{N}])`, 'giu'),
+          '[name redacted]',
+        ),
       text,
     )
 }
