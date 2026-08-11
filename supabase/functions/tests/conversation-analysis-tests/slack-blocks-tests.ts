@@ -151,6 +151,29 @@ describe('buildAnalysisMessageBlocks', { sanitizeOps: false, sanitizeResources: 
     assertEquals(contextText.includes('unknown date'), true)
   })
 
+  it('does not claim the team helped when the primary tag is unmet-demand', () => {
+    const analysis = { ...baseAnalysis, tag: 'unmet-demand', unmetDemand: true, unmetDemandReason: 'No referral' }
+
+    const blocks = buildAnalysisMessageBlocks(analysis, baseConversation)
+
+    // The default wording states the opposite of the finding, and reviewers scan the headline.
+    assertEquals(blocks[1].text.text, 'A resident asked about *Home Repair* and we could not fully help')
+    assertEquals(blocks[1].text.text.includes('helped a resident'), false)
+    assertEquals(blocks[2].text.text.includes('*What was asked:*'), true)
+    assertEquals(blocks[2].text.text.includes('*How we helped:*'), false)
+  })
+
+  it('keys the wording on the primary tag, not the unmetDemand flag', () => {
+    // A partially-helped conversation keeps its own tag: "How we helped" is still accurate, and the separate
+    // warning block carries the unmet part.
+    const analysis = { ...baseAnalysis, unmetDemand: true, unmetDemandReason: 'Still waiting on the county' }
+
+    const blocks = buildAnalysisMessageBlocks(analysis, baseConversation)
+
+    assertEquals(blocks[1].text.text, 'Sarah helped a resident with *Home Repair*')
+    assertEquals(blocks[2].text.text.includes('*How we helped:*'), true)
+  })
+
   it('omits the unmet demand block when unmetDemand is false', () => {
     const blocks = buildAnalysisMessageBlocks(baseAnalysis, baseConversation)
 

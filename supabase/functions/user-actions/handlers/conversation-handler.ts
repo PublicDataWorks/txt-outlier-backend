@@ -70,16 +70,22 @@ const REALTIME_DELAY_HOURS = 72
 // accepted, rare edge case rather than one this revision re-architects around.
 const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
   try {
-    if (!requestBody.conversation.authors?.length) {
-      return
-    }
+    // Eligibility is decided from persisted relations as well as the payload. twilio-message-handler writes
+    // conversations_authors for the sender and recipient of every ingested SMS, independently of what
+    // `conversation.authors` happens to carry, so a real SMS thread can arrive here with an empty authors
+    // array - and gating on the payload alone silently dropped it from realtime analysis for good.
+    const payloadHasAuthors = Boolean(requestBody.conversation.authors?.length)
     // Clears every prior-cycle field, including Slack refs and promotion state: leaving slack_channel/
     // slack_message_ts set would make processRow's retry-reuse guard treat this brand-new cycle as
     // already posted and silently skip Slack, and a stale promoted_at would misrepresent the new
     // cycle's state before it's even analyzed.
     await supabase.execute(sql`
       INSERT INTO conversation_analyses (conversation_id, status, source, process_after)
-      VALUES (${requestBody.conversation.id}, 'pending', 'realtime', NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS}))
+      SELECT ${requestBody.conversation.id}, 'pending', 'realtime',
+        NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS})
+      WHERE ${payloadHasAuthors} OR EXISTS (
+        SELECT 1 FROM conversations_authors ca WHERE ca.conversation_id = ${requestBody.conversation.id}
+      )
       ON CONFLICT (conversation_id) DO UPDATE SET
         status = 'pending',
         source = 'realtime',

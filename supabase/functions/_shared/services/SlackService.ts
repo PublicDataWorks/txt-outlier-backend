@@ -139,6 +139,10 @@ export const buildAnalysisMessageBlocks = (
   const ordinal = analysis.tagOrdinalThisQuarter
   const attribution = conversation.closedBy ? escapeMrkdwn(conversation.closedBy) : 'The team'
   const isBug = analysis.tag === 'automation-failure'
+  // unmet-demand means the resident asked for something we could not provide or never answered. The default
+  // "helped a resident" / "How we helped" wording states the opposite of the finding, so these posts get
+  // their own phrasing - reviewers scan the headline, and a reversed outcome is worse than no post.
+  const isUnmet = analysis.tag === 'unmet-demand'
 
   // deno-lint-ignore no-explicit-any
   const blocks: any[] = [
@@ -158,6 +162,8 @@ export const buildAnalysisMessageBlocks = (
         type: 'mrkdwn',
         text: isBug
           ? `A resident conversation shows a system bug, independent of anything the team did.`
+          : isUnmet
+          ? `A resident asked about *${escapeMrkdwn(analysis.topic)}* and we could not fully help`
           : `${attribution} helped a resident with *${escapeMrkdwn(analysis.topic)}*`,
       },
     },
@@ -167,7 +173,9 @@ export const buildAnalysisMessageBlocks = (
         type: 'mrkdwn',
         text: truncateForSlack(
           `*Topic:* ${escapeMrkdwn(analysis.topic)}\n` +
-            `*${isBug ? 'What happened' : 'How we helped'}:* ${escapeMrkdwn(analysis.summary)}`,
+            `*${isBug ? 'What happened' : isUnmet ? 'What was asked' : 'How we helped'}:* ${
+              escapeMrkdwn(analysis.summary)
+            }`,
         ),
       },
     },
