@@ -132,6 +132,27 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
         promoted_by = NULL,
         updated_at = NOW()
       WHERE conversation_analyses.status <> 'processing'
+        -- Only reset for a genuine reopen/re-close cycle. Missive can redeliver a conversation_closed
+        -- webhook, and an unconditional reset treats the duplicate as a new cycle: before processing it
+        -- pushes process_after out another 72 hours, and after completion it discards the analysis, the Slack
+        -- refs, and the promotion, then queues the work again. Neither is recoverable.
+        --
+        -- The reopen leaves one of two traces, and a duplicate close leaves neither: cancelPendingConversation
+        -- Analysis marks a still-pending row skipped with this reason, and a reopen of an already-finished row
+        -- (which that function deliberately leaves alone) shows up as a history event newer than the row.
+        AND (
+          (
+            conversation_analyses.status = 'skipped'
+            AND conversation_analyses.suppress_reason = 'reopened-before-processing'
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM conversation_history ch
+            WHERE ch.conversation_id = conversation_analyses.conversation_id
+              AND ch.change_type = ${RuleType.ConversationReopened}
+              AND ch.created_at > conversation_analyses.updated_at
+          )
+        )
     `)
   } catch (error) {
     console.error(

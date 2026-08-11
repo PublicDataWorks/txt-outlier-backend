@@ -135,6 +135,30 @@ analyses were promoted to story ideas this week. Posts the result as a Slack Blo
 parameter or it returns `401`, and requests are rejected outright if `DASHBOARD_TOKEN` isn't set. See
 [Dashboard](#dashboard) below.
 
+## Enqueue semantics and recovery
+
+**Eligibility requires real SMS traffic.** A close event queues an analysis only when `twilio_messages` holds a
+message between a resident of that conversation and the Outlier number (either direction). Authors are not
+sufficient evidence: `upsertConversation` writes every payload author to `conversations_authors` keyed by
+`phone_number || name`, so an email thread has author rows too and would otherwise occupy the prioritized
+realtime queue for 72 hours before being skipped for having no transcript. Either direction counts because the
+transcript is pulled fresh at analysis time, so a reply arriving during the delay is still included.
+
+**A redelivered close event is a no-op.** Missive can deliver the same `conversation_closed` webhook more than
+once, and treating a duplicate as a new cycle would either push `process_after` out another 72 hours or discard
+a completed analysis along with its Slack references and the editor's promotion. The row is therefore reset only
+on evidence of a genuine reopen: either it was cancelled by the reopen handler
+(`suppress_reason = 'reopened-before-processing'`), or a `conversation_reopened` history event is newer than the
+row.
+
+**A failed enqueue is recovered by backfill, not by retry.** The enqueue runs after the webhook's transaction
+commits and deliberately swallows its own errors so it can never fail the webhook. That means a transient
+database error at that moment leaves an eligible conversation unqueued, and nothing retries it automatically —
+the cron only drains rows that already exist. `seed-backfill` is the reconciliation path: it selects closed
+conversations that have inbound traffic and no `conversation_analyses` row, which is exactly this case. Running
+it periodically (or after a known incident) closes the gap. A durable outbox would remove the manual step and is
+the obvious improvement if these turn out to be common.
+
 ## Transcript attribution (a known limitation)
 
 `twilio_messages` has **no `conversation_id`**. A message is tied to a conversation only indirectly, through the phone

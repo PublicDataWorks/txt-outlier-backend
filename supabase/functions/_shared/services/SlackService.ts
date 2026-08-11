@@ -66,21 +66,36 @@ export class SlackApiError extends Error {
   }
 }
 
-const slackFetch = async (method: string, body: Record<string, unknown>) => {
-  const response = await fetch(`${SLACK_API_URL}/${method}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'authorization': `Bearer ${Deno.env.get('SLACK_BOT_TOKEN')!}`,
-    },
-    body: JSON.stringify(body),
-  })
+// Slack can accept a connection and then stall on headers or the body. Unbounded, that hangs the whole
+// process-queue invocation: the rest of the already-claimed batch is never reached, and those untouched rows
+// get their attempts incremented by stale-lease reclamation until they are marked failed without ever having
+// been analyzed. The timer is cleared in `finally`, after the body is consumed, so it covers parsing too and
+// does not leave a pending timer behind (which the test sanitizers would flag).
+const SLACK_TIMEOUT_MS = 15_000
 
-  const data = await response.json()
-  if (!response.ok || !data.ok) {
-    throw new SlackApiError(method, data.error ?? response.statusText)
+const slackFetch = async (method: string, body: Record<string, unknown>) => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), SLACK_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${SLACK_API_URL}/${method}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'authorization': `Bearer ${Deno.env.get('SLACK_BOT_TOKEN')!}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+
+    const data = await response.json()
+    if (!response.ok || !data.ok) {
+      throw new SlackApiError(method, data.error ?? response.statusText)
+    }
+    return data
+  } finally {
+    clearTimeout(timeout)
   }
-  return data
 }
 
 const formatDate = (iso: string | null): string => {

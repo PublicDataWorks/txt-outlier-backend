@@ -165,13 +165,9 @@ describe('conversation-handler enqueues conversation analysis on close', {
     assertEquals(delayHours > 71.9 && delayHours < 72.1, true)
   })
 
-  it('clears stale Slack refs and promotion state from a prior completed cycle on re-close', async () => {
-    await seedSmsTraffic()
-    const closeRequest = withAuthors(conversationCLosedRequest)
-    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
-
-    // Simulate a prior cycle that was fully analyzed, posted to Slack, and promoted.
-    await supabase
+  // Simulates a prior cycle that was fully analyzed, posted to Slack, and promoted.
+  const markPreviousCycleCompleted = (conversationId: string) =>
+    supabase
       .update(conversationAnalyses)
       .set({
         status: 'completed',
@@ -182,10 +178,19 @@ describe('conversation-handler enqueues conversation analysis on close', {
         slackMessageTs: '1111111111.000000',
         promotedAt: new Date().toISOString(),
         promotedBy: 'Jane',
-        model: 'claude-old',
+        model: 'gpt-old',
         messageCount: 3,
       })
-      .where(eq(conversationAnalyses.conversationId, closeRequest.conversation.id))
+      .where(eq(conversationAnalyses.conversationId, conversationId))
+
+  it('clears stale Slack refs and promotion state from a prior completed cycle on re-close', async () => {
+    await seedSmsTraffic()
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    await markPreviousCycleCompleted(closeRequest.conversation.id)
+
+    // The reopen is what makes this a genuine new cycle rather than a redelivered close.
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: withAuthors(conversationReopenedRequest) })
 
     const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
     assertEquals(error, null)
@@ -201,5 +206,37 @@ describe('conversation-handler enqueues conversation analysis on close', {
     assertEquals(row.promotedBy, null)
     assertEquals(row.model, null)
     assertEquals(row.messageCount, null)
+  })
+
+  it('does not discard a completed analysis when a close event is redelivered', async () => {
+    await seedSmsTraffic()
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    await markPreviousCycleCompleted(closeRequest.conversation.id)
+
+    // No reopen in between: this is the same close arriving twice, not a new cycle. Resetting here would
+    // destroy the analysis, its Slack refs, and the editor's promotion, and re-run the work.
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    assertEquals(error, null)
+
+    const [row] = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(row.status, 'completed')
+    assertEquals(row.summary, 'Old cycle summary')
+    assertEquals(row.slackMessageTs, '1111111111.000000')
+    assertEquals(row.promotedBy, 'Jane')
+  })
+
+  it('does not push process_after out again when a close event is redelivered before processing', async () => {
+    await seedSmsTraffic()
+    const closeRequest = withAuthors(conversationCLosedRequest)
+    await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    const [first] = await analysisRowsFor(closeRequest.conversation.id)
+
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
+    assertEquals(error, null)
+
+    // A redelivery must not delay the analysis by another 72 hours.
+    const [second] = await analysisRowsFor(closeRequest.conversation.id)
+    assertEquals(second.processAfter, first.processAfter)
   })
 })

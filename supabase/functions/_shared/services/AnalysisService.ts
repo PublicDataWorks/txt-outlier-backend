@@ -201,8 +201,32 @@ const formatTranscript = (messages: TranscriptMessage[]): string =>
     })
     .join('\n')
 
+// Editorial precedence for the impact tags, most specific first. Order is judgement that does not live in the
+// database, but which tags exist does: analysis_tags.active is editable without a redeploy, so the prompt is
+// built by intersecting this order with the active set. Naming a deactivated tag here would instruct the model
+// to choose something the structured-output enum no longer offers, pushing those conversations into whatever
+// category remains. Any active tag missing from this list is appended, so a newly added tag is never dropped
+// from the guidance.
+const TAG_PRIORITY_ORDER = [
+  'automation-failure',
+  'noise-test',
+  'wrong-audience',
+  'unsubscribe',
+  'story-tip',
+  'reporter-engaged',
+  'unmet-demand',
+  'info-gap',
+  'user-sat',
+  'no-impact',
+]
+
 const buildSystemPrompt = (tags: { name: string; description: string }[]): string => {
   const taxonomy = tags.map((tag) => `- ${tag.name}: ${tag.description}`).join('\n')
+  const activeNames = tags.map((tag) => tag.name)
+  const priorityOrder = [
+    ...TAG_PRIORITY_ORDER.filter((name) => activeNames.includes(name)),
+    ...activeNames.filter((name) => !TAG_PRIORITY_ORDER.includes(name)),
+  ].join(' > ')
   const topics = TOPIC_TAGS.map((topic) => `- ${topic}`).join('\n')
   return `You analyze SMS conversations between Outlier Media, a Detroit local-news SMS service, and residents of \
 Detroit. Given the transcript of one conversation, choose exactly one primary tag that best describes the outcome \
@@ -210,8 +234,7 @@ of the conversation from the taxonomy below. Optionally choose up to 2 secondary
 other themes present. Also choose exactly one topic from the topic list describing what the resident actually \
 asked about.
 
-Tag taxonomy (priority order when multiple apply - use the first that fits): automation-failure > noise-test > \
-wrong-audience > unsubscribe > story-tip > reporter-engaged > unmet-demand > info-gap > user-sat > no-impact.
+Tag taxonomy (priority order when multiple apply - use the first that fits): ${priorityOrder}.
 ${taxonomy}
 
 IMPORTANT for reporter-engaged: only use this tag when a named Outlier journalist or staff member gave a real, \
