@@ -296,11 +296,18 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     // tag or summary, so rewrite the existing message rather than leaving the channel showing the first
     // result while the DB records the second.
     const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
+    // Read as late as possible: an editor may have promoted the message since this row was claimed, and
+    // rebuilding the blocks without that knowledge would restore a dead promote button and drop the note.
+    const [promotion] = await supabase
+      .select({ promotedBy: conversationAnalyses.promotedBy })
+      .from(conversationAnalyses)
+      .where(eq(conversationAnalyses.id, row.id))
     await updateAnalysisMessage(
       slackMessage.channel,
       slackMessage.ts,
       { ...analysisMessage, tagOrdinalThisQuarter },
       conversationMessage,
+      promotion?.promotedBy ?? null,
     )
   }
 

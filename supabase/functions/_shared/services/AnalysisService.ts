@@ -613,7 +613,12 @@ export const analyzeTranscript = async (
     topic: matchedTopic ?? 'Other',
     summary: redact(output.summary),
     supportingQuote: redact(verifiedQuote),
-    unmetDemand: output.unmet_demand,
+    // Structured Outputs guarantees field shapes, not semantic consistency between them. A primary tag of
+    // unmet-demand with unmet_demand: false is self-contradictory, and the contradiction is not harmless:
+    // the Slack header would read UNMET DEMAND while the reason block is omitted, and the dashboard and
+    // weekly digest - which filter on the boolean, not the tag - would leave the row out of the very metric
+    // it was tagged for. The tag is the model's primary judgement, so the boolean is normalized to match it.
+    unmetDemand: output.unmet_demand || matchedTag?.name === 'unmet-demand',
     unmetDemandReason: output.unmet_demand_reason ? redact(output.unmet_demand_reason) : null,
     confidence: output.confidence,
   }

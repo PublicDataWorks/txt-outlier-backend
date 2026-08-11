@@ -251,6 +251,11 @@ export const updateAnalysisMessage = async (
   ts: string,
   analysis: AnalysisMessageInput,
   conversation: ConversationMessageInput,
+  // Promoter recorded in the database, read immediately before this call. The history snapshot below can miss
+  // a promotion that lands between the read and the update, which would restore a dead promote button and
+  // delete the note while promoted_at stays set - leaving every later click a no-op. The database is
+  // authoritative, so when it says promoted, the promoted treatment is applied regardless of the snapshot.
+  promotedBy?: string | null,
 ): Promise<void> => {
   const display = TAG_DISPLAY[analysis.tag] ?? defaultTagDisplay(analysis.tag)
   const history = await slackFetch('conversations.history', { channel, latest: ts, inclusive: true, limit: 1 })
@@ -268,8 +273,15 @@ export const updateAnalysisMessage = async (
   // future edit to that sentence silently restores the promote button and drops the note.
   // deno-lint-ignore no-explicit-any
   const promotedBlocks = existingBlocks.filter((block: any) => block.block_id === PROMOTED_BLOCK_ID)
-  const finalBlocks = promotedBlocks.length > 0
-    ? [...blocks.filter((block) => block.type !== 'actions'), ...promotedBlocks]
+  const finalBlocks = promotedBlocks.length > 0 || promotedBy
+    ? [
+      ...blocks.filter((block) => block.type !== 'actions'),
+      ...(promotedBlocks.length > 0 ? promotedBlocks : [{
+        type: 'context',
+        block_id: PROMOTED_BLOCK_ID,
+        elements: [{ type: 'mrkdwn', text: `:star: Promoted to story idea by ${escapeMrkdwn(promotedBy!)}` }],
+      }]),
+    ]
     : blocks
 
   await slackFetch('chat.update', {

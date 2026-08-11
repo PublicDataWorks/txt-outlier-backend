@@ -70,11 +70,26 @@ const REALTIME_DELAY_HOURS = 72
 // accepted, rare edge case rather than one this revision re-architects around.
 const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
   try {
-    // Eligibility is decided from persisted relations as well as the payload. twilio-message-handler writes
-    // conversations_authors for the sender and recipient of every ingested SMS, independently of what
-    // `conversation.authors` happens to carry, so a real SMS thread can arrive here with an empty authors
-    // array - and gating on the payload alone silently dropped it from realtime analysis for good.
-    const payloadHasAuthors = Boolean(requestBody.conversation.authors?.length)
+    // Eligibility is proven by actual Twilio traffic, not by the presence of authors.
+    //
+    // Neither `conversation.authors` nor conversations_authors is evidence of an SMS thread. The payload array
+    // can be empty for a real SMS conversation (twilio-message-handler writes conversations_authors for the
+    // sender and recipient of every ingested message, independently of it), and conversely upsertConversation
+    // - which runs in the transaction just before this - inserts EVERY payload author into
+    // conversations_authors keyed by `phone_number || name`, so an email thread also has author rows. Gating
+    // on authors either way therefore both drops real conversations and admits non-SMS ones, which then sit
+    // in the prioritized realtime queue for 72 hours before being skipped for having no transcript.
+    //
+    // Either direction counts rather than requiring an inbound message: the transcript is pulled fresh at
+    // analysis time specifically so replies arriving during the 72-hour delay are included, and demanding an
+    // inbound message now would discard those conversations before that can happen.
+    const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+    if (!outlierPhone) {
+      // Analysis cannot run without it (getConversationTranscript throws), so queueing would only bank rows
+      // that fail later. Logged rather than thrown: this must never fail the webhook.
+      console.error('OUTLIER_PHONE_NUMBER is not set - not enqueueing conversation analysis')
+      return
+    }
     // Clears every prior-cycle field, including Slack refs and promotion state: leaving slack_channel/
     // slack_message_ts set would make processRow's retry-reuse guard treat this brand-new cycle as
     // already posted and silently skip Slack, and a stale promoted_at would misrepresent the new
@@ -83,8 +98,14 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
       INSERT INTO conversation_analyses (conversation_id, status, source, process_after)
       SELECT ${requestBody.conversation.id}, 'pending', 'realtime',
         NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS})
-      WHERE ${payloadHasAuthors} OR EXISTS (
-        SELECT 1 FROM conversations_authors ca WHERE ca.conversation_id = ${requestBody.conversation.id}
+      WHERE EXISTS (
+        SELECT 1
+        FROM conversations_authors ca
+        JOIN twilio_messages tm
+          ON (tm.from_field = ca.author_phone_number AND tm.to_field = ${outlierPhone})
+          OR (tm.to_field = ca.author_phone_number AND tm.from_field = ${outlierPhone})
+        WHERE ca.conversation_id = ${requestBody.conversation.id}
+          AND ca.author_phone_number <> ${outlierPhone}
       )
       ON CONFLICT (conversation_id) DO UPDATE SET
         status = 'pending',

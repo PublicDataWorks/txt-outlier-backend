@@ -7,14 +7,29 @@ import { client } from '../utils.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { conversationAnalyses } from '../../_shared/drizzle/schema.ts'
 import { conversationCLosedRequest, conversationReopenedRequest } from '../fixtures/conversation-change-request.ts'
+import { createAuthor } from '../factories/author.ts'
+import { createTwilioMessage } from '../factories/twilio-message.ts'
 import type { RequestBody } from '../../user-actions/types.ts'
 
 const FUNCTION_NAME = 'user-actions/'
+const RESIDENT_PHONE = '+13135550100'
+// Matches OUTLIER_PHONE_NUMBER in tests/.env.edge_testing, which configures the served function process.
+const OUTLIER_PHONE_NUMBER = '+15555550100'
 
 const withAuthors = (request: RequestBody): RequestBody => {
   const clone = structuredClone(request)
-  clone.conversation.authors = [{ name: 'Resident', phone_number: '+13135550100' }]
+  clone.conversation.authors = [{ name: 'Resident', phone_number: RESIDENT_PHONE }]
   return clone
+}
+
+// Enqueueing requires proof of real Twilio traffic with the Outlier number, not merely an author: every
+// payload author is written to conversations_authors by upsertConversation, so authors alone would also admit
+// email threads. Seeded before the webhook runs, since the EXISTS check joins the conversations_authors rows
+// that upsertConversation creates against these messages.
+const seedSmsTraffic = async () => {
+  await createAuthor(RESIDENT_PHONE)
+  await createAuthor(OUTLIER_PHONE_NUMBER)
+  await createTwilioMessage({ fromField: RESIDENT_PHONE, toField: OUTLIER_PHONE_NUMBER })
 }
 
 const analysisRowsFor = (conversationId: string) =>
@@ -24,7 +39,8 @@ describe('conversation-handler enqueues conversation analysis on close', {
   sanitizeOps: false,
   sanitizeResources: false,
 }, () => {
-  it('enqueues a pending realtime analysis row when a conversation with authors is closed', async () => {
+  it('enqueues a pending realtime analysis row when a closed conversation has SMS traffic', async () => {
+    await seedSmsTraffic()
     const request = withAuthors(conversationCLosedRequest)
 
     const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
@@ -47,6 +63,19 @@ describe('conversation-handler enqueues conversation analysis on close', {
     assertEquals(rows.length, 0)
   })
 
+  it('does not enqueue a conversation that has authors but no SMS traffic', async () => {
+    // An email thread: upsertConversation writes its authors to conversations_authors just like an SMS
+    // thread's, so authors alone would queue it and hold realtime batch capacity for 72 hours before it was
+    // skipped for having no transcript.
+    const request = withAuthors(conversationCLosedRequest)
+
+    const { error } = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    assertEquals(error, null)
+
+    const rows = await analysisRowsFor(request.conversation.id)
+    assertEquals(rows.length, 0)
+  })
+
   it('does not enqueue anything when a conversation is reopened rather than closed', async () => {
     const request = withAuthors(conversationReopenedRequest)
 
@@ -58,6 +87,7 @@ describe('conversation-handler enqueues conversation analysis on close', {
   })
 
   it('does not create a duplicate row when the same conversation is closed twice', async () => {
+    await seedSmsTraffic()
     const request = withAuthors(conversationCLosedRequest)
 
     const first = await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
@@ -70,6 +100,7 @@ describe('conversation-handler enqueues conversation analysis on close', {
   })
 
   it('delays processing by roughly 72 hours on a realtime close', async () => {
+    await seedSmsTraffic()
     const request = withAuthors(conversationCLosedRequest)
     const before = Date.now()
 
@@ -82,6 +113,7 @@ describe('conversation-handler enqueues conversation analysis on close', {
   })
 
   it('cancels a pending row when the conversation reopens before processing', async () => {
+    await seedSmsTraffic()
     const closeRequest = withAuthors(conversationCLosedRequest)
     await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
 
@@ -95,6 +127,7 @@ describe('conversation-handler enqueues conversation analysis on close', {
   })
 
   it('does not touch a row that is not pending when the conversation reopens', async () => {
+    await seedSmsTraffic()
     const closeRequest = withAuthors(conversationCLosedRequest)
     await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
     await supabase
@@ -110,6 +143,7 @@ describe('conversation-handler enqueues conversation analysis on close', {
   })
 
   it('resets a reopen-cancelled row to pending with a fresh timer on re-close', async () => {
+    await seedSmsTraffic()
     const closeRequest = withAuthors(conversationCLosedRequest)
     const reopenRequest = withAuthors(conversationReopenedRequest)
 
@@ -132,6 +166,7 @@ describe('conversation-handler enqueues conversation analysis on close', {
   })
 
   it('clears stale Slack refs and promotion state from a prior completed cycle on re-close', async () => {
+    await seedSmsTraffic()
     const closeRequest = withAuthors(conversationCLosedRequest)
     await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: closeRequest })
 
