@@ -9,6 +9,7 @@ import { analysisTags, conversationAnalyses, conversationHistory, conversations 
 import { RuleType } from '../user-actions/types.ts'
 import {
   analyzeTranscript,
+  findAmbiguousResidentPhones,
   getConversationTranscript,
   getResidentNames,
   MIN_CONFIDENCE,
@@ -178,6 +179,22 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   const hasInboundMessage = transcript.some((message) => message.direction === 'inbound')
   if (transcript.length === 0 || !hasInboundMessage) {
     await markSkipped(row.id)
+    return
+  }
+
+  // A resident on more than one conversation makes this transcript the merged history of all of them, since
+  // messages carry no conversation reference. Skip rather than publish a summary and quote that may describe
+  // a different conversation entirely - see findAmbiguousResidentPhones.
+  const ambiguousPhones = await findAmbiguousResidentPhones(row.conversationId)
+  if (ambiguousPhones.length > 0) {
+    console.warn(
+      `Skipping conversation_analyses id=${row.id}: ${ambiguousPhones.length} resident phone(s) span multiple ` +
+        `conversations, so the transcript cannot be attributed to this one`,
+    )
+    await supabase
+      .update(conversationAnalyses)
+      .set({ status: 'skipped', suppressReason: 'ambiguous-transcript', updatedAt: new Date().toISOString() })
+      .where(eq(conversationAnalyses.id, row.id))
     return
   }
 

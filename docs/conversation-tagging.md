@@ -52,7 +52,7 @@ One row per conversation that has been queued for analysis (unique on `conversat
 | `attempts`            | Incremented each time the row is claimed; after 3 failed attempts it stays `failed` instead of going back to `pending` |
 | `tag` / `secondary_tags` | Primary impact tag (one of the active `analysis_tags`, falling back to `no-impact` if the model proposes something unrecognized) and up to 2 secondary tags |
 | `topic`               | What the resident actually asked about, from a fixed topic list — see [Tag Taxonomy](#tag-taxonomy) |
-| `suppress_reason`     | Set (`tag:<name>` or `low-confidence`) when the result was filtered from Slack; `NULL` means it posted normally. Distinct from `error`, which is a processing failure |
+| `suppress_reason`     | Set (`tag:<name>`, `low-confidence`, `reopened-before-processing`, `not-closed`, or `ambiguous-transcript`) when the result was filtered from Slack; `NULL` means it posted normally. Distinct from `error`, which is a processing failure |
 | `summary`             | 2-3 sentence neutral summary ("how we helped" in the Slack template)              |
 | `supporting_quote`    | Verbatim quote from an inbound (resident) message, never containing a phone number, address, or full name |
 | `unmet_demand` / `unmet_demand_reason` | Set when the resident asked for something the service couldn't provide or never answered |
@@ -87,6 +87,9 @@ taxonomy).
     'reopened-before-processing'`) without analyzing.
   - If the transcript is empty or has no inbound message, the row is marked `skipped` and nothing is posted to
     Slack.
+  - If any resident on the conversation also belongs to another conversation, the row is marked `skipped`
+    (`suppress_reason = 'ambiguous-transcript'`) — see
+    [Transcript attribution](#transcript-attribution-a-known-limitation).
   - Otherwise the transcript is analyzed. If the result is suppressed (see [Suppression Rules](#suppression-rules)),
     the row is marked `completed` with `suppress_reason` set and nothing is posted; otherwise the result is posted
     to Slack and the row is marked `completed`.
@@ -131,6 +134,31 @@ analyses were promoted to story ideas this week. Posts the result as a Slack Blo
 `DASHBOARD_TOKEN` is required — every request (including the HTML page) must include a matching `?token=` query
 parameter or it returns `401`, and requests are rejected outright if `DASHBOARD_TOKEN` isn't set. See
 [Dashboard](#dashboard) below.
+
+## Transcript attribution (a known limitation)
+
+`twilio_messages` has **no `conversation_id`**. A message is tied to a conversation only indirectly, through the phone
+numbers it shares with `conversations_authors`. Two consequences, both worth understanding before trusting output:
+
+**`OUTLIER_PHONE_NUMBER` must match the value in `twilio_messages` exactly.** In production that is the short code
+(`67485`), which is also attached as an author to roughly 595,000 conversations. The transcript query filters it out of
+the resident list; if the variable is set to anything else (an E.164 number, say), it is not filtered, every
+conversation resolves the short code as a "resident", and every transcript becomes the merged history of the entire
+corpus. This fails silently — summaries just get nonsensical — so treat it as a hard configuration requirement.
+
+**A resident on more than one conversation cannot be attributed.** Their messages match every conversation they belong
+to, so the transcript is the merged history of all of them and a summary or quote could describe a different
+conversation. Rather than publish a confident wrong answer, those rows are skipped with
+`suppress_reason = 'ambiguous-transcript'`.
+
+Measured against production: 161 resident phones (0.03% of 466,548) span more than one conversation, at most 15 each,
+touching 28 closed conversations. So the skip costs very little today. Note that `seed-backfill` still enqueues these
+conversations — it matches on phone the same way — and they are then skipped at analysis time; the wasted queue rows are
+bounded by the same 28.
+
+Resolving this properly means recording the conversation on each message at ingest time. Until then, each message leg is
+at least constrained to have the Outlier number as its counterparty, so unrelated resident-to-resident traffic can never
+enter a transcript.
 
 ## Model and Reliability
 
@@ -189,7 +217,7 @@ Four layers, in order:
 | Variable                    | Required | Purpose                                                                 |
 |------------------------------|----------|--------------------------------------------------------------------------|
 | `OPENAI_API_KEY`             | Yes      | OpenAI API key used to analyze transcripts.                              |
-| `OUTLIER_PHONE_NUMBER`       | Yes      | The service's own SMS number. Required to tell inbound from outbound messages — every analysis fails without it. |
+| `OUTLIER_PHONE_NUMBER`       | Yes      | The service's own SMS sender. Required to tell inbound from outbound — every analysis fails without it. Must match `twilio_messages` exactly: in production the **short code** (e.g. `67485`), not an E.164 number. See the warning below. |
 | `ANALYSIS_MODEL`             | No       | Model id for realtime (on-close) analysis. Defaults to `gpt-5.6-sol`.     |
 | `ANALYSIS_BACKFILL_MODEL`    | No       | Model id for `source = 'backfill'` rows. Defaults to `gpt-5.6-terra`.     |
 | `ANALYSIS_REASONING_EFFORT`  | No       | `reasoning.effort` passed to the model. Defaults to `medium`.             |

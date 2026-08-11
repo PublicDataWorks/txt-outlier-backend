@@ -1,4 +1,4 @@
-import { asc, eq, inArray, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import supabase from '../lib/supabase.ts'
 import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
@@ -73,10 +73,36 @@ const OUTLIER_PHONE_NUMBER = Deno.env.get('OUTLIER_PHONE_NUMBER')
 const MAX_TRANSCRIPT_MESSAGES = 100
 const MAX_TRANSCRIPT_CHARS = 30000
 
+// Residents of this conversation who also belong to at least one OTHER conversation.
+//
+// This exists because twilio_messages carries no conversation_id: a message is tied to a conversation only
+// through the phone numbers it shares with conversations_authors. So when one resident phone appears on
+// several conversations, their messages cannot be attributed to a particular one, and every transcript built
+// for that phone is the merged history of all of them - which would produce a summary and quote describing
+// the wrong conversation. processRow skips these rather than publishing a confident wrong answer.
+//
+// Measured against production: 161 resident phones (0.03%) span more than one conversation, at most 15 each,
+// touching 28 closed conversations. Resolving it properly means recording the conversation on each message at
+// ingest time; until then, skipping is the honest option.
+export const findAmbiguousResidentPhones = async (conversationId: string): Promise<string[]> => {
+  const rows = await supabase.execute(sql`
+    SELECT ca.author_phone_number AS phone
+    FROM conversations_authors ca
+    WHERE ca.conversation_id = ${conversationId}
+      AND ca.author_phone_number <> ${OUTLIER_PHONE_NUMBER ?? ''}
+      AND EXISTS (
+        SELECT 1 FROM conversations_authors other
+        WHERE other.author_phone_number = ca.author_phone_number
+          AND other.conversation_id <> ca.conversation_id
+      )
+  `)
+  return (rows as unknown as { phone: string }[]).map((row) => row.phone)
+}
+
 // twilio_messages has no conversation_id column - it's linked to a conversation only indirectly, through
 // phone numbers shared with conversations_authors. The Outlier number can itself appear as a conversation
-// author, and matching on it would pull in every resident's messages, so the query is scoped strictly to the
-// resident phone(s) of this conversation.
+// author (it is on ~595k of them), and matching on it would pull in every resident's messages, so the query
+// is scoped strictly to the resident phone(s) of this conversation.
 export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
   if (!OUTLIER_PHONE_NUMBER) {
     // Without it, the Outlier number can't be filtered out of residentPhones and every
@@ -93,6 +119,9 @@ export const getConversationTranscript = async (conversationId: string): Promise
   ]
   if (residentPhones.length === 0) return []
 
+  // Each leg must have the Outlier number as its counterparty, not merely involve a resident phone. Without
+  // that, any resident-to-resident traffic that ever lands in this table would be pulled into a transcript
+  // and attributed to us.
   const rows = await supabase
     .select({
       id: twilioMessages.id,
@@ -103,8 +132,14 @@ export const getConversationTranscript = async (conversationId: string): Promise
     })
     .from(twilioMessages)
     .where(or(
-      inArray(twilioMessages.fromField, residentPhones),
-      inArray(twilioMessages.toField, residentPhones),
+      and(
+        inArray(twilioMessages.fromField, residentPhones),
+        eq(twilioMessages.toField, OUTLIER_PHONE_NUMBER),
+      ),
+      and(
+        eq(twilioMessages.fromField, OUTLIER_PHONE_NUMBER),
+        inArray(twilioMessages.toField, residentPhones),
+      ),
     ))
     .orderBy(asc(twilioMessages.deliveredAt))
 

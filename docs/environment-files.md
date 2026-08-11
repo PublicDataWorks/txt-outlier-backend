@@ -41,7 +41,7 @@ Added to `/supabase/functions/.env` for the [AI Conversation Tagging](conversati
 | Variable                    | Required | Purpose                                                                 |
 |------------------------------|----------|--------------------------------------------------------------------------|
 | `OPENAI_API_KEY`             | Yes      | OpenAI API key used to analyze conversation transcripts.                 |
-| `OUTLIER_PHONE_NUMBER`       | Yes      | The service's own SMS number, used to separate inbound from outbound messages. |
+| `OUTLIER_PHONE_NUMBER`       | Yes      | The service's own SMS sender, used to separate inbound from outbound messages. Must match `twilio_messages.from_field`/`to_field` exactly — in production that is the **short code** (e.g. `67485`), not an E.164 number. |
 | `ANALYSIS_MODEL`             | No       | Model id for realtime analysis. Defaults to `gpt-5.6-sol`.               |
 | `ANALYSIS_BACKFILL_MODEL`    | No       | Model id for backfill rows. Defaults to `gpt-5.6-terra`.                 |
 | `ANALYSIS_REASONING_EFFORT`  | No       | `reasoning.effort` for the analysis call. Defaults to `medium`.          |
