@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import supabase from '../_shared/lib/supabase.ts'
 import { conversationAnalyses } from '../_shared/drizzle/schema.ts'
-import { updateAnalysisMessagePromoted, verifySlackSignature } from '../_shared/services/SlackService.ts'
+import { SlackApiError, updateAnalysisMessagePromoted, verifySlackSignature } from '../_shared/services/SlackService.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 
@@ -36,12 +36,27 @@ const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise
   try {
     await updateAnalysisMessagePromoted(updated.slackChannel, updated.slackMessageTs, promotedBy)
   } catch (error) {
-    // Roll the promotion back on a failed Slack update, otherwise the button stays visible in Slack while a
-    // re-click would be a promoted_at-guarded no-op, leaving the message stuck un-promoted forever.
-    await supabase
-      .update(conversationAnalyses)
-      .set({ promotedAt: null, promotedBy: null })
-      .where(eq(conversationAnalyses.id, analysisId))
+    // Roll back only when Slack answered and rejected the call, which means the message was definitely not
+    // updated: the button is still there, so clearing promoted_at keeps a re-click working instead of
+    // leaving the message stuck un-promoted behind a promoted_at-guarded no-op.
+    //
+    // A transport failure (fetch threw, response lost, body unparseable) is deliberately NOT rolled back.
+    // Slack may already have applied the update and removed the button, and rolling back there would drop
+    // the promotion from the database and the digest with no way for anyone to retry it. Keeping it means
+    // the worst case is a cosmetically stale message whose button no longer does anything, while the
+    // promotion itself - the part that feeds reporting - is preserved.
+    if (error instanceof SlackApiError) {
+      await supabase
+        .update(conversationAnalyses)
+        .set({ promotedAt: null, promotedBy: null })
+        .where(eq(conversationAnalyses.id, analysisId))
+    } else {
+      console.error(
+        `Slack update for analysis ${analysisId} failed in transit; keeping the promotion recorded: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
     throw error
   }
 }

@@ -2,7 +2,7 @@ import { withSupabase } from '@supabase/server'
 import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 import supabase from '../_shared/lib/supabase.ts'
 import { conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
-import { escapeMrkdwn, postWeeklyDigest } from '../_shared/services/SlackService.ts'
+import { escapeMrkdwn, postWeeklyDigest, truncateForSlack } from '../_shared/services/SlackService.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 
@@ -182,7 +182,7 @@ const buildDigestBlocks = (data: {
       .join('\n')
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Top tags*\n${tagLines}` },
+      text: { type: 'mrkdwn', text: truncateForSlack(`*Top tags*\n${tagLines}`) },
     })
   }
 
@@ -199,7 +199,7 @@ const buildDigestBlocks = (data: {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `:warning: *Unmet demand examples*\n${exampleLines}`,
+        text: truncateForSlack(`:warning: *Unmet demand examples*\n${exampleLines}`),
       },
     })
   }

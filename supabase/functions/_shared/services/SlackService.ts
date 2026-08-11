@@ -51,9 +51,20 @@ const PROMOTED_BLOCK_ID = 'analysis_promoted'
 const SLACK_SECTION_TEXT_LIMIT = 3000
 
 // Applied to the assembled block text rather than the raw field, since the surrounding labels and markup
-// count toward the limit too.
-const truncateForSlack = (text: string): string =>
+// count toward the limit too. Exported because the weekly digest assembles its own blocks (concatenating
+// several summaries into one section) and needs the same ceiling.
+export const truncateForSlack = (text: string): string =>
   text.length <= SLACK_SECTION_TEXT_LIMIT ? text : `${text.slice(0, SLACK_SECTION_TEXT_LIMIT - 1)}…`
+
+// Slack answered and rejected the call. Distinguished from a transport failure (fetch threw, the response
+// never arrived, the body was unparseable) because the two need opposite handling: a rejection means Slack
+// definitely did not apply the change, while a transport failure means it may well have.
+export class SlackApiError extends Error {
+  constructor(method: string, reason: string) {
+    super(`Slack API ${method} failed: ${reason}`)
+    this.name = 'SlackApiError'
+  }
+}
 
 const slackFetch = async (method: string, body: Record<string, unknown>) => {
   const response = await fetch(`${SLACK_API_URL}/${method}`, {
@@ -67,7 +78,7 @@ const slackFetch = async (method: string, body: Record<string, unknown>) => {
 
   const data = await response.json()
   if (!response.ok || !data.ok) {
-    throw new Error(`Slack API ${method} failed: ${data.error ?? response.statusText}`)
+    throw new SlackApiError(method, data.error ?? response.statusText)
   }
   return data
 }
