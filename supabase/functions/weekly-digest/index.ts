@@ -10,6 +10,16 @@ const WINDOW_DAYS = 7
 const TOP_TAGS_LIMIT = 8
 const UNMET_DEMAND_EXAMPLES_LIMIT = 3
 
+// When the conversation actually happened, not when we finished analyzing it. updated_at is completion time,
+// which is the same instant for every row in a backfill run - so a single historical backfill would report
+// thousands of old conversations as this week's tags, unmet demand, and week-over-week deltas, in the digest
+// the newsroom reads to understand the week. last_message_at is the conversation's own activity, falling back
+// to created_at for rows that never recorded one. Same expression the dashboard uses.
+//
+// Note that promotions are deliberately NOT dated this way: promoted_at is when an editor acted, which is a
+// genuine event of the current week regardless of how old the conversation is.
+const activityDate = sql`coalesce(${conversationAnalyses.lastMessageAt}, ${conversationAnalyses.createdAt})`
+
 type TagCount = { tag: string; count: number }
 
 // Suppressed tags (see AnalysisService.SUPPRESS_TAGS / docs/conversation-tagging.md) are excluded so the
@@ -25,8 +35,8 @@ const getTagCounts = async (from: Date, to: Date): Promise<TagCount[]> => {
       and(
         eq(conversationAnalyses.status, 'completed'),
         isNull(conversationAnalyses.suppressReason),
-        gte(conversationAnalyses.updatedAt, from.toISOString()),
-        lt(conversationAnalyses.updatedAt, to.toISOString()),
+        gte(activityDate, from.toISOString()),
+        lt(activityDate, to.toISOString()),
       ),
     )
     .groupBy(conversationAnalyses.tag)
@@ -43,8 +53,8 @@ const getSuppressedCount = async (from: Date, to: Date): Promise<number> => {
       and(
         eq(conversationAnalyses.status, 'completed'),
         sql`${conversationAnalyses.suppressReason} IS NOT NULL`,
-        gte(conversationAnalyses.updatedAt, from.toISOString()),
-        lt(conversationAnalyses.updatedAt, to.toISOString()),
+        gte(activityDate, from.toISOString()),
+        lt(activityDate, to.toISOString()),
       ),
     )
   return row?.count ?? 0
@@ -57,8 +67,8 @@ const getCompletedCount = async (from: Date, to: Date): Promise<number> => {
     .where(
       and(
         eq(conversationAnalyses.status, 'completed'),
-        gte(conversationAnalyses.updatedAt, from.toISOString()),
-        lt(conversationAnalyses.updatedAt, to.toISOString()),
+        gte(activityDate, from.toISOString()),
+        lt(activityDate, to.toISOString()),
       ),
     )
   return row?.count ?? 0
@@ -75,8 +85,8 @@ const getUnmetDemandCount = async (from: Date, to: Date): Promise<number> => {
         // model-written summaries here would route around that guarantee.
         isNull(conversationAnalyses.suppressReason),
         eq(conversationAnalyses.unmetDemand, true),
-        gte(conversationAnalyses.updatedAt, from.toISOString()),
-        lt(conversationAnalyses.updatedAt, to.toISOString()),
+        gte(activityDate, from.toISOString()),
+        lt(activityDate, to.toISOString()),
       ),
     )
   return row?.count ?? 0
@@ -108,11 +118,11 @@ const getUnmetDemandExamples = async (
         eq(conversationAnalyses.status, 'completed'),
         isNull(conversationAnalyses.suppressReason),
         eq(conversationAnalyses.unmetDemand, true),
-        gte(conversationAnalyses.updatedAt, from.toISOString()),
-        lt(conversationAnalyses.updatedAt, to.toISOString()),
+        gte(activityDate, from.toISOString()),
+        lt(activityDate, to.toISOString()),
       ),
     )
-    .orderBy(desc(conversationAnalyses.updatedAt))
+    .orderBy(desc(activityDate))
     .limit(UNMET_DEMAND_EXAMPLES_LIMIT)
 }
 

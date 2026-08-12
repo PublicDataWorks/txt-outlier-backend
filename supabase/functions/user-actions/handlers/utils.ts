@@ -192,13 +192,26 @@ export const upsertAuthor = async (
   request_authors: RequestAuthor[],
 ): Promise<Author[]> => {
   if (request_authors.length === 0) return []
-  const uniqueAuthors = new Set<Author>()
+  // Keyed by phone number, not a Set of objects: a Set compares these freshly built objects by identity, so it
+  // never removed a repeated phone number. That was survivable under ON CONFLICT DO NOTHING, but DO UPDATE
+  // makes Postgres reject a command that would touch the same row twice ("cannot affect row a second time"),
+  // which would abort the whole webhook transaction - including the message ingest it wraps. Payloads do
+  // repeat authors; upsertConversation below has always de-duplicated them by hand for the same reason.
+  //
+  // First occurrence wins, and a later one contributes its name if the first had none, so a payload listing
+  // the same person twice cannot lose the name that one of the entries carried.
+  const uniqueAuthors = new Map<string, Author>()
   for (const author of request_authors) {
     // TODO: Some authors have only name, no phone number
     if (!author.phone_number) {
       continue
     }
-    uniqueAuthors.add({
+    const existing = uniqueAuthors.get(author.phone_number)
+    if (existing) {
+      existing.name = existing.name ?? author.name
+      continue
+    }
+    uniqueAuthors.set(author.phone_number, {
       name: author.name,
       phoneNumber: author.phone_number,
     })
@@ -214,7 +227,7 @@ export const upsertAuthor = async (
   // COALESCE only, never an overwrite: an existing name is left exactly as it is, so this cannot regress a
   // good name to a placeholder, and it stays idempotent across webhook redeliveries. Both callers ignore the
   // returned rows, so widening what RETURNING emits is inconsequential.
-  return await tx.insert(authors).values([...uniqueAuthors])
+  return await tx.insert(authors).values([...uniqueAuthors.values()])
     .onConflictDoUpdate({
       target: authors.phoneNumber,
       set: { name: sql`COALESCE(${authors.name}, excluded.name)` },

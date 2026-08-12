@@ -306,6 +306,12 @@ The `weekly-conversation-digest` cron job runs **every Monday at 14:00 UTC** and
 function, which posts a summary of the previous 7 days to `SLACK_ANALYSIS_CHANNEL_ID` (see
 [Edge Functions](#weekly-digest) above for what it includes).
 
+Metrics are windowed by **when the conversation happened** (`coalesce(last_message_at, created_at)`), not by when
+analysis completed. Completion time is identical for every row in a backfill run, so windowing on it would make a
+single historical backfill report thousands of old conversations as the current week's tags, unmet demand, and
+week-over-week deltas. Promotions are the deliberate exception: `promoted_at` is when an editor acted, which is a
+real event of the current week however old the conversation is.
+
 A week in which nothing completed still posts, and still reports the promotion count: promotions are counted over
 their own `promoted_at` window, so editors can promote older analyses during an otherwise quiet week.
 
