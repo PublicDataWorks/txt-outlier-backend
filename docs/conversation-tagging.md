@@ -159,6 +159,16 @@ conversations that have inbound traffic and no `conversation_analyses` row, whic
 it periodically (or after a known incident) closes the gap. A durable outbox would remove the manual step and is
 the obvious improvement if these turn out to be common.
 
+## Promotion history on a genuine re-close (a known limitation)
+
+A conversation's analysis row is one row per conversation, reused across close/reopen cycles. When an editor
+promotes an analysis and the conversation later genuinely reopens and closes again, the reset that starts the new
+cycle clears `promoted_at`/`promoted_by` (the new, not-yet-analyzed cycle is genuinely unpromoted), and the
+promotion metrics - which count from current rows - lose that earlier editorial action: it leaves the all-time
+promoted total and, if recent, the weekly count. Preserving it properly means a separate promotion-events table.
+Accepted for now: the overlap of "promoted" and "genuinely reopened afterward" is rare, and the promoted Slack
+message itself is withdrawn at that point anyway, so the metrics match what the channel shows.
+
 ## Transcript attribution (a known limitation)
 
 `twilio_messages` has **no `conversation_id`**. A message is tied to a conversation only indirectly, through the phone

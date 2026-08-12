@@ -1,11 +1,11 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { withSupabase } from '@supabase/server'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { analysisTags, conversationAnalyses, conversationHistory, conversations } from '../_shared/drizzle/schema.ts'
+import { analysisTags, conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
 import { RuleType } from '../user-actions/types.ts'
 import {
   analyzeTranscript,
@@ -103,17 +103,26 @@ const loadConversationMeta = async (
     .where(eq(conversations.id, conversationId))
 
   // conversations.updated_at is never written by the webhook ingest path (adaptConversation doesn't set it),
-  // so the close time has to come from the history row handleConversationStatusChanged records. Falling back
+  // so the close time has to come from the history rows handleConversationStatusChanged records. Falling back
   // to NULL renders as "unknown date" rather than inventing a timestamp.
-  const [closeEvent] = await supabase
-    .select({ createdAt: conversationHistory.createdAt })
-    .from(conversationHistory)
-    .where(and(
-      eq(conversationHistory.conversationId, conversationId),
-      eq(conversationHistory.changeType, RuleType.ConversationClosed),
-    ))
-    .orderBy(desc(conversationHistory.createdAt))
-    .limit(1)
+  //
+  // "The close time" means the FIRST close event of the current cycle - everything after the latest reopen,
+  // or ever, when nothing reopened. The status handler appends a history row for every delivered webhook, so
+  // a redelivered close lands as a second, later event; taking the newest would drift the posted close date
+  // to whenever Missive happened to retry.
+  const closeEvents = await supabase.execute(sql`
+    SELECT created_at AS "createdAt"
+    FROM conversation_history
+    WHERE conversation_id = ${conversationId}
+      AND change_type = ${RuleType.ConversationClosed}
+      AND created_at > COALESCE((
+        SELECT max(created_at) FROM conversation_history
+        WHERE conversation_id = ${conversationId} AND change_type = ${RuleType.ConversationReopened}
+      ), '-infinity')
+    ORDER BY created_at ASC
+    LIMIT 1
+  `)
+  const [closeEvent] = closeEvents as unknown as { createdAt: string | null }[]
 
   // Best-effort attribution: Missive's close event doesn't reliably identify who clicked close, so this
   // is the assignee(s) at analysis time, not a guaranteed record of who actually closed it.

@@ -150,7 +150,11 @@ export const getConversationTranscript = async (conversationId: string): Promise
         inArray(twilioMessages.toField, residentPhones),
       ),
     ))
-    .orderBy(asc(twilioMessages.deliveredAt))
+    // delivered_at is second-precision, so rapid exchanges collide; without stable tiebreakers Postgres may
+    // return a different dialogue order on each attempt, and a retry could rewrite the Slack post with a
+    // different reading of the same conversation. created_at breaks ties by ingest order; id is random but
+    // guarantees full determinism.
+    .orderBy(asc(twilioMessages.deliveredAt), asc(twilioMessages.createdAt), asc(twilioMessages.id))
 
   const messages: TranscriptMessage[] = []
   for (const row of rows) {
