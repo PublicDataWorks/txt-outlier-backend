@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm'
 import '../setup.ts'
 import { serviceClient } from '../utils.ts'
 import supabase from '../../_shared/lib/supabase.ts'
-import { conversationAnalyses } from '../../_shared/drizzle/schema.ts'
+import { analysisTags, conversationAnalyses } from '../../_shared/drizzle/schema.ts'
 import { createAuthor } from '../factories/author.ts'
 import { createConversation } from '../factories/conversation.ts'
 import { createConversationAuthor } from '../factories/conversation-author.ts'
@@ -168,6 +168,22 @@ describe('conversation-analysis process-queue', { sanitizeOps: false, sanitizeRe
     assertEquals(updated.status, 'skipped')
     assertEquals(updated.suppressReason, 'reopened-before-processing')
     assertEquals(updated.error, null)
+  })
+
+  it('leaves the queue untouched when no analysis tags are active', async () => {
+    // An empty taxonomy does not throw - loadActiveTags just returns []. Claiming anyway would hand each row
+    // to analyzeTranscript, which cannot build its enum, and three attempts later valid conversations would be
+    // 'failed' for good with no model request ever made.
+    const conversation = await createConversationWithInboundMessage('+13135556666', true)
+    const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending' })
+    await supabase.delete(analysisTags)
+
+    const { error } = await invokeProcessQueue()
+    assertEquals(error, null)
+
+    const untouched = await fetchRow(row.id)
+    assertEquals(untouched.status, 'pending')
+    assertEquals(untouched.attempts, 0)
   })
 
   it('does nothing and still responds ok when there are no pending rows', async () => {

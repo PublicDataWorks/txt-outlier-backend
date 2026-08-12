@@ -373,6 +373,17 @@ const processQueue = async (batchSize: number): Promise<void> => {
   // single model request having been made.
   const tags = await loadActiveTags()
 
+  // An empty taxonomy is a configuration problem, not a per-row one, and it does not throw: every
+  // analysis_tags row being inactive returns [] here perfectly happily. Claiming anyway would hand each row to
+  // analyzeTranscript, which rejects an empty taxonomy because the structured-output enum cannot be built, and
+  // three scheduled attempts later a batch of perfectly valid conversations is 'failed' for good - with no
+  // model request ever made and nothing that reselects failed rows. Returning early leaves the queue pending
+  // so it simply resumes once a tag is reactivated.
+  if (tags.length === 0) {
+    console.error('No active analysis tags: leaving the queue untouched until the taxonomy is restored')
+    return
+  }
+
   const claimed = await claimPendingRows(batchSize)
   if (claimed.length === 0) return
 
