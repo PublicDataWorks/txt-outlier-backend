@@ -17,7 +17,11 @@ import {
   resolveAnalysisModel,
   SUPPRESS_TAGS,
 } from '../_shared/services/AnalysisService.ts'
-import { postAnalysisMessage, updateAnalysisMessage } from '../_shared/services/SlackService.ts'
+import {
+  postAnalysisMessage,
+  updateAnalysisMessage,
+  withdrawAnalysisMessage,
+} from '../_shared/services/SlackService.ts'
 
 const DEFAULT_BATCH_SIZE = 5
 const MAX_BATCH_SIZE = 50
@@ -296,6 +300,12 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       .update(conversationAnalyses)
       .set({ slackChannel: slackMessage.channel, slackMessageTs: slackMessage.ts, updatedAt: new Date().toISOString() })
       .where(eq(conversationAnalyses.id, row.id))
+  } else if (slackMessage && suppressed) {
+    // The first attempt posted an unsuppressed result; this re-run came back suppressed. Updating the message
+    // with the suppressed content would leave it - and its promote button - live in the review channel while
+    // the row records a suppression reason and is excluded from every metric, which is exactly what the
+    // suppression rule exists to prevent. Withdraw it instead.
+    await withdrawAnalysisMessage(slackMessage.channel, slackMessage.ts, suppressReason ?? 'suppressed')
   } else if (slackMessage) {
     // Retry of a row that already posted. The model has just been re-run and may have returned a different
     // tag or summary, so rewrite the existing message rather than leaving the channel showing the first

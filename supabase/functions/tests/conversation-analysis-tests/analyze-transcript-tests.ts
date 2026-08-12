@@ -504,6 +504,22 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertStringIncludes(result.summary, '[phone redacted]')
   })
 
+  it('redacts phone numbers whose groups are only partly separated', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Try 313-5550199 or 313555-0199 or 313.555.0199 for the resident.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    // Requiring a separator after both the area code and the exchange missed these mixed forms, and the
+    // contiguous-digit rule cannot catch them either because a hyphen breaks the run.
+    assertEquals(result.summary.includes('5550199'), false)
+    assertEquals(result.summary.includes('313555'), false)
+    assertEquals(result.summary.includes('313.555.0199'), false)
+    assertStringIncludes(result.summary, '[phone redacted]')
+  })
+
   it('redacts street names longer than three words', async () => {
     fetchStub.resolves(openAiResponse({
       ...basePayload,

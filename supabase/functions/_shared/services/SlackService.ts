@@ -307,6 +307,29 @@ export const updateAnalysisMessage = async (
   })
 }
 
+// Neutralizes an already-posted analysis whose re-run came back suppressed. The documented rule is that a
+// suppressed result never reaches Slack, but a retry after a failed completion write can flip an unsuppressed
+// first attempt into unsubscribe/noise/low-confidence - leaving the original post and its live promote button
+// contradicting a database row that records a suppression reason and is excluded from every metric.
+//
+// Rewritten rather than deleted: chat.delete needs a scope this app does not otherwise require, and a message
+// vanishing from a review channel is harder for the team to reason about than one that says what happened.
+export const withdrawAnalysisMessage = async (channel: string, ts: string, reason: string): Promise<void> => {
+  await slackFetch('chat.update', {
+    channel,
+    ts,
+    text: 'Analysis withdrawn',
+    blocks: [{
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `:no_entry_sign: *Analysis withdrawn* — on re-analysis this conversation was suppressed ` +
+          `(${escapeMrkdwn(reason)}), so it is no longer proposed for review.`,
+      },
+    }],
+  })
+}
+
 export const updateAnalysisMessagePromoted = async (channel: string, ts: string, promotedBy: string): Promise<void> => {
   // chat.update replaces the whole message, so we first fetch the currently posted blocks (rather than
   // reconstructing them from scratch, since this function only receives channel/ts/promotedBy), drop the

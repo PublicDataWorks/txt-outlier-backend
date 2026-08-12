@@ -375,8 +375,13 @@ const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
   // "(313)5550199". Kept separate from the rule below, which requires an explicit separator after the
   // area code and so cannot match these.
   { label: '[phone redacted]', pattern: /\(\d{3}\)[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g },
-  // 10-digit North American numbers with common separators, optional +1 and extension-free.
-  { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g },
+  // 10-digit North American numbers, optional +1, extension-free. Each separator is independently optional:
+  // requiring one after both the area code and the exchange missed the mixed forms a model plausibly emits
+  // ("313-5550199", "313555-0199"), which the contiguous-digit rule below cannot catch either because the
+  // hyphen breaks the run. Being fully optional also subsumes the unseparated case. Anchored with \b at both
+  // ends, so it cannot bite a chunk out of a longer digit run - a 14-digit parcel number still falls through
+  // to the account rule rather than being mislabelled a phone.
+  { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g },
   // Bare 10/11-digit runs (e.g. "3135550199") that a resident may type without separators.
   { label: '[phone redacted]', pattern: /\b1?\d{10}\b/g },
   // House number + optional street words + a street-type suffix. Allows up to five words in the street name
