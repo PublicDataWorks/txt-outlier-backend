@@ -12,6 +12,24 @@ type SlackBlockActionsPayload = {
   actions?: { action_id: string; value?: string }[]
 }
 
+// Slack expects a block_actions request to be acknowledged within 3 seconds, and slackFetch allows up to 15
+// per call - so awaiting conversations.history plus chat.update before responding can show the editor a
+// timeout even when the promotion succeeded. The database write is what actually matters and takes
+// milliseconds, so it stays inline; only the message rewrite is deferred past the acknowledgement.
+//
+// waitUntil keeps the isolate alive for the deferred work where the runtime offers it. Without it the task is
+// left floating, which risks the isolate being recycled first - acceptable only because the promotion is
+// already committed by then, so the worst case is a message that still shows its button while the database and
+// the digest record the promotion correctly.
+const runAfterResponse = (task: Promise<unknown>): void => {
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (task: Promise<unknown>) => void } }).EdgeRuntime
+  const guarded = task.catch((error) => {
+    console.error(`Error syncing promoted Slack message: ${error instanceof Error ? error.message : String(error)}`)
+    Sentry.captureException(error)
+  })
+  runtime?.waitUntil?.(guarded)
+}
+
 const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise<void> => {
   const now = new Date().toISOString()
 
@@ -33,8 +51,20 @@ const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise
     return
   }
 
+  const channel = updated.slackChannel
+  const messageTs = updated.slackMessageTs
+  runAfterResponse(syncPromotedSlackMessage(analysisId, channel, messageTs, promotedBy))
+}
+
+// Runs after the acknowledgement, so its failures can no longer surface as a Slack timeout to the clicker.
+const syncPromotedSlackMessage = async (
+  analysisId: number,
+  channel: string,
+  messageTs: string,
+  promotedBy: string,
+): Promise<void> => {
   try {
-    await updateAnalysisMessagePromoted(updated.slackChannel, updated.slackMessageTs, promotedBy)
+    await updateAnalysisMessagePromoted(channel, messageTs, promotedBy)
   } catch (error) {
     // Roll back only when Slack answered and rejected the call, which means the message was definitely not
     // updated: the button is still there, so clearing promoted_at keeps a re-click working instead of

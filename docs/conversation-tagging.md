@@ -446,11 +446,21 @@ row, the Slack post, the digest, and the dashboard all inherit the same guarante
 - **Name-based** (`redactKnownNames`): names are not recognizable by shape, so instead of guessing at a pattern
   we read `authors.name` for this conversation's residents and redact exactly those strings. Both the full name
   and its individual parts of 3+ characters are matched (the model paraphrases, so "Jane Doe" may surface as just
-  "Jane"), longest-first so a full name becomes one `[name redacted]` rather than two adjacent labels. Because
-  the targets come from the database rather than a generic name pattern, organizations and places ("Wayne County",
-  "Detroit Water") are never touched. A resident whose name is also an ordinary word will over-redact that word
-  within their own conversation — accepted deliberately, since a visible `[name redacted]` costs less than
-  publishing an identifier. Residents with no `authors.name` on record fall back to prompt-level protection only.
+  "Jane"), longest-first so a full name becomes one `[name redacted]` rather than two adjacent labels, using
+  Unicode-aware boundaries so accented and non-Latin names are covered. Because the targets come from the
+  database rather than a generic name pattern, organizations and places ("Wayne County", "Detroit Water") are
+  never touched. A resident whose name is also an ordinary word will over-redact that word within their own
+  conversation — accepted deliberately, since a visible `[name redacted]` costs less than publishing an
+  identifier.
+
+> **Do not over-trust the name layer today.** It only redacts names the database actually knows, and it knows
+> almost none: of 724,442 `authors` rows in production, 722,535 (99.7%) have `name IS NULL` and just 22 have a
+> name containing letters. For virtually every conversation this layer is therefore a no-op and names rest on the
+> prompt alone. The cause was ingest, not analysis: `upsertAuthor` used `ON CONFLICT DO NOTHING`, so whichever
+> path first inserted a phone number fixed its name forever — usually the Twilio path, with no name at all. It
+> now fills a missing name (`COALESCE`, never overwriting an existing one), so coverage grows as conversations
+> come in, but it does not backfill history. Until those rows have names, treat "no resident full names in Slack"
+> as prompt-enforced rather than guaranteed.
 
 **Tone and length**: the model is asked for a neutral 2-3 sentence summary — short enough to skim, factual rather
 than promotional. "Closed by" is best-effort (see the caveat below); message count and duration come from the

@@ -206,8 +206,19 @@ export const upsertAuthor = async (
   if (uniqueAuthors.size === 0) {
     return []
   }
+  // Fill a missing name rather than discarding the whole row on conflict. The first write wins under
+  // DO NOTHING, and the Twilio ingest path usually gets there first with no name at all, so a later payload
+  // carrying the resident's actual name never landed: 99.7% of authors have name IS NULL. That name is what
+  // AnalysisService redacts from model output, so leaving it empty weakens a privacy guarantee.
+  //
+  // COALESCE only, never an overwrite: an existing name is left exactly as it is, so this cannot regress a
+  // good name to a placeholder, and it stays idempotent across webhook redeliveries. Both callers ignore the
+  // returned rows, so widening what RETURNING emits is inconsequential.
   return await tx.insert(authors).values([...uniqueAuthors])
-    .onConflictDoNothing().returning()
+    .onConflictDoUpdate({
+      target: authors.phoneNumber,
+      set: { name: sql`COALESCE(${authors.name}, excluded.name)` },
+    }).returning()
 }
 
 export const upsertLabel = async (

@@ -133,6 +133,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Postgres grants EXECUTE on a new function to PUBLIC by default, and the Data API exposes the public schema,
+-- so both trigger functions would be callable over RPC by anyone holding the publishable anon key. They take no
+-- arguments and need no privileges to abuse: the digest one posts to the team's Slack channel on demand, and the
+-- queue one drives paid model calls. Neither reads its caller, so revoking PUBLIC and the API roles costs
+-- nothing - pg_cron runs them as the database owner, which is unaffected by these grants.
+REVOKE ALL ON FUNCTION public.trigger_conversation_analysis_queue() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.trigger_weekly_conversation_digest() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.trigger_conversation_analysis_queue() FROM anon, authenticated;
+REVOKE ALL ON FUNCTION public.trigger_weekly_conversation_digest() FROM anon, authenticated;
+
 SELECT cron.schedule(
     'weekly-conversation-digest',
     '0 14 * * 1',

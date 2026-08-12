@@ -150,7 +150,11 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
             FROM conversation_history ch
             WHERE ch.conversation_id = conversation_analyses.conversation_id
               AND ch.change_type = ${RuleType.ConversationReopened}
-              AND ch.created_at > conversation_analyses.updated_at
+              -- COALESCE matters: updated_at has no default and the enqueue INSERT does not set it, so a row
+              -- that has never been touched since being queued has updated_at IS NULL. Comparing against NULL
+              -- yields NULL rather than true, which would make the reopen evidence unfindable for exactly
+              -- those rows. created_at is the right floor for a row that was never updated.
+              AND ch.created_at > COALESCE(conversation_analyses.updated_at, conversation_analyses.created_at)
           )
         )
     `)
