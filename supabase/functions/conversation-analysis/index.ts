@@ -306,6 +306,11 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     // the row records a suppression reason and is excluded from every metric, which is exactly what the
     // suppression rule exists to prevent. Withdraw it instead.
     await withdrawAnalysisMessage(slackMessage.channel, slackMessage.ts, suppressReason ?? 'suppressed')
+    // Cleared so the completion write records no refs, matching the documented invariant that suppressed
+    // rows never carry Slack refs. Only in memory: if the completion write fails, the DB refs survive, and
+    // the retry either withdraws again (idempotent) or - if the re-run comes back unsuppressed - rewrites
+    // the withdrawn message back into a live analysis via the update branch.
+    slackMessage = null
   } else if (slackMessage) {
     // Retry of a row that already posted. The model has just been re-run and may have returned a different
     // tag or summary, so rewrite the existing message rather than leaving the channel showing the first
@@ -348,11 +353,6 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       error: null,
       updatedAt: new Date().toISOString(),
     })
-    // Conditional on the conversation still being closed, evaluated by Postgres as part of this write rather
-    // than read minutes earlier. A reopen can land after the pre-post check and cannot be cancelled by the
-    // reopen handler, because that only touches 'pending' rows and this one is 'processing' - so without the
-    // guard the worker would mark a stale analysis 'completed' on an open conversation and feed it to the
-    // digest and dashboard, defeating the point of the 72-hour delay.
     // Two conditions, both evaluated by Postgres as part of this write rather than read minutes earlier:
     //
     // `attempts` is the lease ownership token (see refreshLease). A 15-minute lease can expire while this
