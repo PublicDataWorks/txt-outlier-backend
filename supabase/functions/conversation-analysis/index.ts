@@ -137,7 +137,12 @@ const countTagThisQuarter = async (tag: string): Promise<number> => {
   const [row] = await supabase.execute(sql`
     SELECT count(*)::int AS count
     FROM conversation_analyses
-    WHERE status = 'completed' AND tag = ${tag} AND updated_at >= ${startOfCurrentQuarter()}
+    WHERE status = 'completed' AND tag = ${tag}
+      -- Counted by when the conversations happened, not when they were analyzed. updated_at is completion
+      -- time and is the same instant for every row of a backfill run, so windowing on it would turn a single
+      -- historical backfill into an ordinal like "3,412th this quarter" on the very next Slack post. Same
+      -- expression the digest and dashboard use.
+      AND coalesce(last_message_at, created_at) >= ${startOfCurrentQuarter()}
       -- Suppressed analyses never reached Slack, so counting them would inflate the newsroom-facing
       -- "Nth this quarter" past the number of posts anyone actually saw.
       AND suppress_reason IS NULL
