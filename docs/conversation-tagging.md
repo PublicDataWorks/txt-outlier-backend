@@ -329,11 +329,17 @@ backfilled conversation is a real editorial action of the current week.
 A week in which nothing completed still posts, and still reports the promotion count: promotions are counted over
 their own `promoted_at` window, so editors can promote older analyses during an otherwise quiet week.
 
-**Known limitation — a failed digest is not re-delivered.** The window is a rolling 7 days and the cron fires once
-a week, so if a query or the Slack call fails, that week's digest is lost; the next run computes a fresh window.
-The function returns a 5xx (rather than swallowing the error as a 200) so the failure is visible to monitoring and
-Sentry, but nothing retries it automatically. Adding real retry means a second schedule plus a record of the last
-successful post to avoid double-posting — deliberately not built yet.
+The window is anchored to the **nominal** schedule (the most recent Monday 14:00 UTC at or before the run), not to
+the run's actual start time. Cron and pg_net add seconds of jitter, and deriving the cutoff from the start time
+would leave small holes between consecutive digests that no run covers — or double-count across them. Anchoring
+makes consecutive windows exactly contiguous, so every completed realtime analysis belongs to exactly one digest.
+
+**Known limitation — a failed digest is not re-delivered automatically.** The cron fires once a week, so if a query
+or the Slack call fails, nothing retries it. The function returns a 5xx (rather than swallowing the error as a 200)
+so the failure is visible to monitoring and Sentry. Because the window is anchored rather than rolling, **manually
+re-invoking the function reproduces exactly the missed week's digest** — as long as it happens before the next
+Monday 14:00 UTC boundary. That is the recovery path today; a scheduled retry would still need a record of the last
+successful post to avoid double-posting.
 
 ## Dashboard
 

@@ -244,21 +244,47 @@ const buildDigestBlocks = (data: {
   return blocks
 }
 
+// Must match the `weekly-conversation-digest` cron schedule in
+// 20260712090000_add_conversation_analysis.sql ('0 14 * * 1'). If that schedule moves, move these too.
+const DIGEST_WEEKDAY = 1 // Monday, matching Date#getUTCDay
+const DIGEST_HOUR_UTC = 14
+
+// The most recent scheduled digest time at or before `now`, rather than `now` itself.
+//
+// Deriving the cutoff from the actual start time makes consecutive windows drift apart: cron and pg_net add a
+// few seconds of jitter, so a run at 14:00:02 followed by one at 14:00:05 leaves a three-second hole that no
+// digest covers, and drift the other way double-counts. Snapping to the nominal boundary makes consecutive
+// windows exactly contiguous, so every completed analysis belongs to exactly one digest.
+//
+// It also makes a run idempotent: re-invoking after a failed delivery reproduces that week's digest rather than
+// a new rolling window, which is the only recovery available for the not-re-delivered limitation documented in
+// docs/conversation-tagging.md - provided it happens before the next scheduled boundary.
+const mostRecentDigestBoundary = (now: Date): Date => {
+  const boundary = new Date(now)
+  boundary.setUTCHours(DIGEST_HOUR_UTC, 0, 0, 0)
+  boundary.setUTCDate(boundary.getUTCDate() - ((boundary.getUTCDay() - DIGEST_WEEKDAY + 7) % 7))
+  // Snapping to this week's weekday can land in the future (a Monday run before 14:00, or any earlier weekday).
+  if (boundary.getTime() > now.getTime()) {
+    boundary.setUTCDate(boundary.getUTCDate() - 7)
+  }
+  return boundary
+}
+
 const runWeeklyDigest = async (): Promise<void> => {
-  const now = new Date()
+  const windowEnd = mostRecentDigestBoundary(new Date())
   const windowStart = new Date(
-    now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    windowEnd.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000,
   )
   const priorWindowStart = new Date(
     windowStart.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000,
   )
 
-  const total = await getCompletedCount(windowStart, now)
+  const total = await getCompletedCount(windowStart, windowEnd)
 
   if (total === 0) {
     // Promotions are counted over their own promoted_at window, so editors can promote older analyses in a
     // week where nothing new completed. Reporting "quiet week" alone would hide that activity entirely.
-    const promotedCount = await getPromotedCount(windowStart, now)
+    const promotedCount = await getPromotedCount(windowStart, windowEnd)
     const promotedNote = promotedCount > 0
       ? ` ${promotedCount} older ${promotedCount === 1 ? 'analysis was' : 'analyses were'} promoted to ` +
         `${promotedCount === 1 ? 'a story idea' : 'story ideas'} this week.`
@@ -295,12 +321,12 @@ const runWeeklyDigest = async (): Promise<void> => {
     promotedCount,
     suppressedCount,
   ] = await Promise.all([
-    getTagCounts(windowStart, now),
+    getTagCounts(windowStart, windowEnd),
     getTagCounts(priorWindowStart, windowStart),
-    getUnmetDemandCount(windowStart, now),
-    getUnmetDemandExamples(windowStart, now),
-    getPromotedCount(windowStart, now),
-    getSuppressedCount(windowStart, now),
+    getUnmetDemandCount(windowStart, windowEnd),
+    getUnmetDemandExamples(windowStart, windowEnd),
+    getPromotedCount(windowStart, windowEnd),
+    getSuppressedCount(windowStart, windowEnd),
   ])
 
   const priorTagCounts = new Map(
