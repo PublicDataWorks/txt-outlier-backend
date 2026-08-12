@@ -435,7 +435,10 @@ export const redactKnownNames = (text: string, names: string[]): string => {
   for (const name of names) {
     const trimmed = name?.trim()
     if (!trimmed) continue
-    if (trimmed.length >= 3) targets.add(trimmed)
+    // The full recorded name is always a target, whatever its length. The 3-character floor exists to stop
+    // SPLIT parts from matching everywhere ("Bo" inside ordinary prose), but an exact known full name is not a
+    // guess - a resident recorded as "Li" was simply never redacted at all.
+    targets.add(trimmed)
     for (const part of trimmed.split(/\s+/)) {
       if (part.length >= 3) targets.add(part)
     }

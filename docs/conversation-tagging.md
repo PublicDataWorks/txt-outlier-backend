@@ -306,11 +306,25 @@ The `weekly-conversation-digest` cron job runs **every Monday at 14:00 UTC** and
 function, which posts a summary of the previous 7 days to `SLACK_ANALYSIS_CHANNEL_ID` (see
 [Edge Functions](#weekly-digest) above for what it includes).
 
-Metrics are windowed by **when the conversation happened** (`coalesce(last_message_at, created_at)`), not by when
-analysis completed. Completion time is identical for every row in a backfill run, so windowing on it would make a
-single historical backfill report thousands of old conversations as the current week's tags, unmet demand, and
-week-over-week deltas. Promotions are the deliberate exception: `promoted_at` is when an editor acted, which is a
-real event of the current week however old the conversation is.
+Metrics are windowed by **when analysis completed** (`updated_at`) and restricted to `source = 'realtime'`. Both
+halves matter, and they fix different failure modes:
+
+- **Excluding backfill** keeps a historical backfill out of the weekly numbers. Every row in a backfill run shares
+  one completion instant, so without it a single run would report thousands of old conversations as this week's
+  tags, unmet demand, and deltas.
+- **Windowing on completion rather than conversation activity** keeps the week whole. Realtime analyses only become
+  eligible 72 hours after close, so a conversation from the three days before a Monday run is still pending at that
+  run — and if the window were keyed to when the conversation *happened*, by the following Monday its activity date
+  would already have fallen outside the seven-day cutoff and it would be dropped permanently. Every weekend would
+  quietly vanish. Keyed to completion, each analysis lands in exactly one digest: the one after it finishes.
+
+The practical effect is that a Monday digest describes conversations that closed roughly three to ten days earlier,
+which is the honest reading of "analyzed this week". Note this is the **opposite** of the dashboard, which buckets by
+activity date on purpose: it plots trends over time, where when a conversation happened is the whole point, and it
+has no weekly cutoff for anything to fall out of.
+
+Promotions are windowed on `promoted_at` and are deliberately **not** restricted to realtime: an editor promoting a
+backfilled conversation is a real editorial action of the current week.
 
 A week in which nothing completed still posts, and still reports the promotion count: promotions are counted over
 their own `promoted_at` window, so editors can promote older analyses during an otherwise quiet week.

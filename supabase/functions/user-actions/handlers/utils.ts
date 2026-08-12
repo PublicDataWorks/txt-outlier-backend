@@ -227,11 +227,30 @@ export const upsertAuthor = async (
   // COALESCE only, never an overwrite: an existing name is left exactly as it is, so this cannot regress a
   // good name to a placeholder, and it stays idempotent across webhook redeliveries. Both callers ignore the
   // returned rows, so widening what RETURNING emits is inconsequential.
-  return await tx.insert(authors).values([...uniqueAuthors.values()])
-    .onConflictDoUpdate({
-      target: authors.phoneNumber,
-      set: { name: sql`COALESCE(${authors.name}, excluded.name)` },
-    }).returning()
+  // Split by whether the payload actually carries a name, so the common case keeps ON CONFLICT DO NOTHING.
+  // DO UPDATE takes a row lock on each conflicting row, and the Outlier service number is an author on
+  // essentially every SMS conversation - so applying it unconditionally would serialize otherwise independent
+  // message ingests on that one hot row (and invite deadlocks, since author ordering varies between payloads)
+  // to no purpose when there is no name to contribute.
+  const named = [...uniqueAuthors.values()].filter((author) => author.name)
+  const unnamed = [...uniqueAuthors.values()].filter((author) => !author.name)
+
+  const inserted: Author[] = []
+  if (unnamed.length > 0) {
+    inserted.push(...await tx.insert(authors).values(unnamed).onConflictDoNothing().returning())
+  }
+  if (named.length > 0) {
+    // setWhere keeps this a fill, never an overwrite: an author that already has a name is left untouched.
+    inserted.push(
+      ...await tx.insert(authors).values(named)
+        .onConflictDoUpdate({
+          target: authors.phoneNumber,
+          set: { name: sql`excluded.name` },
+          setWhere: sql`${authors.name} IS NULL`,
+        }).returning(),
+    )
+  }
+  return inserted
 }
 
 export const upsertLabel = async (

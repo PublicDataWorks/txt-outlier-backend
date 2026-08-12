@@ -353,13 +353,35 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     // reopen handler, because that only touches 'pending' rows and this one is 'processing' - so without the
     // guard the worker would mark a stale analysis 'completed' on an open conversation and feed it to the
     // digest and dashboard, defeating the point of the 72-hour delay.
+    // Two conditions, both evaluated by Postgres as part of this write rather than read minutes earlier:
+    //
+    // `attempts` is the lease ownership token (see refreshLease). A 15-minute lease can expire while this
+    // worker sits in an OpenAI or Slack call, letting the cron reclaim the row and bump attempts - and without
+    // this check the stale worker would then finalize the new owner's row underneath it.
+    //
+    // The closed check catches a reopen landing after the pre-post recheck, which the reopen handler cannot
+    // cancel because it only touches 'pending' rows and this one is 'processing'.
     .where(and(
       eq(conversationAnalyses.id, row.id),
+      eq(conversationAnalyses.attempts, row.attempts),
       sql`EXISTS (SELECT 1 FROM conversations c WHERE c.id = ${row.conversationId} AND c.closed IS TRUE)`,
     ))
     .returning({ id: conversationAnalyses.id })
 
   if (finalized.length > 0) return
+
+  // Which condition failed decides what to do, so read them rather than assume.
+  const [current] = await supabase
+    .select({ attempts: conversationAnalyses.attempts })
+    .from(conversationAnalyses)
+    .where(eq(conversationAnalyses.id, row.id))
+
+  if (current && current.attempts !== row.attempts) {
+    // Lease lost. The row belongs to another worker now; touching it - including withdrawing its Slack
+    // message - would corrupt whatever that worker is doing.
+    console.warn(`conversation_analyses id=${row.id} was reclaimed during processing; abandoning this attempt`)
+    return
+  }
 
   // Reopened mid-flight. Anything already posted has to come down: it is proposing a conversation that is
   // open again for editorial review, with a live promote button.
@@ -370,7 +392,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   await supabase
     .update(conversationAnalyses)
     .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
-    .where(eq(conversationAnalyses.id, row.id))
+    .where(and(eq(conversationAnalyses.id, row.id), eq(conversationAnalyses.attempts, row.attempts)))
 }
 
 // The stale-processing lease is measured from updated_at, but rows are processed sequentially and each can
