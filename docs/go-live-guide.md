@@ -18,14 +18,14 @@ Everything you need in hand before starting:
 
 ---
 
-## Step 1 — Create the Slack app
+## Step 1 - Create the Slack app
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → *From scratch* → name it (e.g. `Conversation Insights`), pick the Outlier workspace.
-2. **OAuth & Permissions → Bot Token Scopes** — add exactly these two:
+2. **OAuth & Permissions → Bot Token Scopes** - add exactly these two:
    - `chat:write` (post and update analysis messages)
    - `channels:history` (read a message back before rewriting it on promotion or retry)
-3. **Install App** to the workspace. Copy the **Bot User OAuth Token** (`xoxb-…`) — this is `SLACK_BOT_TOKEN`.
-4. **Basic Information → App Credentials** — copy the **Signing Secret**. This is `SLACK_SIGNING_SECRET`.
+3. **Install App** to the workspace. Copy the **Bot User OAuth Token** (`xoxb-…`) - this is `SLACK_BOT_TOKEN`.
+4. **Basic Information → App Credentials** - copy the **Signing Secret**. This is `SLACK_SIGNING_SECRET`.
 5. In Slack, open the review channel → invite the bot: `/invite @Conversation Insights`. Then copy the **channel ID** (channel name → View channel details → bottom of the About tab, starts with `C`). This is `SLACK_ANALYSIS_CHANNEL_ID`.
 6. **Interactivity & Shortcuts** → toggle on → set the Request URL to:
 
@@ -37,45 +37,45 @@ Everything you need in hand before starting:
 
 **Verify:** the bot appears as a member of the channel.
 
-## Step 2 — Set the edge function secrets
+## Step 2 - Set the edge function secrets
 
 Set these on the Supabase project (Dashboard → Edge Functions → Secrets, or `supabase secrets set KEY=value`):
 
 | Variable | Required | Value |
 |---|---|---|
 | `OPENAI_API_KEY` | Yes | Your OpenAI key |
-| `OUTLIER_PHONE_NUMBER` | Yes | **`67485`** — see warning below |
+| `OUTLIER_PHONE_NUMBER` | Yes | **`67485`** - see warning below |
 | `SLACK_BOT_TOKEN` | Yes | `xoxb-…` from Step 1 |
 | `SLACK_SIGNING_SECRET` | Yes | Signing secret from Step 1 |
 | `SLACK_ANALYSIS_CHANNEL_ID` | Yes | `C…` channel ID from Step 1 |
-| `DASHBOARD_TOKEN` | Yes | A long random string — `openssl rand -hex 24`. The dashboard rejects every request without it |
+| `DASHBOARD_TOKEN` | Yes | A long random string - `openssl rand -hex 24`. The dashboard rejects every request without it |
 | `DASHBOARD_URL` | No | Full dashboard URL incl. token; when set, the weekly digest links to it |
 | `ANALYSIS_MODEL` | No | Defaults to `gpt-5.6-sol` (realtime) |
 | `ANALYSIS_BACKFILL_MODEL` | No | Defaults to `gpt-5.6-terra` (backfill) |
 | `ANALYSIS_REASONING_EFFORT` | No | Defaults to `medium` |
 
-> **The one value that can silently ruin everything:** `OUTLIER_PHONE_NUMBER` must match `twilio_messages.from_field`/`to_field` **exactly**, and in production that is the short code `67485`, not an E.164 number like `+13135550100`. Set to anything else, the short code stops being filtered out of the "resident" list, and every transcript becomes the merged history of ~595,000 conversations — with no error anywhere, just nonsensical summaries. Verify against the data, not from memory:
+> **The one value that can silently ruin everything:** `OUTLIER_PHONE_NUMBER` must match `twilio_messages.from_field`/`to_field` **exactly**, and in production that is the short code `67485`, not an E.164 number like `+13135550100`. Set to anything else, the short code stops being filtered out of the "resident" list, and every transcript becomes the merged history of ~595,000 conversations - with no error anywhere, just nonsensical summaries. Verify against the data, not from memory:
 >
 > ```sql
 > SELECT from_field, count(*) FROM twilio_messages GROUP BY 1 ORDER BY 2 DESC LIMIT 1;
 > -- Expect: 67485
 > ```
 
-Leaving the optional variables **unset or blank is safe** — empty values fall back to the defaults.
+Leaving the optional variables **unset or blank is safe** - empty values fall back to the defaults.
 
-## Step 3 — Merge and deploy
+## Step 3 - Merge and deploy
 
 1. Merge PR #103.
 2. Apply the two migrations (via the normal deploy pipeline, or `supabase db push`):
-   - `20260712090000_add_conversation_analysis.sql` — tables, RLS, cron jobs, RPC lockdown
-   - `20260712170000_conversation_analysis_q2_taxonomy.sql` — the 10-tag taxonomy, delay + suppression columns
+   - `20260712090000_add_conversation_analysis.sql` - tables, RLS, cron jobs, RPC lockdown
+   - `20260712170000_conversation_analysis_q2_taxonomy.sql` - the 10-tag taxonomy, delay + suppression columns
 3. Deploy the functions (new: `conversation-analysis`, `slack-interactions`, `weekly-digest`, `insights-dashboard`; changed: `user-actions` and shared code):
 
    ```bash
    supabase functions deploy conversation-analysis slack-interactions weekly-digest insights-dashboard user-actions
    ```
 
-4. The cron trigger functions read two Vault secrets that should already exist from prior cron setups — verify:
+4. The cron trigger functions read two Vault secrets that should already exist from prior cron setups - verify:
 
    ```sql
    SELECT name FROM vault.decrypted_secrets WHERE name IN ('secret_key', 'edge_function_url');
@@ -93,7 +93,7 @@ WHERE jobname IN ('analyze-conversations', 'weekly-conversation-digest');
 
 Then go back to Step 1.6 and confirm Slack accepts the interactivity URL.
 
-## Step 4 — Smoke test with one real conversation
+## Step 4 - Smoke test with one real conversation
 
 This is the first time the OpenAI call touches real resident data, so watch one conversation all the way through before anything runs in bulk.
 
@@ -107,9 +107,9 @@ This is the first time the OpenAI call touches real resident data, so watch one 
    # Expect: {"seeded": 1}
    ```
 
-   (`$SECRET_KEY` is the same secret-key auth the other cron-invoked functions use — see [environment-files.md](environment-files.md).)
+   (`$SECRET_KEY` is the same secret-key auth the other cron-invoked functions use - see [environment-files.md](environment-files.md).)
 
-2. **Wait up to a minute** — the cron claims it on the next tick. Backfill rows have no 72-hour delay.
+2. **Wait up to a minute** - the cron claims it on the next tick. Backfill rows have no 72-hour delay.
 
 3. **Check the row:**
 
@@ -136,7 +136,7 @@ This is the first time the OpenAI call touches real resident data, so watch one 
 
 **Realtime is now live too:** every Missive conversation that closes from here on is queued automatically and posts ~72 hours later (suppression rules permitting).
 
-## Step 5 — Run the historical backfill
+## Step 5 - Run the historical backfill
 
 Once the smoke test looks right, drain history in bounded batches rather than all at once:
 
@@ -147,10 +147,10 @@ curl -X POST "https://pshrrdazlftosdtoevpf.supabase.co/functions/v1/conversation
   -d '{"action": "seed-backfill", "limit": 500, "after": "2025-01-01T00:00:00Z"}'
 ```
 
-- Seeding is idempotent — conversations that already have a row are skipped, so re-running the same call is safe, and each run picks up where the last left off.
+- Seeding is idempotent - conversations that already have a row are skipped, so re-running the same call is safe, and each run picks up where the last left off.
 - The cron drains 5 rows/minute (~7,200/day), realtime rows always first, so the backfill never starves live conversations.
 - **Scale expectation:** roughly 4,000 eligible conversations ≈ **$50–60 on Terra** (double on Sol). Check spend on the OpenAI usage dashboard after the first 500.
-- Backfill results are recorded for analytics and **do post to Slack** when unsuppressed — most historical rows land on suppressed tags, but expect some channel volume. If that's too noisy, seed in small batches during work hours so the team can watch.
+- Backfill results are recorded for analytics and **do post to Slack** when unsuppressed - most historical rows land on suppressed tags, but expect some channel volume. If that's too noisy, seed in small batches during work hours so the team can watch.
 - Progress check:
 
   ```sql
@@ -159,7 +159,7 @@ curl -X POST "https://pshrrdazlftosdtoevpf.supabase.co/functions/v1/conversation
   WHERE suppress_reason IS NOT NULL GROUP BY 1 ORDER BY 2 DESC;
   ```
 
-## Step 6 — Ongoing operation
+## Step 6 - Ongoing operation
 
 **Weekly digest** posts Mondays 14:00 UTC. It counts realtime analyses completed in the week (backfill is excluded by design, so history never floods a digest) plus promotions of any source. If a Monday run fails (5xx in logs / Sentry), re-invoking the function **before the next Monday 14:00 UTC** reproduces exactly the missed digest:
 
@@ -168,9 +168,9 @@ curl -X POST "https://pshrrdazlftosdtoevpf.supabase.co/functions/v1/weekly-diges
   -H "apikey: $SECRET_KEY" -d '{}'
 ```
 
-**Editing the taxonomy** needs no redeploy: `UPDATE analysis_tags SET active = false WHERE name = '…'` (or insert new rows). The prompt, the schema enum, and the priority guidance all rebuild from active tags on every run. Never deactivate all tags — the queue pauses (by design) until at least one is active.
+**Editing the taxonomy** needs no redeploy: `UPDATE analysis_tags SET active = false WHERE name = '…'` (or insert new rows). The prompt, the schema enum, and the priority guidance all rebuild from active tags on every run. Never deactivate all tags - the queue pauses (by design) until at least one is active.
 
-**Tuning suppression:** the dashboard's "Suppressed (30d)" tile and the digest's suppressed stat show the filtered volume. The tag list (`SUPPRESS_TAGS`) and confidence floor (`0.5`) are constants in `AnalysisService.ts` — changing those does need a deploy.
+**Tuning suppression:** the dashboard's "Suppressed (30d)" tile and the digest's suppressed stat show the filtered volume. The tag list (`SUPPRESS_TAGS`) and confidence floor (`0.5`) are constants in `AnalysisService.ts` - changing those does need a deploy.
 
 **Watching for failures:**
 
@@ -195,7 +195,7 @@ WHERE status = 'failed';
 | Summaries are nonsense, transcripts absurdly long | `OUTLIER_PHONE_NUMBER` is not `67485` | Fix it, then delete + reseed affected rows |
 | Row `completed` but no Slack post, `suppress_reason` set | Working as designed | See suppression rules in conversation-tagging.md |
 | Slack post but error mentions `channel_not_found` / `not_in_channel` | Wrong channel ID or bot not invited | Recheck Step 1.5 |
-| Promote click shows a Slack error | Interactivity URL or `SLACK_SIGNING_SECRET` mismatch | Recheck Steps 1.4, 1.6; the DB write may still have landed — check `promoted_at` |
+| Promote click shows a Slack error | Interactivity URL or `SLACK_SIGNING_SECRET` mismatch | Recheck Steps 1.4, 1.6; the DB write may still have landed - check `promoted_at` |
 | Rows stuck `skipped` with `ambiguous-transcript` | Resident phone spans several conversations (28 known cases) | Expected; these are deliberately not analyzed |
 | Rows stuck `pending`, cron running | All tags inactive, or `process_after` in the future | Reactivate a tag; realtime rows wait 72h by design |
 | Dashboard shows 401 | Missing/wrong `?token=` | Match `DASHBOARD_TOKEN` exactly |
