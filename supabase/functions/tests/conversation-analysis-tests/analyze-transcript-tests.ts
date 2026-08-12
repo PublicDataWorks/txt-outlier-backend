@@ -532,6 +532,22 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertStringIncludes(result.summary, '[address redacted]')
   })
 
+  it('redacts suffix-less addresses on major Detroit streets, leaving prose and years alone', async () => {
+    fetchStub.resolves(openAiResponse({
+      ...basePayload,
+      summary: 'Lives at 123 Woodward but gave 2 Michigan programs and asked about the 2024 Michigan primary.',
+    }))
+
+    const result = await analyzeTranscript([buildMessage(0)], tags)
+
+    // "123 Woodward" has no street-type suffix, so the suffix-anchored rule cannot see it; the curated
+    // major-street list catches it. Small counts and year-shaped numbers survive.
+    assertEquals(result.summary.includes('123 Woodward'), false)
+    assertStringIncludes(result.summary, '[address redacted]')
+    assertStringIncludes(result.summary, '2 Michigan programs')
+    assertStringIncludes(result.summary, '2024 Michigan primary')
+  })
+
   it('redacts names containing non-ASCII letters', async () => {
     fetchStub.resolves(openAiResponse({
       ...basePayload,

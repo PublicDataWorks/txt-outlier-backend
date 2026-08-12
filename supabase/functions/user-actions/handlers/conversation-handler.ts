@@ -14,6 +14,7 @@ import {
 } from '../../_shared/drizzle/schema.ts'
 import { adaptConversationAssignee, adaptConversationAssigneeHistory } from '../adapters.ts'
 import supabase from '../../_shared/lib/supabase.ts'
+import { withdrawAnalysisMessage } from '../../_shared/services/SlackService.ts'
 
 export const handleConversationStatusChanged = async (requestBody: RequestBody, changeType: string) => {
   await supabase.transaction(async (tx) => {
@@ -172,13 +173,28 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
 // before analyzing, so that in-flight case is still caught.
 const cancelPendingConversationAnalysis = async (requestBody: RequestBody) => {
   try {
-    await supabase
+    const [cancelled] = await supabase
       .update(conversationAnalyses)
       .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
       .where(and(
         eq(conversationAnalyses.conversationId, requestBody.conversation.id),
         eq(conversationAnalyses.status, 'pending'),
       ))
+      .returning({
+        slackChannel: conversationAnalyses.slackChannel,
+        slackMessageTs: conversationAnalyses.slackMessageTs,
+      })
+
+    // A pending row normally has no Slack refs, but one retry shape does: the attempt posted, persisted its
+    // refs, and then failed the completion write, so it was requeued as pending with the refs intact. This
+    // cancel is terminal - no worker ever touches a skipped row - so without withdrawing here, that already
+    // posted analysis and its live promote button would stay in the review channel for a conversation that
+    // is open again, forever. Inside the same swallow-everything try/catch as the cancel itself: this path
+    // must never fail the webhook, and the reopen+failed-completion overlap is rare enough that the Slack
+    // call's worst-case latency is acceptable inline.
+    if (cancelled?.slackChannel && cancelled?.slackMessageTs) {
+      await withdrawAnalysisMessage(cancelled.slackChannel, cancelled.slackMessageTs, 'the conversation was reopened')
+    }
   } catch (error) {
     console.error(
       `Error cancelling conversation analysis for conversationId=${requestBody.conversation.id}: ${

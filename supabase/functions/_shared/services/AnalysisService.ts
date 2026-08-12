@@ -410,6 +410,21 @@ const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
   // Runs after the phone rules (which claim 10- and 11-digit runs) so a phone is still labelled as a phone.
   // 7 is the floor because ZIPs, years, dollar figures, and small counts all sit below it.
   { label: '[account redacted]', pattern: /\b\d{7,}\b/g },
+  // Detroit's major thoroughfares are routinely written without a street-type suffix ("123 Woodward",
+  // "5000 Cass"), which the suffix-anchored rule above cannot see. There is no safe generic pattern for
+  // number-plus-capitalized-word ("2 Detroit agencies" would be mangled), so this is a curated list of the
+  // majors that commonly appear suffix-less. The house number needs 3+ digits: real addresses on these
+  // streets essentially always have them, while prose counts ("2 Michigan programs") stay small - so the
+  // digit floor is what keeps this from chewing up ordinary sentences. Year-shaped numbers (19xx/20xx) are
+  // excluded too: "the 2024 Michigan primary" is election prose, and elections are a core topic here, so
+  // that collision would fire constantly - at the accepted cost of missing the rare year-shaped house number
+  // on a suffix-less street. Best-effort by design; the prompt remains the first line for street names not
+  // on this list.
+  {
+    label: '[address redacted]',
+    pattern:
+      /\b(?!(?:19|20)\d\d\b)\d{3,6}\s+(?:(?:E\.?|W\.?|N\.?|S\.?|East|West|North|South)\s+)?(?:Woodward|Cass|Gratiot|Michigan|Jefferson|Fort|Mack|Livernois|McNichols|Vernor|Warren|Fenkell|Joy|Plymouth|Davison|Dexter|Linwood|Schaefer|Greenfield|Evergreen|Telegraph|Harper|Kercheval|Chalmers|Conner|Moross|Cadieux|Wyoming|Puritan|Chene|Mound|Ryan|Caniff|Houston[- ]Whittier|Grand\s+River|Van\s+Dyke|Outer\s+Drive|Rosa\s+Parks|Martin\s+Luther\s+King|(?:Eight|Seven|Six|[678])\s+Mile)\b/g,
+  },
   // Michigan ZIPs only (48xxx/49xxx), so ordinary 5-digit figures like dollar amounts survive intact.
   { label: '[zip redacted]', pattern: /\b4[89]\d{3}(?:-\d{4})?\b/g },
 ]
