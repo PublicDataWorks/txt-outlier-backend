@@ -10,6 +10,8 @@ type SlackBlockActionsPayload = {
   type: string
   user?: { id: string; name?: string; username?: string }
   actions?: { action_id: string; value?: string }[]
+  channel?: { id?: string }
+  message?: { ts?: string }
 }
 
 // Slack expects a block_actions request to be acknowledged within 3 seconds, and slackFetch allows up to 15
@@ -30,18 +32,37 @@ const runAfterResponse = (task: Promise<unknown>): void => {
   runtime?.waitUntil?.(guarded)
 }
 
-const promoteStoryIdea = async (analysisId: number, promotedBy: string): Promise<void> => {
+const promoteStoryIdea = async (
+  analysisId: number,
+  promotedBy: string,
+  clickedChannel: string,
+  clickedMessageTs: string,
+): Promise<void> => {
   const now = new Date().toISOString()
 
   // Guarded by `promotedAt IS NULL` so a duplicate click (or Slack retry) is a no-op: only the first
   // request to reach here updates the row, and returns it - later ones see zero rows returned.
+  //
+  // Also guarded by the clicked message matching the row's CURRENT Slack refs and the row being completed
+  // and unsuppressed. Analysis row ids are reused across close/reopen cycles, so a button on an old,
+  // orphaned or withdrawn message carries the id of whatever the row holds NOW - and without this check a
+  // late click on last cycle's post would promote this cycle's analysis, which the clicker never read.
+  // A mismatch means zero rows return and the click is a no-op.
+  //
   // Deliberately does NOT touch updated_at: the weekly digest and dashboard treat it as "when the pipeline
   // last analyzed this row", so bumping it on a promotion click would pull an old conversation back into the
   // current 7-day window and distort week-over-week deltas. promoted_at is the promotion's own timestamp.
   const [updated] = await supabase
     .update(conversationAnalyses)
     .set({ promotedAt: now, promotedBy })
-    .where(and(eq(conversationAnalyses.id, analysisId), isNull(conversationAnalyses.promotedAt)))
+    .where(and(
+      eq(conversationAnalyses.id, analysisId),
+      isNull(conversationAnalyses.promotedAt),
+      eq(conversationAnalyses.status, 'completed'),
+      isNull(conversationAnalyses.suppressReason),
+      eq(conversationAnalyses.slackChannel, clickedChannel),
+      eq(conversationAnalyses.slackMessageTs, clickedMessageTs),
+    ))
     .returning({
       slackChannel: conversationAnalyses.slackChannel,
       slackMessageTs: conversationAnalyses.slackMessageTs,
@@ -137,8 +158,16 @@ Deno.serve(async (req) => {
       return AppResponse.ok()
     }
 
+    // Fail closed on a payload without message provenance: the staleness guard cannot run without it, and a
+    // legitimate block_actions click in a channel always carries both.
+    const clickedChannel = payload.channel?.id
+    const clickedMessageTs = payload.message?.ts
+    if (!clickedChannel || !clickedMessageTs) {
+      return AppResponse.ok()
+    }
+
     const promotedBy = payload.user?.name ?? payload.user?.username ?? payload.user?.id ?? 'unknown'
-    await promoteStoryIdea(analysisId, promotedBy)
+    await promoteStoryIdea(analysisId, promotedBy, clickedChannel, clickedMessageTs)
   } catch (error) {
     console.error(`Error in slack-interactions: ${error.message}. Stack: ${error.stack}`)
     Sentry.captureException(error)

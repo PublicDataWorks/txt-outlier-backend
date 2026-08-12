@@ -421,6 +421,24 @@ const refreshLease = async (row: ClaimedRow): Promise<boolean> => {
 }
 
 const processQueue = async (batchSize: number): Promise<void> => {
+  // Best-effort serialization across cron ticks. The loop below is sequential only within one invocation,
+  // and a row can legitimately hold a model call for up to two minutes - so during a backfill, the
+  // every-minute cron would otherwise stack invocations and run several OpenAI and Slack calls concurrently,
+  // defeating the one-at-a-time rate-limit posture. If another invocation still holds fresh work, this tick
+  // simply yields; the queue drains at most one batch per lease-fresh worker. Best-effort by design: two
+  // ticks racing past this check together still claim disjoint rows (FOR UPDATE SKIP LOCKED), so the cost of
+  // the race is brief overlap, not corruption. The 15-minute freshness bound matches the claim's stale-lease
+  // reclaim, so a crashed worker pauses the queue for at most one lease window.
+  const [inFlight] = await supabase.execute(sql`
+    SELECT 1 AS present FROM conversation_analyses
+    WHERE status = 'processing' AND updated_at >= NOW() - INTERVAL '15 minutes'
+    LIMIT 1
+  `)
+  if (inFlight) {
+    console.log('Another process-queue invocation holds fresh in-flight work; yielding this tick')
+    return
+  }
+
   // Loaded before claiming, deliberately. Claiming first would mean a transient failure here throws with the
   // whole batch already marked 'processing' and no per-row error handling reached; every stale-lease reclaim
   // would then bump each row's attempt count until they hit MAX_ATTEMPTS and were marked failed, without a

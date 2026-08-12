@@ -48,11 +48,27 @@ const postInteraction = async (payload: unknown, options: { signatureOverride?: 
   return { status: response.status, json: () => JSON.parse(text) }
 }
 
-const blockActionsPayload = (analysisId: number, user: Record<string, string>) => ({
+// A real block_actions click carries the channel and message it came from; the handler uses them to verify
+// the click targets the row's CURRENT post rather than an orphaned one from a previous cycle.
+const CLICK_CHANNEL = 'C_TEST_CHANNEL'
+const CLICK_TS = '1700000000.000100'
+
+const blockActionsPayload = (
+  analysisId: number,
+  user: Record<string, string>,
+  overrides: Record<string, unknown> = {},
+) => ({
   type: 'block_actions',
   user,
   actions: [{ action_id: 'promote_story_idea', value: String(analysisId) }],
+  channel: { id: CLICK_CHANNEL },
+  message: { ts: CLICK_TS },
+  ...overrides,
 })
+
+// A promotable row: completed, unsuppressed, and holding the refs of the message being clicked.
+const createPromotableAnalysis = () =>
+  createConversationAnalysis({ status: 'completed', slackChannel: CLICK_CHANNEL, slackMessageTs: CLICK_TS })
 
 const fetchAnalysis = async (id: number) => {
   const [row] = await supabase.select().from(conversationAnalyses).where(eq(conversationAnalyses.id, id))
@@ -61,7 +77,7 @@ const fetchAnalysis = async (id: number) => {
 
 describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false }, () => {
   it('rejects a request with an invalid signature', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const payload = blockActionsPayload(analysis.id, { id: 'U1', name: 'jdoe' })
 
     const response = await postInteraction(payload, { signatureOverride: 'v0=0000000000000000' })
@@ -75,7 +91,7 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
   })
 
   it('promotes a story idea and records who promoted it, by display name', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const payload = blockActionsPayload(analysis.id, { id: 'U1', name: 'Jane Doe', username: 'jane' })
 
     const response = await postInteraction(payload)
@@ -87,7 +103,7 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
   })
 
   it('falls back to username when the user has no display name', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const payload = blockActionsPayload(analysis.id, { id: 'U1', username: 'jane' })
 
     await postInteraction(payload)
@@ -97,7 +113,7 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
   })
 
   it('falls back to the user id when there is no name or username', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const payload = blockActionsPayload(analysis.id, { id: 'U1' })
 
     await postInteraction(payload)
@@ -106,8 +122,48 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
     assertEquals(updated.promotedBy, 'U1')
   })
 
+  it("ignores a click from a message that is not the row's current post", async () => {
+    // Row ids are reused across close/reopen cycles, so a button on last cycle's orphaned message carries
+    // this row's id. The stored refs point at the CURRENT post; a click from anywhere else must be a no-op.
+    const analysis = await createPromotableAnalysis()
+    const payload = blockActionsPayload(analysis.id, { id: 'U1', name: 'Jane Doe' }, {
+      message: { ts: '1600000000.000999' },
+    })
+
+    const response = await postInteraction(payload)
+
+    assertEquals(response.status, 200)
+    const unchanged = await fetchAnalysis(analysis.id)
+    assertEquals(unchanged.promotedAt, null)
+  })
+
+  it('ignores a click on a suppressed row', async () => {
+    const analysis = await createConversationAnalysis({
+      status: 'completed',
+      suppressReason: 'tag:no-impact',
+      slackChannel: CLICK_CHANNEL,
+      slackMessageTs: CLICK_TS,
+    })
+
+    await postInteraction(blockActionsPayload(analysis.id, { id: 'U1', name: 'Jane Doe' }))
+
+    const unchanged = await fetchAnalysis(analysis.id)
+    assertEquals(unchanged.promotedAt, null)
+  })
+
+  it('ignores a payload that carries no message provenance', async () => {
+    const analysis = await createPromotableAnalysis()
+    const payload = blockActionsPayload(analysis.id, { id: 'U1', name: 'Jane Doe' }, { channel: undefined })
+
+    const response = await postInteraction(payload)
+
+    assertEquals(response.status, 200)
+    const unchanged = await fetchAnalysis(analysis.id)
+    assertEquals(unchanged.promotedAt, null)
+  })
+
   it('is idempotent: a second click by a different user does not change who promoted it', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     await postInteraction(blockActionsPayload(analysis.id, { id: 'U1', name: 'Jane Doe' }))
     const afterFirst = await fetchAnalysis(analysis.id)
 
@@ -119,7 +175,7 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
   })
 
   it('does nothing for a payload type other than block_actions', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const response = await postInteraction({ type: 'view_submission' })
 
     assertEquals(response.status, 200)
@@ -128,7 +184,7 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
   })
 
   it('does nothing when the action_id is not promote_story_idea', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const payload = {
       type: 'block_actions',
       user: { id: 'U1', name: 'Jane Doe' },
@@ -143,7 +199,7 @@ describe('slack-interactions', { sanitizeOps: false, sanitizeResources: false },
   })
 
   it('does nothing when the action value is not a valid integer', async () => {
-    const analysis = await createConversationAnalysis({ status: 'completed' })
+    const analysis = await createPromotableAnalysis()
     const payload = {
       type: 'block_actions',
       user: { id: 'U1', name: 'Jane Doe' },

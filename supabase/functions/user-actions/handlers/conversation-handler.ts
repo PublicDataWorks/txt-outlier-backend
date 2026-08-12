@@ -91,11 +91,22 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
       console.error('OUTLIER_PHONE_NUMBER is not set - not enqueueing conversation analysis')
       return
     }
+    // Read before the reset below discards them: if this close genuinely starts a new cycle, the previous
+    // cycle's Slack post is about to become an orphan whose promote button still carries this row's id, and
+    // these refs are the only pointer to it.
+    const [previous] = await supabase
+      .select({
+        slackChannel: conversationAnalyses.slackChannel,
+        slackMessageTs: conversationAnalyses.slackMessageTs,
+      })
+      .from(conversationAnalyses)
+      .where(eq(conversationAnalyses.conversationId, requestBody.conversation.id))
+
     // Clears every prior-cycle field, including Slack refs and promotion state: leaving slack_channel/
     // slack_message_ts set would make processRow's retry-reuse guard treat this brand-new cycle as
     // already posted and silently skip Slack, and a stale promoted_at would misrepresent the new
     // cycle's state before it's even analyzed.
-    await supabase.execute(sql`
+    const applied = await supabase.execute(sql`
       INSERT INTO conversation_analyses (conversation_id, status, source, process_after)
       SELECT ${requestBody.conversation.id}, 'pending', 'realtime',
         NOW() + make_interval(hours => ${REALTIME_DELAY_HOURS})
@@ -158,12 +169,41 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
               AND ch.created_at > COALESCE(conversation_analyses.updated_at, conversation_analyses.created_at)
           )
         )
+      RETURNING id
     `)
+
+    // Withdraw the previous cycle's post only AFTER the reset provably applied (a duplicate close matches
+    // nothing and must not touch the live message). Without this, the old post and its promote button stay
+    // in the channel while the new cycle waits 72 hours and eventually posts a second message for the same
+    // row id - and a late click on the old button would promote the new cycle's analysis.
+    const resetApplied = (applied as unknown as { id: number }[]).length > 0
+    if (resetApplied && previous?.slackChannel && previous?.slackMessageTs) {
+      await withdrawOrLogForManualCleanup(
+        previous.slackChannel,
+        previous.slackMessageTs,
+        'the conversation was reopened and closed again; a fresh analysis is queued',
+      )
+    }
   } catch (error) {
     console.error(
       `Error enqueueing conversation analysis for conversationId=${requestBody.conversation.id}: ${
         error instanceof Error ? error.message : String(error)
       }. Stack: ${error instanceof Error ? error.stack : ''}`,
+    )
+  }
+}
+
+// Best-effort message withdrawal for webhook paths. A failure here cannot be retried by anything - the rows
+// involved are terminal - so the log line carries the exact channel/ts an operator needs to clean the
+// message up by hand, and the error goes to Sentry under its own message rather than a generic catch.
+const withdrawOrLogForManualCleanup = async (channel: string, ts: string, reason: string): Promise<void> => {
+  try {
+    await withdrawAnalysisMessage(channel, ts, reason)
+  } catch (error) {
+    console.error(
+      `MANUAL CLEANUP NEEDED: failed to withdraw Slack message channel=${channel} ts=${ts} (${reason}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     )
   }
 }
@@ -193,7 +233,11 @@ const cancelPendingConversationAnalysis = async (requestBody: RequestBody) => {
     // must never fail the webhook, and the reopen+failed-completion overlap is rare enough that the Slack
     // call's worst-case latency is acceptable inline.
     if (cancelled?.slackChannel && cancelled?.slackMessageTs) {
-      await withdrawAnalysisMessage(cancelled.slackChannel, cancelled.slackMessageTs, 'the conversation was reopened')
+      await withdrawOrLogForManualCleanup(
+        cancelled.slackChannel,
+        cancelled.slackMessageTs,
+        'the conversation was reopened',
+      )
     }
   } catch (error) {
     console.error(
