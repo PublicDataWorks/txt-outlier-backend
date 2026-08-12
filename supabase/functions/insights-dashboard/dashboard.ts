@@ -74,7 +74,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   }
   .tiles {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 12px;
     margin-bottom: 20px;
   }
@@ -159,6 +159,10 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div class="tile-label">Promoted stories</div>
       <div class="tile-value" id="tile-promoted">&ndash;</div>
     </div>
+    <div class="card">
+      <div class="tile-label">Suppressed (30d)</div>
+      <div class="tile-value" id="tile-suppressed">&ndash;</div>
+    </div>
   </div>
 
   <div class="card">
@@ -237,6 +241,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     document.getElementById('tile-last7').textContent = formatNumber(data.last7Days)
     document.getElementById('tile-unmet').textContent = formatNumber(data.unmetDemandLast30Days)
     document.getElementById('tile-promoted').textContent = formatNumber(data.promotedTotal)
+    document.getElementById('tile-suppressed').textContent = formatNumber(data.suppressedLast30Days)
   }
 
   // The API returns no row for a week with zero completed analyses. Deriving the x-axis only from weeks

@@ -51,7 +51,7 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
     // appear in "Last 7 days". Matches the tags-over-time endpoint's expression.
     const activityDate = sql`coalesce(${conversationAnalyses.lastMessageAt}, ${conversationAnalyses.createdAt})`
 
-    const [[totalRow], [last7Row], [unmetRow], [promotedRow]] = await Promise.all([
+    const [[totalRow], [last7Row], [unmetRow], [promotedRow], [suppressedRow]] = await Promise.all([
       supabase
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAnalyses)
@@ -72,6 +72,16 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
         .select({ count: sql<number>`count(*)::int` })
         .from(conversationAnalyses)
         .where(isNotNull(conversationAnalyses.promotedAt)),
+      // Suppression volume, which the docs promise this dashboard surfaces so SUPPRESS_TAGS and the confidence
+      // threshold can be tuned against evidence. Same 30-day activity window as the unmet-demand tile.
+      supabase
+        .select({ count: sql<number>`count(*)::int` })
+        .from(conversationAnalyses)
+        .where(and(
+          eq(conversationAnalyses.status, 'completed'),
+          isNotNull(conversationAnalyses.suppressReason),
+          gte(activityDate, last30Start),
+        )),
     ])
 
     return AppResponse.ok({
@@ -79,6 +89,7 @@ app.get(`${FUNCTION_PATH}data/summary`, async (_c) => {
       last7Days: last7Row?.count ?? 0,
       unmetDemandLast30Days: unmetRow?.count ?? 0,
       promotedTotal: promotedRow?.count ?? 0,
+      suppressedLast30Days: suppressedRow?.count ?? 0,
     })
   } catch (error) {
     console.error(`Error in insights-dashboard summary: ${error instanceof Error ? error.message : String(error)}`)

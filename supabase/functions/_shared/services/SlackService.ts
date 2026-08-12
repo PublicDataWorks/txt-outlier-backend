@@ -49,12 +49,19 @@ const PROMOTED_BLOCK_ID = 'analysis_promoted'
 // row retry, and the analysis eventually land in 'failed'. Truncating costs a few words; failing loses the
 // whole notification.
 const SLACK_SECTION_TEXT_LIMIT = 3000
+// A header block caps at 150 characters, separately from section text. Tag names are operator-editable, and
+// defaultTagDisplay drops an unrecognized one straight into the header uppercased, so a long custom name plus
+// the ordinal could push past the limit and have Slack reject the whole post - then retries, then 'failed'.
+const SLACK_HEADER_TEXT_LIMIT = 150
 
 // Applied to the assembled block text rather than the raw field, since the surrounding labels and markup
 // count toward the limit too. Exported because the weekly digest assembles its own blocks (concatenating
 // several summaries into one section) and needs the same ceiling.
 export const truncateForSlack = (text: string): string =>
   text.length <= SLACK_SECTION_TEXT_LIMIT ? text : `${text.slice(0, SLACK_SECTION_TEXT_LIMIT - 1)}…`
+
+const truncateHeader = (text: string): string =>
+  text.length <= SLACK_HEADER_TEXT_LIMIT ? text : `${text.slice(0, SLACK_HEADER_TEXT_LIMIT - 1)}…`
 
 // Slack answered and rejected the call. Distinguished from a transport failure (fetch threw, the response
 // never arrived, the body was unparseable) because the two need opposite handling: a rejection means Slack
@@ -114,7 +121,10 @@ const durationText = (firstIso: string | null, lastIso: string | null): string |
   const first = new Date(firstIso).getTime()
   const last = new Date(lastIso).getTime()
   if (Number.isNaN(first) || Number.isNaN(last) || last < first) return null
-  const days = Math.round((last - first) / (24 * 60 * 60 * 1000))
+  // Floor, not round: the wording says "over N days", so rounding up made a 12-hour conversation read as
+  // "over 1 day" and a 36-hour one as "over 2 days" - overstating provenance metadata the newsroom reads as
+  // fact. Completed days only, and anything short of one renders as "same day".
+  const days = Math.floor((last - first) / (24 * 60 * 60 * 1000))
   return days <= 0 ? 'same day' : `over ${days} day${days === 1 ? '' : 's'}`
 }
 
@@ -165,9 +175,11 @@ export const buildAnalysisMessageBlocks = (
       type: 'header',
       text: {
         type: 'plain_text',
-        text: `${display.emoji} ${display.label}${
-          ordinal > 0 ? ` — ${ordinal}${ordinalSuffix(ordinal)} this quarter` : ''
-        }`,
+        text: truncateHeader(
+          `${display.emoji} ${display.label}${
+            ordinal > 0 ? ` — ${ordinal}${ordinalSuffix(ordinal)} this quarter` : ''
+          }`,
+        ),
         emoji: true,
       },
     },

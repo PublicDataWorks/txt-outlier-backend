@@ -90,6 +90,15 @@ export const findAmbiguousResidentPhones = async (conversationId: string): Promi
     FROM conversations_authors ca
     WHERE ca.conversation_id = ${conversationId}
       AND ca.author_phone_number <> ${OUTLIER_PHONE_NUMBER ?? ''}
+      -- Only identifiers that actually exchanged SMS with us can create an attribution collision. Author rows
+      -- are written for every payload author (staff contacts, email participants), and one of those appearing
+      -- on several conversations would otherwise skip the analysis even though getConversationTranscript
+      -- ignores it entirely - it matches no message leg. Mirrors the transcript query's own condition.
+      AND EXISTS (
+        SELECT 1 FROM twilio_messages tm
+        WHERE (tm.from_field = ca.author_phone_number AND tm.to_field = ${OUTLIER_PHONE_NUMBER ?? ''})
+           OR (tm.to_field = ca.author_phone_number AND tm.from_field = ${OUTLIER_PHONE_NUMBER ?? ''})
+      )
       AND EXISTS (
         SELECT 1 FROM conversations_authors other
         WHERE other.author_phone_number = ca.author_phone_number

@@ -326,7 +326,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     )
   }
 
-  await supabase
+  const finalized = await supabase
     .update(conversationAnalyses)
     .set({
       status: 'completed',
@@ -348,6 +348,28 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       error: null,
       updatedAt: new Date().toISOString(),
     })
+    // Conditional on the conversation still being closed, evaluated by Postgres as part of this write rather
+    // than read minutes earlier. A reopen can land after the pre-post check and cannot be cancelled by the
+    // reopen handler, because that only touches 'pending' rows and this one is 'processing' - so without the
+    // guard the worker would mark a stale analysis 'completed' on an open conversation and feed it to the
+    // digest and dashboard, defeating the point of the 72-hour delay.
+    .where(and(
+      eq(conversationAnalyses.id, row.id),
+      sql`EXISTS (SELECT 1 FROM conversations c WHERE c.id = ${row.conversationId} AND c.closed IS TRUE)`,
+    ))
+    .returning({ id: conversationAnalyses.id })
+
+  if (finalized.length > 0) return
+
+  // Reopened mid-flight. Anything already posted has to come down: it is proposing a conversation that is
+  // open again for editorial review, with a live promote button.
+  console.warn(`conversation_analyses id=${row.id} reopened before finalization; withdrawing and skipping`)
+  if (slackMessage) {
+    await withdrawAnalysisMessage(slackMessage.channel, slackMessage.ts, 'the conversation was reopened')
+  }
+  await supabase
+    .update(conversationAnalyses)
+    .set({ status: 'skipped', suppressReason: 'reopened-before-processing', updatedAt: new Date().toISOString() })
     .where(eq(conversationAnalyses.id, row.id))
 }
 
