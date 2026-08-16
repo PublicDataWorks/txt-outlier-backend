@@ -2,12 +2,16 @@ import { describe, it } from 'jsr:@std/testing/bdd'
 import { assert, assertEquals, assertInstanceOf } from 'jsr:@std/assert'
 import { serviceClient as client } from './utils.ts'
 import './setup.ts'
-import { createAuthors } from './factories/author.ts'
+import { createAuthor, createAuthors } from './factories/author.ts'
 import { createBroadcast } from './factories/broadcast.ts'
 import { createSegment } from './factories/segment.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { and, eq, gt, sql } from 'drizzle-orm'
 import { broadcasts } from '../_shared/drizzle/schema.ts'
+import { createLabel } from './factories/label.ts'
+import { createConversation } from './factories/conversation.ts'
+import { createConversationAuthor } from './factories/conversation-author.ts'
+import { createConversationLabel } from './factories/conversation-label.ts'
 
 const FUNCTION_NAME = 'make/'
 
@@ -124,6 +128,53 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
       sql.raw('SELECT COUNT(*) as count FROM pgmq.q_broadcast_first_messages'),
     )
     assertEquals(totalQueuedMessages[0].count, '2', 'Should have messages for all authors')
+  })
+
+  it('should exclude authors with the CSV UPLOAD label from broadcast segments', async () => {
+    const eligibleAuthor = await createAuthor('+15550000001')
+    const csvUploadAuthor = await createAuthor('+15550000002')
+    const csvUploadLabel = await createLabel({
+      name: 'CSV UPLOAD',
+      nameWithParentNames: 'Campaigns/CSV UPLOAD',
+    })
+    const csvUploadConversation = await createConversation()
+    await createConversationAuthor({
+      conversationId: csvUploadConversation.id,
+      authorPhoneNumber: csvUploadAuthor.phoneNumber,
+    })
+    await createConversationLabel({
+      conversationId: csvUploadConversation.id,
+      labelId: csvUploadLabel.id,
+    })
+
+    await createSegment({
+      name: 'Inactive',
+      query: 'SELECT a.phone_number FROM public.authors a ORDER BY a.phone_number',
+    })
+
+    const broadcast = await createBroadcast({
+      editable: true,
+      firstMessage: 'Test first message',
+      secondMessage: 'Test second message',
+      noUsers: 2,
+      delay: 600,
+    })
+    await createSegment({
+      broadcastId: broadcast.id!,
+      query: 'SELECT a.phone_number FROM public.authors a ORDER BY a.phone_number',
+    })
+
+    await client.functions.invoke(FUNCTION_NAME, {
+      method: 'POST',
+      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+    })
+
+    const queuedMessages = await supabase.execute(
+      sql.raw('SELECT message FROM pgmq.q_broadcast_first_messages'),
+    )
+
+    assertEquals(queuedMessages.length, 1)
+    assertEquals(queuedMessages[0].message.recipient_phone_number, eligibleAuthor.phoneNumber)
   })
 
   it('should create new broadcast when another broadcast is running', async () => {

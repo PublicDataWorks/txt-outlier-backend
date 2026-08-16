@@ -21,6 +21,8 @@ beforeEach(async () => {
     '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
     '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
     '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
+    '../../migrations/20260616090000_exclude_csv_upload_from_broadcasts.sql',
+    '../../migrations/20260616170000_harden_csv_upload_broadcast_exclusion.sql',
   ]
 
   const conn = await postgresClient.reserve()
