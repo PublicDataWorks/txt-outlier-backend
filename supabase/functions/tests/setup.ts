@@ -23,6 +23,7 @@ beforeEach(async () => {
     '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
     '../../migrations/20260712090000_add_conversation_analysis.sql',
     '../../migrations/20260712170000_conversation_analysis_q2_taxonomy.sql',
+    '../../migrations/20260826162500_weekly_digest_thursday_eastern.sql',
   ]
 
   const conn = await postgresClient.reserve()
