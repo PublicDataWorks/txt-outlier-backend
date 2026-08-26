@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { withSupabase } from '@supabase/server'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
+import { isInCurrentQuarter, startOfCurrentQuarter, startOfNextQuarter } from '../_shared/misc/quarters.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
@@ -136,26 +137,40 @@ const loadConversationMeta = async (
   }
 }
 
-const startOfCurrentQuarter = (): string => {
-  const now = new Date()
-  const quarterMonth = Math.floor(now.getUTCMonth() / 3) * 3
-  return new Date(Date.UTC(now.getUTCFullYear(), quarterMonth, 1)).toISOString()
-}
-
 // Not concurrency-safe: two overlapping process-queue invocations analyzing different rows with the
 // same tag could read the same count and post the same "Nth this quarter" ordinal. This is a vanity
 // stat for the Slack message, not used for any business logic, so an occasional duplicate display
 // value is an accepted tradeoff against the cost of a locked/atomic counter.
-const countTagThisQuarter = async (tag: string): Promise<number> => {
+//
+// Returns 0 - meaning "omit the phrase" - when this conversation did not itself happen this quarter.
+const countTagThisQuarter = async (tag: string, conversationLastMessageAt: string | null): Promise<number> => {
+  const quarterStart = startOfCurrentQuarter()
+  const nextQuarterStart = startOfNextQuarter()
+
+  // The phrase asserts something about THIS conversation ("the 4th reporter-engaged conversation this
+  // quarter"), so it is only true when this conversation happened this quarter. Without this guard a
+  // backfill of historical threads had every post claim an ordinal for a conversation that closed a year
+  // earlier - and, because the count below excludes all of them, claim the same constant number on every
+  // post. The Slack template already omits the phrase for a non-positive ordinal.
+  if (!isInCurrentQuarter(conversationLastMessageAt)) return 0
+
   const [row] = await supabase.execute(sql`
     SELECT count(*)::int AS count
     FROM conversation_analyses
     WHERE status = 'completed' AND tag = ${tag}
       -- Counted by when the conversations happened, not when they were analyzed. updated_at is completion
       -- time and is the same instant for every row of a backfill run, so windowing on it would turn a single
-      -- historical backfill into an ordinal like "3,412th this quarter" on the very next Slack post. Same
-      -- expression the digest and dashboard use.
-      AND coalesce(last_message_at, created_at) >= ${startOfCurrentQuarter()}
+      -- historical backfill into an ordinal like "3,412th this quarter" on the very next Slack post.
+      --
+      -- Deliberately no created_at fallback, unlike the dashboard's activity-date bucketing: created_at is
+      -- when the QUEUE ROW was written, which for a backfill is today even when the conversation is a year
+      -- old. Counting those made historical conversations look current and seeded a non-zero base that every
+      -- later post inherited. A row with no last_message_at has no known date, so it cannot be claimed as
+      -- this quarter's.
+      AND last_message_at >= ${quarterStart}
+      -- Exclusive upper bound, matching isInCurrentQuarter: a future-dated delivered_at (clock skew, bad
+      -- ingest) would otherwise inflate the ordinal of every genuine post for the rest of the quarter.
+      AND last_message_at < ${nextQuarterStart}
       -- Suppressed analyses never reached Slack, so counting them would inflate the newsroom-facing
       -- "Nth this quarter" past the number of posts anyone actually saw.
       AND suppress_reason IS NULL
@@ -298,7 +313,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   }
 
   if (!slackMessage && !suppressed) {
-    const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
+    const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag, lastMessageAt)
     slackMessage = await postAnalysisMessage(
       { ...analysisMessage, tagOrdinalThisQuarter },
       conversationMessage,
@@ -324,7 +339,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
     // Retry of a row that already posted. The model has just been re-run and may have returned a different
     // tag or summary, so rewrite the existing message rather than leaving the channel showing the first
     // result while the DB records the second.
-    const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag)
+    const tagOrdinalThisQuarter = await countTagThisQuarter(result.tag, lastMessageAt)
     // Read as late as possible: an editor may have promoted the message since this row was claimed, and
     // rebuilding the blocks without that knowledge would restore a dead promote button and drop the note.
     const [promotion] = await supabase
