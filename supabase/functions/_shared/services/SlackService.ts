@@ -79,6 +79,34 @@ export class SlackApiError extends Error {
 // been analyzed. The timer is cleared in `finally`, after the body is consumed, so it covers parsing too and
 // does not leave a pending timer behind (which the test sanitizers would flag).
 const SLACK_TIMEOUT_MS = 15_000
+const DIGEST_CHANNEL_HISTORY_LIMIT = 1_000
+const DIGEST_CHANNEL_MESSAGE_LIMIT = 20
+const DIGEST_THREAD_LIMIT = 15
+const DIGEST_THREAD_REPLY_LIMIT = 200
+
+type SlackHistoryMessage = {
+  user?: string
+  bot_id?: string
+  subtype?: string
+  text?: string
+  ts?: string
+  thread_ts?: string
+  reply_count?: number
+  latest_reply?: string
+}
+
+export type SlackDiscussionMessage = {
+  user: string | null
+  text: string
+  ts: string
+}
+
+export type SlackDiscussionSnapshot = {
+  channelMessages: SlackDiscussionMessage[]
+  threads: { rootTs: string; replies: SlackDiscussionMessage[] }[]
+  channelMessagesTruncated: boolean
+  threadsTruncated: boolean
+}
 
 const slackFetch = async (method: string, body: Record<string, unknown>) => {
   const controller = new AbortController()
@@ -102,6 +130,101 @@ const slackFetch = async (method: string, body: Record<string, unknown>) => {
     return data
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+const isHumanMessage = (message: SlackHistoryMessage): boolean =>
+  Boolean(message.user && !message.bot_id && message.subtype !== 'bot_message')
+
+const isWithinSlackWindow = (ts: string | undefined, fromSeconds: number, toSeconds: number): boolean => {
+  if (!ts) return false
+  const seconds = Number(ts)
+  return Number.isFinite(seconds) && seconds >= fromSeconds && seconds < toSeconds
+}
+
+// Reads enough recent channel history to discover both standalone human messages and analysis roots whose
+// threads received replies during the digest window. Slack does not include ordinary thread replies in
+// conversations.history, so roots with a recent latest_reply are followed with conversations.replies.
+//
+// The app is an internal workspace app with channels:history, which Slack documents as sufficient for both
+// methods. Limits keep the weekly job below the 50+ requests/minute Tier 3 allowance even in a busy channel.
+export const getSlackDiscussionSince = async (
+  channel: string,
+  from: Date,
+  to: Date,
+): Promise<SlackDiscussionSnapshot> => {
+  const history: SlackHistoryMessage[] = []
+  let cursor: string | undefined
+  let historyHasMore = false
+
+  do {
+    const remaining = DIGEST_CHANNEL_HISTORY_LIMIT - history.length
+    const data = await slackFetch('conversations.history', {
+      channel,
+      limit: Math.min(200, remaining),
+      ...(cursor ? { cursor } : {}),
+    })
+    history.push(...((data.messages ?? []) as SlackHistoryMessage[]))
+    cursor = data.response_metadata?.next_cursor || undefined
+    historyHasMore = Boolean(cursor)
+  } while (cursor && history.length < DIGEST_CHANNEL_HISTORY_LIMIT)
+
+  const fromSeconds = from.getTime() / 1_000
+  const toSeconds = to.getTime() / 1_000
+  const allChannelMessages = history
+    .filter((message) =>
+      isHumanMessage(message) && !message.thread_ts && isWithinSlackWindow(message.ts, fromSeconds, toSeconds)
+    )
+    .sort((a, b) => Number(a.ts) - Number(b.ts))
+
+  const activeRoots = history
+    .filter((message) =>
+      Boolean(
+        message.ts &&
+          message.reply_count &&
+          message.reply_count > 0 &&
+          isWithinSlackWindow(message.latest_reply, fromSeconds, toSeconds),
+      )
+    )
+    .sort((a, b) => Number(b.latest_reply) - Number(a.latest_reply))
+  const selectedRoots = activeRoots.slice(0, DIGEST_THREAD_LIMIT)
+
+  const threads: { rootTs: string; replies: SlackDiscussionMessage[] }[] = []
+  for (const root of selectedRoots) {
+    if (!root.ts) continue
+    const replies: SlackHistoryMessage[] = []
+    let replyCursor: string | undefined
+    do {
+      const remaining = DIGEST_THREAD_REPLY_LIMIT - replies.length
+      const data = await slackFetch('conversations.replies', {
+        channel,
+        ts: root.ts,
+        oldest: String(fromSeconds),
+        latest: String(toSeconds),
+        limit: Math.min(200, remaining),
+        ...(replyCursor ? { cursor: replyCursor } : {}),
+      })
+      replies.push(...((data.messages ?? []) as SlackHistoryMessage[]))
+      replyCursor = data.response_metadata?.next_cursor || undefined
+    } while (replyCursor && replies.length < DIGEST_THREAD_REPLY_LIMIT)
+
+    const humanReplies = replies
+      .filter((message) =>
+        message.ts !== root.ts && isHumanMessage(message) && isWithinSlackWindow(message.ts, fromSeconds, toSeconds)
+      )
+      .map((message) => ({ user: message.user ?? null, text: message.text ?? '', ts: message.ts! }))
+    if (humanReplies.length > 0) threads.push({ rootTs: root.ts, replies: humanReplies })
+  }
+
+  return {
+    channelMessages: allChannelMessages.slice(0, DIGEST_CHANNEL_MESSAGE_LIMIT).map((message) => ({
+      user: message.user ?? null,
+      text: message.text ?? '',
+      ts: message.ts!,
+    })),
+    threads,
+    channelMessagesTruncated: allChannelMessages.length > DIGEST_CHANNEL_MESSAGE_LIMIT || historyHasMore,
+    threadsTruncated: activeRoots.length > DIGEST_THREAD_LIMIT,
   }
 }
 

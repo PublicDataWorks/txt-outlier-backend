@@ -114,11 +114,13 @@ retry is harmless) and updates the Slack message in place — the button is repl
 
 ### `weekly-digest`
 
-`POST`, `verify_jwt = false`, invoked by the `weekly-conversation-digest` cron job **every Monday at 14:00 UTC**.
-Aggregates `completed` analyses from the last 7 days: total conversations analyzed, top tags with counts and the
-delta vs. the prior 7 days, unmet-demand count with up to 3 example summaries (linked to Missive), and how many
-analyses were promoted to story ideas this week. Posts the result as a Slack Block Kit message to
-`SLACK_ANALYSIS_CHANNEL_ID`. If nothing was analyzed in the window, it posts a short "quiet week" message instead.
+`POST`, `verify_jwt = false`, invoked by the `weekly-conversation-digest` cron job **every Thursday at 9:00 AM
+America/New_York** (daylight-saving aware). Aggregates `completed` analyses from the prior Thursday-to-Thursday
+window: a prose summary, total conversations analyzed, top tags with deltas, unmet-demand count and examples, and
+detailed cards for every story idea promoted since the prior digest (up to Slack's message limits). It also reads
+human messages in `SLACK_ANALYSIS_CHANNEL_ID`, prioritizing replies in analysis threads, and includes a concise
+discussion recap with author mentions and excerpts. If no realtime analysis completed, the briefing still reports
+promotions and Slack discussion rather than discarding editorial activity as a generic quiet week.
 
 ### `insights-dashboard`
 
@@ -312,8 +314,9 @@ and Slack API usage proportionally.
 
 ## Weekly Digest
 
-The `weekly-conversation-digest` cron job runs **every Monday at 14:00 UTC** and calls the `weekly-digest` edge
-function, which posts a summary of the previous 7 days to `SLACK_ANALYSIS_CHANNEL_ID` (see
+The `weekly-conversation-digest` cron job runs **every Thursday at 9:00 AM America/New_York** and calls the
+`weekly-digest` edge function, which posts a briefing for the previous Thursday-to-Thursday window to
+`SLACK_ANALYSIS_CHANNEL_ID` (see
 [Edge Functions](#weekly-digest) above for what it includes).
 
 Metrics are windowed by **when analysis completed** (`updated_at`) and restricted to `source = 'realtime'`. Both
@@ -323,24 +326,31 @@ halves matter, and they fix different failure modes:
   one completion instant, so without it a single run would report thousands of old conversations as this week's
   tags, unmet demand, and deltas.
 - **Windowing on completion rather than conversation activity** keeps the week whole. Realtime analyses only become
-  eligible 72 hours after close, so a conversation from the three days before a Monday run is still pending at that
-  run — and if the window were keyed to when the conversation *happened*, by the following Monday its activity date
+  eligible 72 hours after close, so a conversation from the three days before a Thursday run is still pending at that
+  run — and if the window were keyed to when the conversation *happened*, by the following Thursday its activity date
   would already have fallen outside the seven-day cutoff and it would be dropped permanently. Every weekend would
   quietly vanish. Keyed to completion, each analysis lands in exactly one digest: the one after it finishes.
 
-The practical effect is that a Monday digest describes conversations that closed roughly three to ten days earlier,
+The practical effect is that a Thursday digest describes conversations that closed roughly three to ten days earlier,
 which is the honest reading of "analyzed this week". Note this is the **opposite** of the dashboard, which buckets by
 activity date on purpose: it plots trends over time, where when a conversation happened is the whole point, and it
 has no weekly cutoff for anything to fall out of.
 
 Promotions are windowed on `promoted_at` and are deliberately **not** restricted to realtime: an editor promoting a
-backfilled conversation is a real editorial action of the current week.
+backfilled conversation is a real editorial action of the current week. The briefing lists each promoted item's tag,
+topic, summary, supporting quote, promoter, promotion time, and Missive link; it does not merely report a count.
+
+The Slack discussion recap uses the app's existing `channels:history` scope. It scans recent channel history for
+standalone human messages and analysis roots with replies during the window, then calls `conversations.replies` for
+those active threads. Internal Slack text stays inside Slack/Supabase code paths and is not sent to the analysis model.
+Safety caps keep the job under Slack's rate and 50-block message limits; an unusually busy week is labeled as
+truncated and the full discussion remains available in the channel.
 
 A week in which nothing completed still posts, and still reports the promotion count: promotions are counted over
 their own `promoted_at` window, so editors can promote older analyses during an otherwise quiet week.
 
-The window is anchored to the **nominal** schedule (the most recent Monday 14:00 UTC at or before the run), not to
-the run's actual start time. Cron and pg_net add seconds of jitter, and deriving the cutoff from the start time
+The window is anchored to the **nominal** schedule (the most recent Thursday 9:00 AM Eastern at or before the run),
+not to the run's actual start time. Cron and pg_net add seconds of jitter, and deriving the cutoff from the start time
 would leave small holes between consecutive digests that no run covers — or double-count across them. Anchoring
 makes consecutive windows exactly contiguous, so every completed realtime analysis belongs to exactly one digest.
 
@@ -348,7 +358,7 @@ makes consecutive windows exactly contiguous, so every completed realtime analys
 or the Slack call fails, nothing retries it. The function returns a 5xx (rather than swallowing the error as a 200)
 so the failure is visible to monitoring and Sentry. Because the window is anchored rather than rolling, **manually
 re-invoking the function reproduces exactly the missed week's digest** — as long as it happens before the next
-Monday 14:00 UTC boundary. That is the recovery path today; a scheduled retry would still need a record of the last
+Thursday 9:00 AM Eastern boundary. That is the recovery path today; a scheduled retry would still need a record of the last
 successful post to avoid double-posting.
 
 ## Dashboard

@@ -2,7 +2,7 @@
 
 The step-by-step runbook for taking the AI conversation tagging pipeline (PR #103) from merged code to live Slack posts. Follow the steps in order; each one lists how to verify it worked before moving on. Deep-dive reference for every design decision lives in [conversation-tagging.md](conversation-tagging.md).
 
-**What you are turning on.** When a Missive SMS conversation closes, a queue row is created with a 72-hour delay. A cron drains the queue every minute: it builds the transcript, calls the OpenAI Responses API (`gpt-5.6-sol` realtime / `gpt-5.6-terra` backfill) for a structured impact tag, topic, summary, and verbatim quote, applies suppression rules, and posts a Block Kit message to a Slack channel with a "Promote to story idea" button. A weekly digest posts Mondays at 14:00 UTC, and a token-gated dashboard shows tags over time and unmet demand.
+**What you are turning on.** When a Missive SMS conversation closes, a queue row is created with a 72-hour delay. A cron drains the queue every minute: it builds the transcript, calls the OpenAI Responses API (`gpt-5.6-sol` realtime / `gpt-5.6-terra` backfill) for a structured impact tag, topic, summary, and verbatim quote, applies suppression rules, and posts a Block Kit message to a Slack channel with a "Promote to story idea" button. A weekly editorial briefing posts Thursdays at 9:00 AM Eastern, and a token-gated dashboard shows tags over time and unmet demand.
 
 ---
 
@@ -92,7 +92,7 @@ Leaving the optional variables **unset or blank is safe** - empty values fall ba
 SELECT jobname, schedule FROM cron.job
 WHERE jobname IN ('analyze-conversations', 'weekly-conversation-digest');
 -- analyze-conversations        * * * * *
--- weekly-conversation-digest   0 14 * * 1
+-- weekly-conversation-digest   0 13,14 * * 4  (guarded to 9 AM America/New_York)
 ```
 
 Then go back to Step 1.6 and confirm Slack accepts the interactivity URL.
@@ -165,7 +165,7 @@ curl -X POST "https://pshrrdazlftosdtoevpf.supabase.co/functions/v1/conversation
 
 ## Step 6 - Ongoing operation
 
-**Weekly digest** posts Mondays 14:00 UTC. It counts realtime analyses completed in the week (backfill is excluded by design, so history never floods a digest) plus promotions of any source. If a Monday run fails (5xx in logs / Sentry), re-invoking the function **before the next Monday 14:00 UTC** reproduces exactly the missed digest:
+**Weekly digest** posts Thursdays at 9:00 AM America/New_York. It summarizes realtime analyses completed in the week (backfill is excluded from analysis totals), lists detailed promoted ideas from any source, and recaps standalone human channel messages plus replies in analysis threads. If a run fails (5xx in logs / Sentry), re-invoking the function **before the next Thursday 9:00 AM Eastern boundary** reproduces exactly the missed digest:
 
 ```bash
 curl -X POST "https://pshrrdazlftosdtoevpf.supabase.co/functions/v1/weekly-digest" \
