@@ -192,13 +192,26 @@ export const upsertAuthor = async (
   request_authors: RequestAuthor[],
 ): Promise<Author[]> => {
   if (request_authors.length === 0) return []
-  const uniqueAuthors = new Set<Author>()
+  // Keyed by phone number, not a Set of objects: a Set compares these freshly built objects by identity, so it
+  // never removed a repeated phone number. That was survivable under ON CONFLICT DO NOTHING, but DO UPDATE
+  // makes Postgres reject a command that would touch the same row twice ("cannot affect row a second time"),
+  // which would abort the whole webhook transaction - including the message ingest it wraps. Payloads do
+  // repeat authors; upsertConversation below has always de-duplicated them by hand for the same reason.
+  //
+  // First occurrence wins, and a later one contributes its name if the first had none, so a payload listing
+  // the same person twice cannot lose the name that one of the entries carried.
+  const uniqueAuthors = new Map<string, Author>()
   for (const author of request_authors) {
     // TODO: Some authors have only name, no phone number
     if (!author.phone_number) {
       continue
     }
-    uniqueAuthors.add({
+    const existing = uniqueAuthors.get(author.phone_number)
+    if (existing) {
+      existing.name = existing.name ?? author.name
+      continue
+    }
+    uniqueAuthors.set(author.phone_number, {
       name: author.name,
       phoneNumber: author.phone_number,
     })
@@ -206,8 +219,38 @@ export const upsertAuthor = async (
   if (uniqueAuthors.size === 0) {
     return []
   }
-  return await tx.insert(authors).values([...uniqueAuthors])
-    .onConflictDoNothing().returning()
+  // Fill a missing name rather than discarding the whole row on conflict. The first write wins under
+  // DO NOTHING, and the Twilio ingest path usually gets there first with no name at all, so a later payload
+  // carrying the resident's actual name never landed: 99.7% of authors have name IS NULL. That name is what
+  // AnalysisService redacts from model output, so leaving it empty weakens a privacy guarantee.
+  //
+  // COALESCE only, never an overwrite: an existing name is left exactly as it is, so this cannot regress a
+  // good name to a placeholder, and it stays idempotent across webhook redeliveries. Both callers ignore the
+  // returned rows, so widening what RETURNING emits is inconsequential.
+  // Split by whether the payload actually carries a name, so the common case keeps ON CONFLICT DO NOTHING.
+  // DO UPDATE takes a row lock on each conflicting row, and the Outlier service number is an author on
+  // essentially every SMS conversation - so applying it unconditionally would serialize otherwise independent
+  // message ingests on that one hot row (and invite deadlocks, since author ordering varies between payloads)
+  // to no purpose when there is no name to contribute.
+  const named = [...uniqueAuthors.values()].filter((author) => author.name)
+  const unnamed = [...uniqueAuthors.values()].filter((author) => !author.name)
+
+  const inserted: Author[] = []
+  if (unnamed.length > 0) {
+    inserted.push(...await tx.insert(authors).values(unnamed).onConflictDoNothing().returning())
+  }
+  if (named.length > 0) {
+    // setWhere keeps this a fill, never an overwrite: an author that already has a name is left untouched.
+    inserted.push(
+      ...await tx.insert(authors).values(named)
+        .onConflictDoUpdate({
+          target: authors.phoneNumber,
+          set: { name: sql`excluded.name` },
+          setWhere: sql`${authors.name} IS NULL`,
+        }).returning(),
+    )
+  }
+  return inserted
 }
 
 export const upsertLabel = async (

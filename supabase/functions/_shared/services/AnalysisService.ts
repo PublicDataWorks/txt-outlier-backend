@@ -1,0 +1,684 @@
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm'
+import { z } from 'zod'
+import supabase from '../lib/supabase.ts'
+import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
+import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
+
+export const PROMPT_VERSION = 'q2-v2-openai'
+
+// gpt-5.6 tiers (Sol > Terra > Luna). Realtime closes are a handful a day, so the cost difference is
+// negligible there and tag quality - which the whole newsroom sees in Slack - wins; bulk backfill runs
+// thousands of rows for aggregate analysis, where Terra's half-price is the better trade.
+// NB: the bare 'gpt-5.6' alias routes to Sol, so the tier is always named explicitly here.
+export const DEFAULT_ANALYSIS_MODEL = 'gpt-5.6-sol'
+export const DEFAULT_BACKFILL_MODEL = 'gpt-5.6-terra'
+// 'medium' is the sweet spot for this task: the taxonomy's hard calls (templated broadcast vs. real
+// reporter engagement) need some deliberation, but this is classification, not research.
+export const DEFAULT_REASONING_EFFORT = 'medium'
+
+// `??` is not enough for these: .env-example ships the optional analysis settings as bare `KEY=` lines, and
+// an operator who copies it verbatim gets '' rather than undefined. An empty string is not nullish, so it
+// would win over the default and every request would carry an empty model ID or effort value.
+const envOrDefault = (name: string, fallback: string): string => {
+  const value = Deno.env.get(name)?.trim()
+  return value ? value : fallback
+}
+
+export const resolveAnalysisModel = (source: string): string =>
+  source === 'backfill'
+    ? envOrDefault('ANALYSIS_BACKFILL_MODEL', DEFAULT_BACKFILL_MODEL)
+    : envOrDefault('ANALYSIS_MODEL', DEFAULT_ANALYSIS_MODEL)
+
+export const resolveReasoningEffort = (): string => envOrDefault('ANALYSIS_REASONING_EFFORT', DEFAULT_REASONING_EFFORT)
+
+// Tags that are filtered from Slack/the weekly digest by default (see docs/conversation-tagging.md).
+// Deliberately excludes 'automation-failure': a historical audit found the opposite rule being applied
+// in practice (auto-loop bugs going silently suppressed), which hides a real defect from the team instead
+// of surfacing it - so that tag posts like any other.
+export const SUPPRESS_TAGS = ['unsubscribe', 'wrong-audience', 'noise-test', 'no-impact']
+export const MIN_CONFIDENCE = 0.5
+
+// Fixed topic list from the historical audit (see docs/conversation-tagging.md); not DB-backed since it's
+// a stable, hand-authored classification independent of the editable impact-tag taxonomy.
+export const TOPIC_TAGS = [
+  'Tax Foreclosure / REPAY',
+  'Property & Tax-Status Lookup',
+  'Broadcast / Opt-Out / Non-Substantive Content',
+  'Landlord / Rental / Tenant',
+  'Home Repair',
+  'Service Menu / General Inquiry',
+  'Elections',
+  'Water',
+  'Food / Shelter / Warming Centers',
+  'Story Pitch / Tip',
+  'DTE / Utility',
+  'Land Contract (Research Recruitment)',
+  'Benefits (SNAP / Lifeline / Other Programs)',
+  'Other',
+]
+
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
+// Reasoning models think before answering, so the ceiling is well above the ~60s a non-reasoning call
+// would need. The queue processes rows sequentially on a 1-minute cron, so a slow call costs us a tick,
+// not a backlog.
+const OPENAI_TIMEOUT_MS = 120_000
+// Ceiling for reasoning + visible output combined - OpenAI recommends reserving at least 25k for reasoning
+// models. It's a ceiling, not a target: our JSON payload is a few hundred tokens and we only pay for what
+// is actually generated, so the headroom costs nothing and keeps a deliberating model from being truncated
+// mid-answer (which surfaces as status 'incomplete').
+const MAX_OUTPUT_TOKENS = 25_000
+const OUTLIER_PHONE_NUMBER = Deno.env.get('OUTLIER_PHONE_NUMBER')
+
+// Most recent N messages / M chars we'll ever send to the model, to keep prompts bounded.
+const MAX_TRANSCRIPT_MESSAGES = 100
+const MAX_TRANSCRIPT_CHARS = 30000
+
+// Residents of this conversation who also belong to at least one OTHER conversation.
+//
+// This exists because twilio_messages carries no conversation_id: a message is tied to a conversation only
+// through the phone numbers it shares with conversations_authors. So when one resident phone appears on
+// several conversations, their messages cannot be attributed to a particular one, and every transcript built
+// for that phone is the merged history of all of them - which would produce a summary and quote describing
+// the wrong conversation. processRow skips these rather than publishing a confident wrong answer.
+//
+// Measured against production: 161 resident phones (0.03%) span more than one conversation, at most 15 each,
+// touching 28 closed conversations. Resolving it properly means recording the conversation on each message at
+// ingest time; until then, skipping is the honest option.
+export const findAmbiguousResidentPhones = async (conversationId: string): Promise<string[]> => {
+  const rows = await supabase.execute(sql`
+    SELECT ca.author_phone_number AS phone
+    FROM conversations_authors ca
+    WHERE ca.conversation_id = ${conversationId}
+      AND ca.author_phone_number <> ${OUTLIER_PHONE_NUMBER ?? ''}
+      -- Only identifiers that actually exchanged SMS with us can create an attribution collision. Author rows
+      -- are written for every payload author (staff contacts, email participants), and one of those appearing
+      -- on several conversations would otherwise skip the analysis even though getConversationTranscript
+      -- ignores it entirely - it matches no message leg. Mirrors the transcript query's own condition.
+      AND EXISTS (
+        SELECT 1 FROM twilio_messages tm
+        WHERE (tm.from_field = ca.author_phone_number AND tm.to_field = ${OUTLIER_PHONE_NUMBER ?? ''})
+           OR (tm.to_field = ca.author_phone_number AND tm.from_field = ${OUTLIER_PHONE_NUMBER ?? ''})
+      )
+      AND EXISTS (
+        SELECT 1 FROM conversations_authors other
+        WHERE other.author_phone_number = ca.author_phone_number
+          AND other.conversation_id <> ca.conversation_id
+      )
+  `)
+  return (rows as unknown as { phone: string }[]).map((row) => row.phone)
+}
+
+// twilio_messages has no conversation_id column - it's linked to a conversation only indirectly, through
+// phone numbers shared with conversations_authors. The Outlier number can itself appear as a conversation
+// author (it is on ~595k of them), and matching on it would pull in every resident's messages, so the query
+// is scoped strictly to the resident phone(s) of this conversation.
+export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
+  if (!OUTLIER_PHONE_NUMBER) {
+    // Without it, the Outlier number can't be filtered out of residentPhones and every
+    // message would be classified as inbound - fail loudly instead of mislabeling.
+    throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
+  }
+  const authorRows = await supabase
+    .select({ phone: conversationsAuthors.authorPhoneNumber })
+    .from(conversationsAuthors)
+    .where(eq(conversationsAuthors.conversationId, conversationId))
+
+  const residentPhones = [
+    ...new Set(authorRows.map((row) => row.phone).filter((phone) => phone !== OUTLIER_PHONE_NUMBER)),
+  ]
+  if (residentPhones.length === 0) return []
+
+  // Each leg must have the Outlier number as its counterparty, not merely involve a resident phone. Without
+  // that, any resident-to-resident traffic that ever lands in this table would be pulled into a transcript
+  // and attributed to us.
+  const rows = await supabase
+    .select({
+      id: twilioMessages.id,
+      preview: twilioMessages.preview,
+      deliveredAt: twilioMessages.deliveredAt,
+      fromField: twilioMessages.fromField,
+      toField: twilioMessages.toField,
+    })
+    .from(twilioMessages)
+    .where(or(
+      and(
+        inArray(twilioMessages.fromField, residentPhones),
+        eq(twilioMessages.toField, OUTLIER_PHONE_NUMBER),
+      ),
+      and(
+        eq(twilioMessages.fromField, OUTLIER_PHONE_NUMBER),
+        inArray(twilioMessages.toField, residentPhones),
+      ),
+    ))
+    // delivered_at is second-precision, so rapid exchanges collide; without stable tiebreakers Postgres may
+    // return a different dialogue order on each attempt, and a retry could rewrite the Slack post with a
+    // different reading of the same conversation. created_at breaks ties by ingest order; id is random but
+    // guarantees full determinism.
+    .orderBy(asc(twilioMessages.deliveredAt), asc(twilioMessages.createdAt), asc(twilioMessages.id))
+
+  const messages: TranscriptMessage[] = []
+  for (const row of rows) {
+    if (!row.preview || row.preview.trim().length === 0) continue
+
+    messages.push({
+      body: row.preview,
+      direction: residentPhones.includes(row.fromField) ? 'inbound' : 'outbound',
+      timestamp: row.deliveredAt,
+      from: row.fromField,
+      to: row.toField,
+    })
+  }
+  return messages
+}
+
+const truncateTranscript = (
+  transcript: TranscriptMessage[],
+): { messages: TranscriptMessage[]; truncated: boolean } => {
+  let truncated = false
+  // Copy before mutating: splice below would otherwise shrink the caller's array
+  let messages = [...transcript]
+
+  if (messages.length > MAX_TRANSCRIPT_MESSAGES) {
+    messages = messages.slice(-MAX_TRANSCRIPT_MESSAGES)
+    truncated = true
+  }
+
+  let totalChars = messages.reduce((sum, message) => sum + message.body.length, 0)
+  while (totalChars > MAX_TRANSCRIPT_CHARS && messages.length > 1) {
+    const [dropped] = messages.splice(0, 1)
+    totalChars -= dropped.body.length
+    truncated = true
+  }
+
+  // Both trims above keep the most recent messages, which can leave a window containing only our own
+  // outbound traffic: an old resident reply followed by a long broadcast tail. processRow admitted this
+  // conversation precisely because the full transcript has an inbound message, so a window without one would
+  // have the model classify and summarize a conversation while seeing nothing the resident actually said -
+  // inviting a `no-impact` tag or an invented topic. Carry the latest inbound message back in so the request
+  // always contains the resident's own words.
+  if (truncated && !messages.some((message) => message.direction === 'inbound')) {
+    const latestInbound = [...transcript].reverse().find((message) => message.direction === 'inbound')
+    if (latestInbound) {
+      messages = [latestInbound, ...messages]
+    }
+  }
+
+  return { messages, truncated }
+}
+
+const formatTranscript = (messages: TranscriptMessage[]): string =>
+  messages
+    .map((message) => {
+      const speaker = message.direction === 'inbound' ? 'RESIDENT' : 'OUTLIER'
+      return `[${message.timestamp}] ${speaker}: ${message.body}`
+    })
+    .join('\n')
+
+// Editorial precedence for the impact tags, most specific first. Order is judgement that does not live in the
+// database, but which tags exist does: analysis_tags.active is editable without a redeploy, so the prompt is
+// built by intersecting this order with the active set. Naming a deactivated tag here would instruct the model
+// to choose something the structured-output enum no longer offers, pushing those conversations into whatever
+// category remains. Any active tag missing from this list is appended, so a newly added tag is never dropped
+// from the guidance.
+const TAG_PRIORITY_ORDER = [
+  'automation-failure',
+  'noise-test',
+  'wrong-audience',
+  'unsubscribe',
+  'story-tip',
+  'reporter-engaged',
+  'unmet-demand',
+  'info-gap',
+  'user-sat',
+  'no-impact',
+]
+
+const buildSystemPrompt = (tags: { name: string; description: string }[]): string => {
+  const taxonomy = tags.map((tag) => `- ${tag.name}: ${tag.description}`).join('\n')
+  const activeNames = tags.map((tag) => tag.name)
+  const priorityOrder = [
+    ...TAG_PRIORITY_ORDER.filter((name) => activeNames.includes(name)),
+    ...activeNames.filter((name) => !TAG_PRIORITY_ORDER.includes(name)),
+  ].join(' > ')
+  const topics = TOPIC_TAGS.map((topic) => `- ${topic}`).join('\n')
+  return `You analyze SMS conversations between Outlier Media, a Detroit local-news SMS service, and residents of \
+Detroit. Given the transcript of one conversation, choose exactly one primary tag that best describes the outcome \
+of the conversation from the taxonomy below. Optionally choose up to 2 secondary tags from the same taxonomy for \
+other themes present. Also choose exactly one topic from the topic list describing what the resident actually \
+asked about.
+
+Tag taxonomy (priority order when multiple apply - use the first that fits): ${priorityOrder}.
+${taxonomy}
+
+IMPORTANT for reporter-engaged: only use this tag when a named Outlier journalist or staff member gave a real, \
+personalized response - eligibility research, a referral they made themselves, multi-turn follow-up. A broadcast \
+or campaign message that merely happens to be signed by a staff member's name is NOT reporter-engaged; a resident \
+receiving only templated/automated content is info-gap, no-impact, or unsubscribe depending on what they did with it.
+
+Topic list (choose based on the RESIDENT's own words and actual ask, not whichever broadcast campaign the \
+conversation happens to contain - a resident who asks about an address lookup during a REPAY campaign thread is \
+"Property & Tax-Status Lookup", not "Tax Foreclosure / REPAY"):
+${topics}
+
+Write a neutral, factual 2-3 sentence summary of the conversation. Pick a supporting_quote copied VERBATIM \
+(character-for-character) from one of the resident's inbound messages - never paraphrase, and never quote an \
+outbound (Outlier) message, and never include a phone number, street address, or full name even if one appears \
+in the resident's own words. Set unmet_demand to true when the resident asked for information, help, or a service \
+that Outlier could not provide or that went unanswered in the transcript; when true, give a brief \
+unmet_demand_reason, otherwise set unmet_demand_reason to null. Set confidence to your confidence in this \
+analysis, from 0 (low) to 1 (high) - use below 0.5 only when the transcript is genuinely ambiguous.
+
+Respond with a single JSON object matching the required schema. Choose at most 2 secondary tags; return an \
+empty array when no secondary theme applies.`
+}
+
+// Strict Structured Outputs schema. Constraining tag/topic with `enum` is the main reliability win over
+// the previous free-string-plus-fallback approach: the API itself guarantees a value from the live taxonomy,
+// so an unrecognized tag is no longer possible. Strict mode rejects `maxItems`/`minItems`, so the
+// "at most 2 secondary tags" cap is stated in the prompt and enforced in code below.
+const buildAnalysisFormat = (tagNames: string[], topicNames: string[]) => ({
+  type: 'json_schema',
+  name: 'conversation_analysis',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    // Strict mode requires every property to be listed in `required`; nullability is expressed with a
+    // union type (unmet_demand_reason) rather than by omitting the key.
+    required: [
+      'tag',
+      'secondary_tags',
+      'topic',
+      'summary',
+      'supporting_quote',
+      'unmet_demand',
+      'unmet_demand_reason',
+      'confidence',
+    ],
+    properties: {
+      tag: {
+        type: 'string',
+        enum: tagNames,
+        description: 'The single primary tag that best describes the conversation outcome.',
+      },
+      secondary_tags: {
+        type: 'array',
+        items: { type: 'string', enum: tagNames },
+        description: 'Up to two additional relevant tags. Empty array when no secondary theme applies.',
+      },
+      topic: {
+        type: 'string',
+        enum: topicNames,
+        description: 'The single topic describing what the resident actually asked about.',
+      },
+      summary: {
+        type: 'string',
+        description: 'A neutral 2-3 sentence summary of the conversation.',
+      },
+      supporting_quote: {
+        type: 'string',
+        description: 'A quote copied verbatim from one of the inbound (resident) messages, with no phone number, ' +
+          'street address, or full name. Empty string if no suitable quote exists.',
+      },
+      unmet_demand: {
+        type: 'boolean',
+        description: 'True when the resident asked for info/help the service could not provide or left unanswered.',
+      },
+      unmet_demand_reason: {
+        type: ['string', 'null'],
+        description: 'Brief explanation of the unmet demand, or null when unmet_demand is false.',
+      },
+      confidence: {
+        type: 'number',
+        description: 'Confidence in this analysis, from 0 to 1.',
+      },
+    },
+  },
+})
+
+// Structured Outputs already guarantees this shape; validating anyway keeps a malformed or truncated
+// payload from reaching the DB, and normalizes the values the rest of the pipeline depends on.
+const AnalysisOutputSchema = z.object({
+  tag: z.string().min(1),
+  secondary_tags: z.array(z.string()).default([]),
+  topic: z.string().min(1),
+  summary: z.string().min(1),
+  supporting_quote: z.string(),
+  unmet_demand: z.boolean(),
+  unmet_demand_reason: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+})
+
+// Models routinely "helpfully" substitute typographic characters even when asked to copy verbatim, so fold
+// the common variants together before comparing - otherwise a genuine quote gets dropped over a curly
+// apostrophe. Whitespace and case are normalized for the same reason.
+const normalizeForQuoteMatch = (text: string): string =>
+  text
+    .replace(/[‘’ʼ′]/g, "'")
+    .replace(/[“”″]/g, '"')
+    .replace(/[‐-―−]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+// Deterministic PII backstop for every model-authored string that reaches Slack, the dashboard, or the DB.
+// The prompt already tells the model to leave these out, but a prompt is not an enforcement mechanism and
+// the Slack template's "no resident identifiers" property is one we actually want to hold.
+//
+// Names are handled separately, by redactKnownNames below, rather than by a pattern here: there is no
+// reliable regex for a name, and the false positives ("Wayne County", "Detroit Water") would mangle
+// legitimate summaries. See docs/conversation-tagging.md.
+// Order matters: these are applied in sequence, so the more specific pattern has to come first or the
+// broader one will have already consumed the text (a keyword-anchored account number before the bare
+// digit-run rule, phones before the generic long-digit rule).
+const PII_PATTERNS: { label: string; pattern: RegExp }[] = [
+  // Keyword-anchored identifiers ("DTE account 123456789", "case #24-001234"). The keyword itself is kept -
+  // "account [account redacted]" is still useful context - so only the identifier is replaced, via $1.
+  //
+  // The lookahead requiring a digit in the identifier is what keeps ordinary prose intact: without it,
+  // "case worker", "policy change", and "account balance" all read as keyword-plus-identifier and get
+  // mangled into "case [account redacted]". Real case and account numbers always contain a digit.
+  {
+    label: '$1[account redacted]',
+    pattern:
+      /\b((?:account|acct|case|claim|parcel|policy|ticket|invoice|reference|confirmation)\s*(?:#|no\.?|number|id)?\s*[:#]?\s*)((?=[A-Za-z0-9-]*\d)[A-Za-z0-9][A-Za-z0-9-]{3,})/gi,
+  },
+  // Parenthesized area code, where the closing paren is the only delimiter: "(313)555-0199",
+  // "(313)5550199". Kept separate from the rule below, which requires an explicit separator after the
+  // area code and so cannot match these.
+  { label: '[phone redacted]', pattern: /\(\d{3}\)[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g },
+  // 10-digit North American numbers, optional +1, extension-free. Each separator is independently optional:
+  // requiring one after both the area code and the exchange missed the mixed forms a model plausibly emits
+  // ("313-5550199", "313555-0199"), which the contiguous-digit rule below cannot catch either because the
+  // hyphen breaks the run. Being fully optional also subsumes the unseparated case. Anchored with \b at both
+  // ends, so it cannot bite a chunk out of a longer digit run - a 14-digit parcel number still falls through
+  // to the account rule rather than being mislabelled a phone.
+  { label: '[phone redacted]', pattern: /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g },
+  // Bare 10/11-digit runs (e.g. "3135550199") that a resident may type without separators.
+  { label: '[phone redacted]', pattern: /\b1?\d{10}\b/g },
+  // House number + optional street words + a street-type suffix. Allows up to five words in the street name
+  // so real Detroit names like "123 Martin Luther King Jr Blvd" are covered; at {0,3} that address escaped
+  // redaction entirely. The wider window can also catch an ordinary phrase that happens to run
+  // number-words-suffix ("12 people walked down the road"), which is the right way to be wrong here: a
+  // visible "[address redacted]" costs less than publishing where a resident lives.
+  {
+    label: '[address redacted]',
+    pattern:
+      /\b\d{1,6}\s+(?:[A-Za-z0-9.'\-]+\s+){0,5}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|cir|circle)\b\.?/gi,
+  },
+  // Bare case-number shapes ("24-001234") that appear without a keyword in front of them. Requires exactly
+  // two leading digits, so a year range like "2024-2025" is untouched.
+  { label: '[account redacted]', pattern: /\b\d{2}-\d{4,6}\b/g },
+  // Any remaining long digit run: account, case, and meter numbers that carry no keyword and no separators.
+  // Runs after the phone rules (which claim 10- and 11-digit runs) so a phone is still labelled as a phone.
+  // 7 is the floor because ZIPs, years, dollar figures, and small counts all sit below it.
+  { label: '[account redacted]', pattern: /\b\d{7,}\b/g },
+  // Detroit's major thoroughfares are routinely written without a street-type suffix ("123 Woodward",
+  // "5000 Cass"), which the suffix-anchored rule above cannot see. There is no safe generic pattern for
+  // number-plus-capitalized-word ("2 Detroit agencies" would be mangled), so this is a curated list of the
+  // majors that commonly appear suffix-less. The house number needs 3+ digits: real addresses on these
+  // streets essentially always have them, while prose counts ("2 Michigan programs") stay small - so the
+  // digit floor is what keeps this from chewing up ordinary sentences. Year-shaped numbers (19xx/20xx) are
+  // excluded too: "the 2024 Michigan primary" is election prose, and elections are a core topic here, so
+  // that collision would fire constantly - at the accepted cost of missing the rare year-shaped house number
+  // on a suffix-less street. Best-effort by design; the prompt remains the first line for street names not
+  // on this list.
+  {
+    label: '[address redacted]',
+    pattern:
+      /\b(?!(?:19|20)\d\d\b)\d{3,6}\s+(?:(?:E\.?|W\.?|N\.?|S\.?|East|West|North|South)\s+)?(?:Woodward|Cass|Gratiot|Michigan|Jefferson|Fort|Mack|Livernois|McNichols|Vernor|Warren|Fenkell|Joy|Plymouth|Davison|Dexter|Linwood|Schaefer|Greenfield|Evergreen|Telegraph|Harper|Kercheval|Chalmers|Conner|Moross|Cadieux|Wyoming|Puritan|Chene|Mound|Ryan|Caniff|Houston[- ]Whittier|Grand\s+River|Van\s+Dyke|Outer\s+Drive|Rosa\s+Parks|Martin\s+Luther\s+King|(?:Eight|Seven|Six|[678])\s+Mile)\b/g,
+  },
+  // Michigan ZIPs only (48xxx/49xxx), so ordinary 5-digit figures like dollar amounts survive intact.
+  { label: '[zip redacted]', pattern: /\b4[89]\d{3}(?:-\d{4})?\b/g },
+]
+
+export const redactPii = (text: string): string =>
+  PII_PATTERNS.reduce((redacted, { label, pattern }) => redacted.replace(pattern, label), text)
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Resident names, unlike phones and addresses, can't be recognized by shape - but we don't have to guess.
+// `authors.name` tells us exactly which names belong to this conversation's residents, so we redact those
+// specific strings and nothing else. That keeps the Slack template's "no resident identifiers" property
+// enforced in code rather than resting on the prompt, without the false positives a generic name pattern
+// would cause.
+//
+// Both the full name and its individual parts are redacted: the model paraphrases, so a resident recorded
+// as "Jane Doe" may surface as just "Jane". Parts shorter than 3 characters are skipped (initials would
+// match far too much). A resident whose name is also an ordinary word ("Free") will over-redact that word
+// within their own conversation - accepted deliberately, since a visible "[name redacted]" costs less than
+// publishing an identifier.
+export const redactKnownNames = (text: string, names: string[]): string => {
+  const targets = new Set<string>()
+  for (const name of names) {
+    const trimmed = name?.trim()
+    if (!trimmed) continue
+    // The full recorded name is always a target, whatever its length. The 3-character floor exists to stop
+    // SPLIT parts from matching everywhere ("Bo" inside ordinary prose), but an exact known full name is not a
+    // guess - a resident recorded as "Li" was simply never redacted at all.
+    targets.add(trimmed)
+    for (const part of trimmed.split(/\s+/)) {
+      if (part.length >= 3) targets.add(part)
+    }
+  }
+
+  // Longest first, so "Jane Doe" is replaced as a unit instead of becoming two adjacent labels.
+  //
+  // Unicode-aware lookarounds rather than \b: \b is defined over ASCII [A-Za-z0-9_], so a name ending in a
+  // non-ASCII letter never satisfies the trailing \b and escaped redaction entirely - "Jose" was redacted
+  // while "José" was published. \p{L}/\p{N} under the u flag treat accented and non-Latin letters as letters,
+  // which is what "part of a word" has to mean for resident names.
+  return [...targets]
+    .sort((a, b) => b.length - a.length)
+    .reduce(
+      (redacted, target) =>
+        redacted.replace(
+          new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(target)}(?![\\p{L}\\p{N}])`, 'giu'),
+          '[name redacted]',
+        ),
+      text,
+    )
+}
+
+// The names of every non-Outlier author on the conversation, for redactKnownNames.
+export const getResidentNames = async (conversationId: string): Promise<string[]> => {
+  const rows = await supabase
+    .select({ name: authors.name, phone: authors.phoneNumber })
+    .from(conversationsAuthors)
+    .innerJoin(authors, eq(authors.phoneNumber, conversationsAuthors.authorPhoneNumber))
+    .where(eq(conversationsAuthors.conversationId, conversationId))
+
+  return rows
+    .filter((row) => row.phone !== OUTLIER_PHONE_NUMBER && row.name)
+    .map((row) => row.name as string)
+}
+
+// Structured Outputs can guarantee the shape of a quote but not its provenance, and the historical audit
+// caught the model citing details that were not in the transcript. A quote that isn't actually present in
+// an inbound message is dropped rather than published to Slack under a resident's voice.
+const verifyQuoteIsVerbatim = (quote: string, transcript: TranscriptMessage[]): boolean => {
+  const needle = normalizeForQuoteMatch(quote)
+  if (!needle) return false
+  return transcript
+    .filter((message) => message.direction === 'inbound')
+    .some((message) => normalizeForQuoteMatch(message.body).includes(needle))
+}
+
+// The Responses API returns a list of output items; the assistant's structured payload lives in the
+// `message` item, which carries either an `output_text` part or a `refusal`.
+// deno-lint-ignore no-explicit-any
+const extractOutputText = (data: any): string => {
+  if (data.status === 'incomplete') {
+    throw new Error(
+      `OpenAI response was incomplete: ${JSON.stringify(data.incomplete_details ?? {})}. ` +
+        `Consider raising max_output_tokens (currently ${MAX_OUTPUT_TOKENS}).`,
+    )
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const message = (data.output ?? []).find((item: any) => item.type === 'message')
+  // deno-lint-ignore no-explicit-any
+  const parts: any[] = message?.content ?? []
+
+  // deno-lint-ignore no-explicit-any
+  const refusal = parts.find((part: any) => part.type === 'refusal')
+  if (refusal) {
+    throw new Error(`OpenAI refused the analysis request: ${refusal.refusal}`)
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const textPart = parts.find((part: any) => part.type === 'output_text')
+  // `output_text` is also exposed as a top-level convenience field by some clients; fall back to it so a
+  // shape change in the item list doesn't take the pipeline down.
+  const text = textPart?.text ?? (typeof data.output_text === 'string' ? data.output_text : undefined)
+  if (!text) {
+    // Log the response's shape, never its content: this payload carries the model's summary and quote,
+    // both derived from a resident's private SMS, and processRow persists error strings into
+    // conversation_analyses.error.
+    // deno-lint-ignore no-explicit-any
+    const itemTypes = (data.output ?? []).map((item: any) => item.type).join(',')
+    throw new Error(
+      `OpenAI response did not include structured output text (id=${data.id}, status=${data.status}, ` +
+        `item types=[${itemTypes}])`,
+    )
+  }
+  return text
+}
+
+export const analyzeTranscript = async (
+  transcript: TranscriptMessage[],
+  tags: { name: string; description: string }[],
+  options: { model?: string; residentNames?: string[] } = {},
+): Promise<AnalysisResult> => {
+  if (tags.length === 0) {
+    // An empty taxonomy would produce an empty `enum`, which the API rejects outright.
+    throw new Error('No active analysis tags available: cannot build the analysis schema')
+  }
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY environment variable is not set')
+  }
+
+  const { messages, truncated } = truncateTranscript(transcript)
+  const transcriptText = formatTranscript(messages)
+  const userContent = truncated
+    ? `Note: this transcript was truncated to the most recent ${messages.length} messages due to length. Analyze ` +
+      `only what is shown below.\n\n${transcriptText}`
+    : transcriptText
+
+  const tagNames = tags.map((tag) => tag.name)
+  const model = options.model ?? resolveAnalysisModel('realtime')
+
+  // Explicit controller + clearTimeout instead of AbortSignal.timeout(): the latter leaves its timer
+  // running after the response arrives, which leaks into whatever else the isolate (or a test) is doing.
+  const abortController = new AbortController()
+  const timeoutId = setTimeout(
+    () => abortController.abort(new Error('OpenAI API request timed out')),
+    OPENAI_TIMEOUT_MS,
+  )
+  // The body is consumed inside the try/finally on purpose: clearing the timer as soon as headers arrive
+  // would leave response.json()/text() unbounded, and a stalled body stream would hang this worker
+  // indefinitely rather than for a single cron tick.
+  let data: unknown
+  // Captured rather than thrown inside the try so the catch below doesn't re-wrap it into a doubled
+  // "request failed: request failed" message; rethrown once the timer is cleared.
+  let httpErrorMessage: string | null = null
+  try {
+    const response = await fetch(OPENAI_RESPONSES_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        instructions: buildSystemPrompt(tags),
+        input: userContent,
+        reasoning: { effort: resolveReasoningEffort() },
+        max_output_tokens: MAX_OUTPUT_TOKENS,
+        text: { format: buildAnalysisFormat(tagNames, TOPIC_TAGS) },
+        // These transcripts are residents' private SMS conversations - opt out of server-side retention
+        // rather than leaving copies in OpenAI's 30-day response store.
+        store: false,
+      }),
+      signal: abortController.signal,
+    })
+
+    if (!response.ok) {
+      // OpenAI error bodies describe the request's shape, not the transcript, so this one is safe to surface.
+      httpErrorMessage = `OpenAI API request failed with status ${response.status}: ${await response.text()}`
+    } else {
+      data = await response.json()
+    }
+  } catch (error) {
+    throw new Error(`OpenAI API request failed: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    clearTimeout(timeoutId)
+  }
+  if (httpErrorMessage) {
+    throw new Error(httpErrorMessage)
+  }
+
+  const outputText = extractOutputText(data)
+
+  let rawOutput: unknown
+  try {
+    rawOutput = JSON.parse(outputText)
+  } catch (_error) {
+    // Length only - the text is model output derived from resident SMS content.
+    throw new Error(`OpenAI structured output was not valid JSON (${outputText.length} chars)`)
+  }
+
+  const parsed = AnalysisOutputSchema.safeParse(rawOutput)
+  if (!parsed.success) {
+    throw new Error(`OpenAI structured output failed validation: ${parsed.error.message}`)
+  }
+  const output = parsed.data
+
+  // `enum` in the schema makes an off-taxonomy value practically impossible, but the taxonomy is loaded
+  // from the DB at request time, so these remain as cheap defence rather than trusted invariants.
+  const matchedTag = tags.find((tag) => tag.name.toLowerCase() === output.tag.toLowerCase())
+  const matchedTopic = TOPIC_TAGS.find((topic) => topic.toLowerCase() === output.topic.toLowerCase())
+  // Deduped before the cap: nothing stops the model returning the same secondary tag twice, and both copies
+  // would otherwise be persisted and rendered, wasting one of the two slots on a repeat.
+  const secondaryTags = [
+    ...new Set(
+      output.secondary_tags
+        .map((secondary) => tagNames.find((name) => name.toLowerCase() === secondary.toLowerCase()))
+        .filter((name): name is string => Boolean(name) && name !== matchedTag?.name),
+    ),
+  ].slice(0, 2)
+
+  // Checked against the truncated window rather than the full transcript: the model can only legitimately
+  // quote what it was actually shown, so a "quote" matching only a dropped message is a coincidence at best.
+  const verifiedQuote = verifyQuoteIsVerbatim(output.supporting_quote, messages) ? output.supporting_quote : ''
+  if (output.supporting_quote && !verifiedQuote) {
+    // Deliberately does not log the quote text: it is unverified content that may itself carry the PII the
+    // rest of this function exists to keep out of durable stores.
+    console.warn(
+      `Dropping supporting quote that does not appear verbatim in any inbound message ` +
+        `(${output.supporting_quote.length} chars)`,
+    )
+  }
+
+  // Every model-authored string is redacted once, here, so the DB row, the Slack post, the weekly digest,
+  // and the dashboard all inherit the same guarantee rather than each re-implementing it.
+  const redact = (text: string): string => redactKnownNames(redactPii(text), options.residentNames ?? [])
+
+  return {
+    tag: matchedTag?.name ?? 'no-impact',
+    secondaryTags,
+    topic: matchedTopic ?? 'Other',
+    summary: redact(output.summary),
+    supportingQuote: redact(verifiedQuote),
+    // Structured Outputs guarantees field shapes, not semantic consistency between them. A primary tag of
+    // unmet-demand with unmet_demand: false is self-contradictory, and the contradiction is not harmless:
+    // the Slack header would read UNMET DEMAND while the reason block is omitted, and the dashboard and
+    // weekly digest - which filter on the boolean, not the tag - would leave the row out of the very metric
+    // it was tagged for. The tag is the model's primary judgement, so the boolean is normalized to match it.
+    unmetDemand: output.unmet_demand || matchedTag?.name === 'unmet-demand',
+    unmetDemandReason: output.unmet_demand_reason ? redact(output.unmet_demand_reason) : null,
+    confidence: output.confidence,
+  }
+}

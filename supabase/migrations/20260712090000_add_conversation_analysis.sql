@@ -1,0 +1,150 @@
+-- AI conversation tagging: analysis results, curated tag taxonomy, and the cron jobs that
+-- drive the realtime queue processor and the weekly digest.
+
+CREATE TABLE conversation_analyses (
+  id SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ,
+  conversation_id UUID NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'skipped')),
+  source TEXT NOT NULL DEFAULT 'realtime' CHECK (source IN ('realtime', 'backfill')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  tag TEXT,
+  secondary_tags TEXT[] DEFAULT '{}',
+  summary TEXT,
+  supporting_quote TEXT,
+  unmet_demand BOOLEAN NOT NULL DEFAULT FALSE,
+  unmet_demand_reason TEXT,
+  confidence REAL,
+  model TEXT,
+  prompt_version TEXT,
+  message_count INTEGER,
+  last_message_at TIMESTAMPTZ,
+  slack_channel TEXT,
+  slack_message_ts TEXT,
+  promoted_at TIMESTAMPTZ,
+  promoted_by TEXT
+);
+
+CREATE INDEX idx_conversation_analyses_status ON conversation_analyses (status);
+CREATE INDEX idx_conversation_analyses_tag ON conversation_analyses (tag);
+CREATE INDEX idx_conversation_analyses_created_at ON conversation_analyses (created_at);
+CREATE INDEX idx_conversation_analyses_unmet_demand ON conversation_analyses (unmet_demand) WHERE unmet_demand;
+
+CREATE TABLE analysis_tags (
+  id SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+INSERT INTO analysis_tags (name, description) VALUES
+  ('housing', 'Housing conditions, evictions, landlord disputes, home repair, or housing assistance'),
+  ('utilities', 'Water, gas, electric, internet, or other utility service issues and shutoffs'),
+  ('employment', 'Job search, unemployment benefits, workplace issues, or job training'),
+  ('food-assistance', 'SNAP benefits, food banks, school meals, or other food assistance needs'),
+  ('transportation', 'Public transit, DDOT/SMART bus routes, road conditions, or car-related needs'),
+  ('health', 'Physical or mental health care access, insurance coverage, or public health concerns'),
+  ('public-safety', 'Crime, policing, violence, or neighborhood safety concerns'),
+  ('education', 'Schools, enrollment, childcare, or other educational resources'),
+  ('legal-aid', 'Legal questions, court issues, tenant rights, or need for legal representation'),
+  ('civic-info', 'Elections, voting, city services, government programs, or civic participation'),
+  ('story-tip', 'A tip or lead for a potential Outlier Media news story'),
+  ('service-feedback', 'Feedback, praise, or complaints about the Outlier Media SMS service itself'),
+  ('other', 'Does not fit any other category in the taxonomy')
+ON CONFLICT (name) DO NOTHING;
+
+-----------------------------------------------
+
+-- conversation_analyses holds resident-derived content: model summaries, verbatim quotes from inbound SMS,
+-- and unmet-demand detail. The Data API exposes the public schema and the anon/authenticated roles hold a
+-- SELECT grant on new tables, so without RLS any holder of the publishable anon key could read all of it
+-- directly and bypass DASHBOARD_TOKEN entirely.
+--
+-- Enabled with NO policies, deliberately: this matches the `conversations` table (RLS on, no policy) rather
+-- than `authors`/`twilio_messages`, which carry a permissive anon SELECT policy. No policy means no role
+-- subject to RLS can read these tables at all.
+--
+-- This does not affect the pipeline or the dashboard: every edge function reaches Postgres through
+-- DB_POOL_URL as the database owner, and table owners/superusers bypass RLS. The dashboard's data is served
+-- by insights-dashboard through that same connection, gated by DASHBOARD_TOKEN.
+ALTER TABLE conversation_analyses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analysis_tags ENABLE ROW LEVEL SECURITY;
+
+-----------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.trigger_conversation_analysis_queue()
+RETURNS void AS $$
+DECLARE
+    service_key TEXT;
+    edge_url TEXT;
+BEGIN
+    SELECT decrypted_secret INTO service_key
+    FROM vault.decrypted_secrets
+    WHERE name = 'secret_key';
+
+    SELECT decrypted_secret INTO edge_url
+    FROM vault.decrypted_secrets
+    WHERE name = 'edge_function_url';
+
+    PERFORM net.http_post(
+        url:=edge_url || 'conversation-analysis/',
+        headers:=jsonb_build_object(
+            'Content-Type', 'application/json',
+            'apikey', service_key
+        ),
+        body:=jsonb_build_object('action', 'process-queue', 'batchSize', 5)
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT cron.schedule(
+    'analyze-conversations',
+    '* * * * *',
+    'SELECT public.trigger_conversation_analysis_queue();'
+);
+
+-----------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.trigger_weekly_conversation_digest()
+RETURNS void AS $$
+DECLARE
+    service_key TEXT;
+    edge_url TEXT;
+BEGIN
+    SELECT decrypted_secret INTO service_key
+    FROM vault.decrypted_secrets
+    WHERE name = 'secret_key';
+
+    SELECT decrypted_secret INTO edge_url
+    FROM vault.decrypted_secrets
+    WHERE name = 'edge_function_url';
+
+    PERFORM net.http_post(
+        url:=edge_url || 'weekly-digest/',
+        headers:=jsonb_build_object(
+            'Content-Type', 'application/json',
+            'apikey', service_key
+        ),
+        body:=jsonb_build_object()
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Postgres grants EXECUTE on a new function to PUBLIC by default, and the Data API exposes the public schema,
+-- so both trigger functions would be callable over RPC by anyone holding the publishable anon key. They take no
+-- arguments and need no privileges to abuse: the digest one posts to the team's Slack channel on demand, and the
+-- queue one drives paid model calls. Neither reads its caller, so revoking PUBLIC and the API roles costs
+-- nothing - pg_cron runs them as the database owner, which is unaffected by these grants.
+REVOKE ALL ON FUNCTION public.trigger_conversation_analysis_queue() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.trigger_weekly_conversation_digest() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.trigger_conversation_analysis_queue() FROM anon, authenticated;
+REVOKE ALL ON FUNCTION public.trigger_weekly_conversation_digest() FROM anon, authenticated;
+
+SELECT cron.schedule(
+    'weekly-conversation-digest',
+    '0 14 * * 1',
+    'SELECT public.trigger_weekly_conversation_digest();'
+);
