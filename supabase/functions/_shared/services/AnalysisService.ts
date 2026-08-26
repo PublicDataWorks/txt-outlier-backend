@@ -4,7 +4,11 @@ import supabase from '../lib/supabase.ts'
 import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
 import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
 
-export const PROMPT_VERSION = 'q2-v2-openai'
+// Bumped from 'q2-v2-openai' when Missive labels became prompt evidence and impact labels became
+// authoritative. The instructions materially change how a labelled conversation is classified, so rows
+// from before and after must be distinguishable - the newsroom-versus-model comparison this change exists
+// to enable depends on being able to separate the cohorts.
+export const PROMPT_VERSION = 'q3-v1-missive-labels'
 
 // gpt-5.6 tiers (Sol > Terra > Luna). Realtime closes are a handful a day, so the cost difference is
 // negligible there and tag quality - which the whole newsroom sees in Slack - wins; bulk backfill runs
@@ -220,7 +224,7 @@ const formatTranscript = (messages: TranscriptMessage[]): string =>
 // to choose something the structured-output enum no longer offers, pushing those conversations into whatever
 // category remains. Any active tag missing from this list is appended, so a newly added tag is never dropped
 // from the guidance.
-const TAG_PRIORITY_ORDER = [
+export const TAG_PRIORITY_ORDER = [
   'automation-failure',
   'noise-test',
   'wrong-audience',
@@ -233,7 +237,7 @@ const TAG_PRIORITY_ORDER = [
   'no-impact',
 ]
 
-const buildSystemPrompt = (tags: { name: string; description: string }[]): string => {
+const buildSystemPrompt = (tags: { name: string; description: string }[], labelContext?: string | null): string => {
   const taxonomy = tags.map((tag) => `- ${tag.name}: ${tag.description}`).join('\n')
   const activeNames = tags.map((tag) => tag.name)
   const priorityOrder = [
@@ -255,6 +259,15 @@ personalized response - eligibility research, a referral they made themselves, m
 or campaign message that merely happens to be signed by a staff member's name is NOT reporter-engaged; a resident \
 receiving only templated/automated content is info-gap, no-impact, or unsubscribe depending on what they did with it.
 
+This is the single most common misclassification, so weigh it carefully. Outlier's AUTOMATED replies are \
+routinely signed with a real staff member's first name ("Koby from Outlier", "Sarah from Outlier"), and a \
+signature is not engagement. Measured against conversations the newsroom itself labelled, this tag was applied \
+roughly ten times too often, and in 87% of those cases no staff member had been assigned to the conversation at \
+all. Before choosing reporter-engaged, look for something a person demonstrably did that automation could not: \
+an answer specific to this resident's circumstances, a lookup performed on their behalf, or a genuine \
+back-and-forth. A warm, personal-sounding template is still a template. When the resident simply received \
+information - even helpful, even signed - the tag is info-gap.
+
 Topic list (choose based on the RESIDENT's own words and actual ask, not whichever broadcast campaign the \
 conversation happens to contain - a resident who asks about an address lookup during a REPAY campaign thread is \
 "Property & Tax-Status Lookup", not "Tax Foreclosure / REPAY"):
@@ -269,7 +282,15 @@ unmet_demand_reason, otherwise set unmet_demand_reason to null. Set confidence t
 analysis, from 0 (low) to 1 (high) - use below 0.5 only when the transcript is genuinely ambiguous.
 
 Respond with a single JSON object matching the required schema. Choose at most 2 secondary tags; return an \
-empty array when no secondary theme applies.`
+empty array when no secondary theme applies.${
+    labelContext
+      ? `
+
+This conversation carries these labels from Missive, which indicate what the resident asked about and are \
+useful for choosing the topic:
+${labelContext}`
+      : ''
+  }`
 }
 
 // Strict Structured Outputs schema. Constraining tag/topic with `enum` is the main reliability win over
@@ -549,7 +570,7 @@ const extractOutputText = (data: any): string => {
 export const analyzeTranscript = async (
   transcript: TranscriptMessage[],
   tags: { name: string; description: string }[],
-  options: { model?: string; residentNames?: string[] } = {},
+  options: { model?: string; residentNames?: string[]; labelContext?: string | null } = {},
 ): Promise<AnalysisResult> => {
   if (tags.length === 0) {
     // An empty taxonomy would produce an empty `enum`, which the API rejects outright.
@@ -593,7 +614,7 @@ export const analyzeTranscript = async (
       },
       body: JSON.stringify({
         model,
-        instructions: buildSystemPrompt(tags),
+        instructions: buildSystemPrompt(tags, options.labelContext),
         input: userContent,
         reasoning: { effort: resolveReasoningEffort() },
         max_output_tokens: MAX_OUTPUT_TOKENS,

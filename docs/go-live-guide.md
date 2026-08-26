@@ -74,6 +74,7 @@ Leaving the optional variables **unset or blank is safe** - empty values fall ba
    - `20260712090000_add_conversation_analysis.sql` - tables, RLS, cron jobs, RPC lockdown
    - `20260712170000_conversation_analysis_q2_taxonomy.sql` - the 10-tag taxonomy, delay + suppression columns
    - `20260826162500_weekly_digest_thursday_eastern.sql` - Thursday 9:00 AM Eastern digest schedule
+   - `20260827000000_analysis_missive_label_source.sql` - Missive impact labels as the authoritative tag source
 3. Deploy the functions (new: `conversation-analysis`, `slack-interactions`, `weekly-digest`, `insights-dashboard`; changed: `user-actions` and shared code):
 
    ```bash

@@ -259,11 +259,15 @@ export const upsertLabel = async (
   requestBody: RequestBody,
 ) => {
   const requestConvo = requestBody.conversation
-  const requestLabels = new Set<Label>()
-  const requestConversationsLabels = new Set<ConversationLabel>()
+  // Keyed Maps, not Sets of object literals. A Set is identity-based, so a payload repeating a label id
+  // yields two distinct objects carrying the same conflict key, and Postgres aborts the whole statement
+  // with "ON CONFLICT DO UPDATE command cannot affect row a second time" - taking the entire webhook
+  // transaction with it. Same failure that had to be fixed in upsertAuthor.
+  const requestLabels = new Map<string, Label>()
+  const requestConversationsLabels = new Map<string, ConversationLabel>()
   const labelIds: string[] = []
   for (const label of requestConvo.shared_labels) {
-    requestLabels.add({
+    requestLabels.set(label.id, {
       id: label.id,
       name: label.name,
       nameWithParentNames: label.name_with_parent_names,
@@ -272,11 +276,14 @@ export const upsertLabel = async (
       shareWithOrganization: label.share_with_organization,
       visibility: label.visibility,
     })
-    requestConversationsLabels.add({ conversationId: requestConvo.id, labelId: label.id })
+    requestConversationsLabels.set(`${requestConvo.id}:${label.id}`, {
+      conversationId: requestConvo.id,
+      labelId: label.id,
+    })
     labelIds.push(label.id)
   }
   if (requestLabels.size > 0) {
-    await tx.insert(labels).values([...requestLabels]).onConflictDoUpdate({
+    await tx.insert(labels).values([...requestLabels.values()]).onConflictDoUpdate({
       target: labels.id,
       set: {
         name: sql`excluded.name`,
@@ -300,9 +307,17 @@ export const upsertLabel = async (
         eq(conversationsLabels.conversationId, requestConvo.id!),
         notInArray(conversationsLabels.labelId, labelIds),
       ))
+    // DO UPDATE rather than DO NOTHING: the statement above archives every link absent from this payload,
+    // so a label that was removed and later re-added already has a row with is_archived = true. DO NOTHING
+    // left that row archived forever, and the conversation-analysis label reader filters on
+    // is_archived = false - so a re-added impact label would silently stop counting as the newsroom's
+    // verdict, exactly for remove/re-add workflows.
     await tx.insert(conversationsLabels).values([
-      ...requestConversationsLabels,
-    ]).onConflictDoNothing()
+      ...requestConversationsLabels.values(),
+    ]).onConflictDoUpdate({
+      target: [conversationsLabels.conversationId, conversationsLabels.labelId],
+      set: { isArchived: false },
+    })
   }
 }
 
