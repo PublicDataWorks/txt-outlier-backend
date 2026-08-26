@@ -140,6 +140,13 @@ const enqueueConversationAnalysis = async (requestBody: RequestBody) => {
         last_message_at = NULL,
         slack_channel = NULL,
         slack_message_ts = NULL,
+        -- Provenance from the previous cycle. Left standing, a reopened-and-reclosed conversation would
+        -- keep the old cycle's model_tag/tag_source/missive_labels next to a cleared tag - permanently, if
+        -- the fresh analysis is skipped or fails - so provenance queries would attribute old evidence to
+        -- the new cycle.
+        model_tag = NULL,
+        tag_source = NULL,
+        missive_labels = '{}',
         promoted_at = NULL,
         promoted_by = NULL,
         updated_at = NOW()

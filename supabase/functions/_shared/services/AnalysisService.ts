@@ -4,7 +4,11 @@ import supabase from '../lib/supabase.ts'
 import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
 import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
 
-export const PROMPT_VERSION = 'q2-v2-openai'
+// Bumped from 'q2-v2-openai' when Missive labels became prompt evidence and impact labels became
+// authoritative. The instructions materially change how a labelled conversation is classified, so rows
+// from before and after must be distinguishable - the newsroom-versus-model comparison this change exists
+// to enable depends on being able to separate the cohorts.
+export const PROMPT_VERSION = 'q3-v1-missive-labels'
 
 // gpt-5.6 tiers (Sol > Terra > Luna). Realtime closes are a handful a day, so the cost difference is
 // negligible there and tag quality - which the whole newsroom sees in Slack - wins; bulk backfill runs
