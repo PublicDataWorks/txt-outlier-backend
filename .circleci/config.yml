@@ -26,7 +26,21 @@ jobs:
           background: true
       - run:
           name: Wait for services
-          command: sleep 30
+          command: |
+            set -a
+            source supabase/functions/tests/.env.testing
+            set +a
+            for attempt in $(seq 1 30); do
+              task_http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                http://localhost:54321/functions/v1/user-actions/ \
+                -H "apikey: ${LOCAL_SECRET_KEY}")
+              case "$task_http_code" in
+                2*|4*) exit 0 ;;
+              esac
+              sleep 2
+            done
+            echo 'user-actions did not become ready within 60 seconds' >&2
+            exit 1
       - run:
           name: Run tests
           command: /home/circleci/.deno/bin/deno task test
