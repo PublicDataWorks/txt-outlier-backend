@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { withSupabase } from '@supabase/server'
 
 import AppResponse from '../_shared/misc/AppResponse.ts'
-import { isInCurrentQuarter, startOfCurrentQuarter } from '../_shared/misc/quarters.ts'
+import { isInCurrentQuarter, startOfCurrentQuarter, startOfNextQuarter } from '../_shared/misc/quarters.ts'
 import BadRequestError from '../_shared/exception/BadRequestError.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
@@ -145,6 +145,7 @@ const loadConversationMeta = async (
 // Returns 0 - meaning "omit the phrase" - when this conversation did not itself happen this quarter.
 const countTagThisQuarter = async (tag: string, conversationLastMessageAt: string | null): Promise<number> => {
   const quarterStart = startOfCurrentQuarter()
+  const nextQuarterStart = startOfNextQuarter()
 
   // The phrase asserts something about THIS conversation ("the 4th reporter-engaged conversation this
   // quarter"), so it is only true when this conversation happened this quarter. Without this guard a
@@ -167,6 +168,9 @@ const countTagThisQuarter = async (tag: string, conversationLastMessageAt: strin
       -- later post inherited. A row with no last_message_at has no known date, so it cannot be claimed as
       -- this quarter's.
       AND last_message_at >= ${quarterStart}
+      -- Exclusive upper bound, matching isInCurrentQuarter: a future-dated delivered_at (clock skew, bad
+      -- ingest) would otherwise inflate the ordinal of every genuine post for the rest of the quarter.
+      AND last_message_at < ${nextQuarterStart}
       -- Suppressed analyses never reached Slack, so counting them would inflate the newsroom-facing
       -- "Nth this quarter" past the number of posts anyone actually saw.
       AND suppress_reason IS NULL
