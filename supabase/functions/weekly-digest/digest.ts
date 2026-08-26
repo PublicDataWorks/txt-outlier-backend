@@ -174,7 +174,7 @@ export const buildDigestBlocks = (data: DigestData): any[] => {
     : `${data.promotedCount} story idea${data.promotedCount === 1 ? ' was' : 's were'} promoted.`
   const discussionSummary = data.discussion.unavailable
     ? ' Slack discussion could not be loaded for this run.'
-    : ` ${discussionMessageCount} human Slack message${discussionMessageCount === 1 ? '' : 's'} were captured ` +
+    : ` ${discussionMessageCount} human Slack message${discussionMessageCount === 1 ? ' was' : 's were'} captured ` +
       `across ${data.discussion.threads.length} analysis thread${data.discussion.threads.length === 1 ? '' : 's'} ` +
       `and the channel.`
 

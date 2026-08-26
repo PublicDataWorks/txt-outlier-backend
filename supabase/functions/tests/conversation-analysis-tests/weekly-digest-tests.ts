@@ -122,6 +122,14 @@ describe('weekly digest blocks', () => {
     )
   })
 
+  it('uses singular grammar when exactly one Slack message was captured', () => {
+    const data = baseData()
+    data.discussion.channelMessages = []
+    const summary = buildDigestBlocks(data)[1].text.text
+
+    assertStringIncludes(summary, '1 human Slack message was captured')
+  })
+
   it('escapes Slack control sequences from human discussion text', () => {
     const data = baseData()
     data.discussion.channelMessages[0].text = '<!channel> review <script> & follow up'

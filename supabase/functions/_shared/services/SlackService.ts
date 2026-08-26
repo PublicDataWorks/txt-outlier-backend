@@ -171,6 +171,11 @@ export const getSlackDiscussionSince = async (
 
   const fromSeconds = from.getTime() / 1_000
   const toSeconds = to.getTime() / 1_000
+  const oldestFetchedTs = history.reduce<number | null>((oldest, message) => {
+    const seconds = Number(message.ts)
+    if (!Number.isFinite(seconds)) return oldest
+    return oldest === null ? seconds : Math.min(oldest, seconds)
+  }, null)
   const allChannelMessages = history
     .filter((message) =>
       isHumanMessage(message) && !message.thread_ts && isWithinSlackWindow(message.ts, fromSeconds, toSeconds)
@@ -183,7 +188,9 @@ export const getSlackDiscussionSince = async (
         message.ts &&
           message.reply_count &&
           message.reply_count > 0 &&
-          isWithinSlackWindow(message.latest_reply, fromSeconds, toSeconds),
+          message.latest_reply &&
+          Number.isFinite(Number(message.latest_reply)) &&
+          Number(message.latest_reply) >= fromSeconds,
       )
     )
     .sort((a, b) => Number(b.latest_reply) - Number(a.latest_reply))
@@ -223,7 +230,8 @@ export const getSlackDiscussionSince = async (
       ts: message.ts!,
     })),
     threads,
-    channelMessagesTruncated: allChannelMessages.length > DIGEST_CHANNEL_MESSAGE_LIMIT || historyHasMore,
+    channelMessagesTruncated: allChannelMessages.length > DIGEST_CHANNEL_MESSAGE_LIMIT ||
+      (historyHasMore && oldestFetchedTs !== null && oldestFetchedTs >= fromSeconds),
     threadsTruncated: activeRoots.length > DIGEST_THREAD_LIMIT,
   }
 }

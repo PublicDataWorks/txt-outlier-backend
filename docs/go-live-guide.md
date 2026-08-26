@@ -70,9 +70,10 @@ Leaving the optional variables **unset or blank is safe** - empty values fall ba
 ## Step 3 - Merge and deploy
 
 1. Merge PR #103.
-2. Apply the two migrations (via the normal deploy pipeline, or `supabase db push`):
+2. Apply all pending migrations (via the normal deploy pipeline, or `supabase db push`), including:
    - `20260712090000_add_conversation_analysis.sql` - tables, RLS, cron jobs, RPC lockdown
    - `20260712170000_conversation_analysis_q2_taxonomy.sql` - the 10-tag taxonomy, delay + suppression columns
+   - `20260826162500_weekly_digest_thursday_eastern.sql` - Thursday 9:00 AM Eastern digest schedule
 3. Deploy the functions (new: `conversation-analysis`, `slack-interactions`, `weekly-digest`, `insights-dashboard`; changed: `user-actions` and shared code):
 
    ```bash
