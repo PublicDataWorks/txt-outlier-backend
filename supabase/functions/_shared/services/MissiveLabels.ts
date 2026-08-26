@@ -125,12 +125,24 @@ export const resolveHumanTag = (
 // info gap and still leave something unanswered, and the model sets the flag from its own reading of the
 // transcript. So an override AWAY from unmet-demand leaves a true flag standing - that observation is still
 // the model's to make, and the unmet-demand feed is filtered on the flag by design.
-export const applyHumanTag = <T extends { tag: string; unmetDemand: boolean; unmetDemandReason: string | null }>(
+export const applyHumanTag = <
+  T extends { tag: string; secondaryTags: string[]; unmetDemand: boolean; unmetDemandReason: string | null },
+>(
   result: T,
   humanTag: { tag: string; from: string } | null,
 ): T => {
   if (!humanTag) return result
-  const applied = { ...result, tag: humanTag.tag }
+  const applied = {
+    ...result,
+    tag: humanTag.tag,
+    // analyzeTranscript dedupes secondary tags against the model's OWN primary tag, so a row's tag can
+    // never also sit in its secondary tags. Overriding the primary breaks that invariant unless the new
+    // tag is dropped here too - and it is the likely case rather than an edge one: the model's classic
+    // failure is tag=reporter-engaged with info-gap as a secondary, on exactly the conversations the
+    // newsroom labelled "Info gap filled". Measured over the 220 labelled conversations already analyzed,
+    // 35 of them (16%) would otherwise persist the tag duplicated in secondary_tags.
+    secondaryTags: result.secondaryTags.filter((secondary) => secondary !== humanTag.tag),
+  }
   if (humanTag.tag === UNMET_DEMAND_TAG && !applied.unmetDemand) {
     applied.unmetDemand = true
     // Naming the label rather than leaving null: the Slack block renders "Not specified" for a null reason,

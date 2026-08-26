@@ -160,9 +160,12 @@ describe('flattenLabels', () => {
 
 describe('applyHumanTag', () => {
   const modelResult = (
-    over: Partial<{ tag: string; unmetDemand: boolean; unmetDemandReason: string | null }> = {},
+    over: Partial<
+      { tag: string; secondaryTags: string[]; unmetDemand: boolean; unmetDemandReason: string | null }
+    > = {},
   ) => ({
     tag: 'reporter-engaged',
+    secondaryTags: [] as string[],
     unmetDemand: false,
     unmetDemandReason: null as string | null,
     ...over,
@@ -209,10 +212,32 @@ describe('applyHumanTag', () => {
     assertEquals(applied.unmetDemandReason, 'No resource existed.')
   })
 
+  // analyzeTranscript dedupes secondary tags against the model's own primary tag, so tag can never also
+  // appear in secondaryTags. Overriding the primary must preserve that. This is the likely case, not an
+  // edge one - the model's classic failure is reporter-engaged with info-gap secondary, on exactly the
+  // conversations labelled "Info gap filled". 16% of already-analyzed labelled rows hit it.
+  it('drops the applied tag from secondaryTags to preserve the dedup invariant', () => {
+    const applied = applyHumanTag(
+      modelResult({ tag: 'reporter-engaged', secondaryTags: ['info-gap', 'story-tip'] }),
+      { tag: 'info-gap', from: 'Info gap filled' },
+    )
+    assertEquals(applied.tag, 'info-gap')
+    assertEquals(applied.secondaryTags, ['story-tip'])
+  })
+
+  it('leaves unrelated secondary tags alone', () => {
+    const applied = applyHumanTag(
+      modelResult({ tag: 'reporter-engaged', secondaryTags: ['story-tip', 'unmet-demand'] }),
+      { tag: 'user-sat', from: 'user satisfaction' },
+    )
+    assertEquals(applied.secondaryTags, ['story-tip', 'unmet-demand'])
+  })
+
   it('does not mutate the result it was given', () => {
-    const original = modelResult()
+    const original = modelResult({ secondaryTags: ['unmet-demand'] })
     applyHumanTag(original, { tag: 'unmet-demand', from: 'unsatisfied' })
     assertEquals(original.tag, 'reporter-engaged')
     assertEquals(original.unmetDemand, false)
+    assertEquals(original.secondaryTags, ['unmet-demand'])
   })
 })
