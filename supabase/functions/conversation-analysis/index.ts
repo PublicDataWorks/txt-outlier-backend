@@ -20,6 +20,7 @@ import {
   TAG_PRIORITY_ORDER,
 } from '../_shared/services/AnalysisService.ts'
 import {
+  applyHumanTag,
   flattenLabels,
   formatLabelsForPrompt,
   getConversationLabels,
@@ -266,7 +267,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   const conversationLabels = await getConversationLabels(row.conversationId)
   const labelContext = formatLabelsForPrompt(conversationLabels)
 
-  const result = await analyzeTranscript(transcript, tags, { model, residentNames, labelContext })
+  const modelResult = await analyzeTranscript(transcript, tags, { model, residentNames, labelContext })
 
   // Where a person already recorded the outcome, that is the outcome. Measured over 224 analyzed
   // conversations carrying a human impact label, the model matched the newsroom on 15; it called 159
@@ -274,16 +275,17 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   // automated replies are signed with staff names. Both tags are kept so the gap stays measurable: `tag`
   // is what the newsroom sees, `modelTag` is what the model said, and they can be compared over time.
   const humanTag = resolveHumanTag(conversationLabels, tags.map((tag) => tag.name), TAG_PRIORITY_ORDER)
-  const modelTag = result.tag
-  const effectiveTag = humanTag?.tag ?? modelTag
+  const modelTag = modelResult.tag
   if (humanTag && humanTag.tag !== modelTag) {
     console.log(
       `Analysis ${row.id}: Missive label "${humanTag.from}" overrides model tag ${modelTag} -> ${humanTag.tag}`,
     )
   }
   // Downstream (suppression, Slack, storage) reads result.tag, so settle it here rather than threading a
-  // second tag through every call site and risking one of them keeping the model's answer.
-  result.tag = effectiveTag
+  // second tag through every call site and risking one of them keeping the model's answer. applyHumanTag
+  // also keeps the unmet_demand flag consistent with the tag - the digest and dashboard filter on the flag
+  // while Slack branches on the tag, so overriding only the tag desynchronizes them.
+  const result = applyHumanTag(modelResult, humanTag)
 
   const messageCount = transcript.length
   const firstMessageAt = transcript[0].timestamp

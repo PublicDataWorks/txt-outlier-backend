@@ -54,6 +54,8 @@ const IMPACT_LABEL_TO_TAG: Record<string, string> = {
   'testimonials': 'user-sat',
 }
 
+const UNMET_DEMAND_TAG = 'unmet-demand'
+
 const stripNamespace = (fullName: string, namespace: string): string => fullName.slice(namespace.length)
 
 // Reads the labels currently on a conversation. Archived label links are excluded: `is_archived` is how
@@ -110,6 +112,33 @@ export const resolveHumanTag = (
     return index === -1 ? Number.MAX_SAFE_INTEGER : index
   }
   return candidates.reduce((best, candidate) => rank(candidate.tag) < rank(best.tag) ? candidate : best)
+}
+
+// Applies a human verdict to a model result, keeping the row internally consistent.
+//
+// `unmet_demand` is a separate boolean from `tag`, and the two are read by different consumers: the weekly
+// digest and the dashboard filter on the boolean, while the Slack template branches on the tag. Overriding
+// only the tag desynchronizes them - a row could render "UNMET DEMAND" in the channel while the digest and
+// dashboard silently omitted it, because the model had left the flag false.
+//
+// Only forced in the one direction. The flag is not a restatement of the tag: a conversation can fill an
+// info gap and still leave something unanswered, and the model sets the flag from its own reading of the
+// transcript. So an override AWAY from unmet-demand leaves a true flag standing - that observation is still
+// the model's to make, and the unmet-demand feed is filtered on the flag by design.
+export const applyHumanTag = <T extends { tag: string; unmetDemand: boolean; unmetDemandReason: string | null }>(
+  result: T,
+  humanTag: { tag: string; from: string } | null,
+): T => {
+  if (!humanTag) return result
+  const applied = { ...result, tag: humanTag.tag }
+  if (humanTag.tag === UNMET_DEMAND_TAG && !applied.unmetDemand) {
+    applied.unmetDemand = true
+    // Naming the label rather than leaving null: the Slack block renders "Not specified" for a null reason,
+    // which reads as a gap in the analysis rather than as the newsroom's own recorded judgment.
+    applied.unmetDemandReason = applied.unmetDemandReason ??
+      `Recorded by the newsroom as "${humanTag.from}".`
+  }
+  return applied
 }
 
 // Rendered into the system prompt. Campaign labels are withheld (see ConversationLabels above).

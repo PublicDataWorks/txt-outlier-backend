@@ -4,6 +4,7 @@ import { assertEquals } from 'jsr:@std/assert'
 // No setup.ts import: these are pure functions over already-fetched labels, so the suite's Postgres
 // bootstrap is not needed.
 import {
+  applyHumanTag,
   type ConversationLabels,
   flattenLabels,
   formatLabelsForPrompt,
@@ -154,5 +155,64 @@ describe('flattenLabels', () => {
 
   it('is empty for a conversation with no labels', () => {
     assertEquals(flattenLabels(empty()), [])
+  })
+})
+
+describe('applyHumanTag', () => {
+  const modelResult = (
+    over: Partial<{ tag: string; unmetDemand: boolean; unmetDemandReason: string | null }> = {},
+  ) => ({
+    tag: 'reporter-engaged',
+    unmetDemand: false,
+    unmetDemandReason: null as string | null,
+    ...over,
+  })
+
+  it('leaves the model result untouched when there is no human verdict', () => {
+    const result = modelResult()
+    assertEquals(applyHumanTag(result, null), result)
+  })
+
+  it('applies the human tag', () => {
+    assertEquals(applyHumanTag(modelResult(), { tag: 'info-gap', from: 'Info gap filled' }).tag, 'info-gap')
+  })
+
+  // The digest and dashboard filter on the unmetDemand boolean while Slack branches on the tag. An override
+  // to unmet-demand that left the flag false would render "UNMET DEMAND" in the channel while the digest and
+  // dashboard silently omitted the row.
+  it('raises the unmetDemand flag when a label overrides the tag to unmet-demand', () => {
+    const applied = applyHumanTag(modelResult(), { tag: 'unmet-demand', from: 'unsatisfied' })
+    assertEquals(applied.tag, 'unmet-demand')
+    assertEquals(applied.unmetDemand, true)
+    assertEquals(applied.unmetDemandReason, 'Recorded by the newsroom as "unsatisfied".')
+  })
+
+  it('does not overwrite a reason the model already gave', () => {
+    const applied = applyHumanTag(
+      modelResult({ unmetDemandReason: 'Asked about a grant we could not find.' }),
+      { tag: 'unmet-demand', from: 'resource gap' },
+    )
+    assertEquals(applied.unmetDemand, true)
+    assertEquals(applied.unmetDemandReason, 'Asked about a grant we could not find.')
+  })
+
+  // The flag is not a restatement of the tag: a conversation can fill an info gap and still leave something
+  // unanswered. The model sets it from its own reading, so an override away from unmet-demand must not
+  // silently discard that observation - the unmet-demand feed is filtered on the flag by design.
+  it('leaves a true flag standing when the override moves away from unmet-demand', () => {
+    const applied = applyHumanTag(
+      modelResult({ tag: 'unmet-demand', unmetDemand: true, unmetDemandReason: 'No resource existed.' }),
+      { tag: 'info-gap', from: 'Info gap filled' },
+    )
+    assertEquals(applied.tag, 'info-gap')
+    assertEquals(applied.unmetDemand, true)
+    assertEquals(applied.unmetDemandReason, 'No resource existed.')
+  })
+
+  it('does not mutate the result it was given', () => {
+    const original = modelResult()
+    applyHumanTag(original, { tag: 'unmet-demand', from: 'unsatisfied' })
+    assertEquals(original.tag, 'reporter-engaged')
+    assertEquals(original.unmetDemand, false)
   })
 })
