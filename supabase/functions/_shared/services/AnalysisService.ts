@@ -259,6 +259,15 @@ personalized response - eligibility research, a referral they made themselves, m
 or campaign message that merely happens to be signed by a staff member's name is NOT reporter-engaged; a resident \
 receiving only templated/automated content is info-gap, no-impact, or unsubscribe depending on what they did with it.
 
+This is the single most common misclassification, so weigh it carefully. Outlier's AUTOMATED replies are \
+routinely signed with a real staff member's first name ("Koby from Outlier", "Sarah from Outlier"), and a \
+signature is not engagement. Measured against conversations the newsroom itself labelled, this tag was applied \
+roughly ten times too often, and in 87% of those cases no staff member had been assigned to the conversation at \
+all. Before choosing reporter-engaged, look for something a person demonstrably did that automation could not: \
+an answer specific to this resident's circumstances, a lookup performed on their behalf, or a genuine \
+back-and-forth. A warm, personal-sounding template is still a template. When the resident simply received \
+information - even helpful, even signed - the tag is info-gap.
+
 Topic list (choose based on the RESIDENT's own words and actual ask, not whichever broadcast campaign the \
 conversation happens to contain - a resident who asks about an address lookup during a REPAY campaign thread is \
 "Property & Tax-Status Lookup", not "Tax Foreclosure / REPAY"):
@@ -277,15 +286,9 @@ empty array when no secondary theme applies.${
     labelContext
       ? `
 
-This conversation carries labels applied in Missive by the Outlier team:
-${labelContext}
-
-Impact labels are the newsroom's own recorded judgment of what happened, made by a person who could see \
-context the transcript does not carry. Treat them as strong evidence and do not contradict one without a \
-clear reason in the transcript. In particular, an "Info gap filled" or "user satisfaction" label means the \
-resident's need was met - usually by automation or a keyword reply - so it is NOT reporter-engaged unless a \
-named staff member visibly did personalized work in the transcript. Keyword labels indicate what the \
-resident asked about and are useful for choosing the topic.`
+This conversation carries these labels from Missive, which indicate what the resident asked about and are \
+useful for choosing the topic:
+${labelContext}`
       : ''
   }`
 }

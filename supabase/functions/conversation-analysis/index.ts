@@ -262,12 +262,18 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   // guessed name pattern - see redactKnownNames.
   const residentNames = await getResidentNames(row.conversationId)
 
-  // Missive labels the newsroom applied by hand. Fed to the model as evidence, and - for the impact
-  // labels, which are explicit outcome judgments - allowed to override the model's choice outright.
-  const conversationLabels = await getConversationLabels(row.conversationId)
-  const labelContext = formatLabelsForPrompt(conversationLabels)
+  // Keyword labels only - formatLabelsForPrompt withholds the impact labels so the model never sees the
+  // newsroom's answer, keeping model_tag a blind comparison rather than an echo of it.
+  const labelContext = formatLabelsForPrompt(await getConversationLabels(row.conversationId))
 
   const modelResult = await analyzeTranscript(transcript, tags, { model, residentNames, labelContext })
+
+  // Re-read AFTER the model call, not before. analyzeTranscript can run for OPENAI_TIMEOUT_MS (120s), and
+  // an editor adding or removing an impact label inside that window is exactly the case this feature is
+  // for. A pre-call snapshot would let a withdrawn verdict still override and publish, and would miss a
+  // newly recorded one permanently once the row completes. This snapshot is what both the override and the
+  // stored provenance use, so missive_labels records the labels as of the decision, not as of the fetch.
+  const conversationLabels = await getConversationLabels(row.conversationId)
 
   // Where a person already recorded the outcome, that is the outcome. Measured over 224 analyzed
   // conversations carrying a human impact label, the model matched the newsroom on 15; it called 159
@@ -300,10 +306,18 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
 
   // Suppressed tags (and low-confidence calls) are still recorded for stats/backfill analysis but
   // never posted - see docs/conversation-tagging.md for the suppression rules this implements.
-  const suppressed = SUPPRESS_TAGS.includes(result.tag) || result.confidence < MIN_CONFIDENCE
-  const suppressReason = suppressed
-    ? (SUPPRESS_TAGS.includes(result.tag) ? `tag:${result.tag}` : 'low-confidence')
-    : null
+  // A human verdict is not subject to the model's confidence. `confidence` describes how sure the MODEL was
+  // about its own reading of the transcript; when the tag came from a Missive label that reading is not
+  // what the row records. Gating on it anyway would suppress the newsroom's own answer precisely on the
+  // ambiguous transcripts the override exists to rescue, and the row would then be dropped from Slack and
+  // from every digest query that requires suppress_reason IS NULL.
+  //
+  // Tag-based suppression still applies either way: a human labelling a conversation "Not Detroit" is
+  // recording wrong-audience, and that is a reason not to post it, not a reason to override the rule.
+  const suppressedByTag = SUPPRESS_TAGS.includes(result.tag)
+  const suppressedByConfidence = !humanTag && result.confidence < MIN_CONFIDENCE
+  const suppressReason = suppressedByTag ? `tag:${result.tag}` : suppressedByConfidence ? 'low-confidence' : null
+  const suppressed = suppressReason !== null
 
   // The model call can take up to OPENAI_TIMEOUT_MS, and a reopen landing in that window can't be
   // cancelled by the reopen handler (it only touches 'pending' rows, and this one is 'processing').

@@ -114,22 +114,48 @@ describe('formatLabelsForPrompt', () => {
   // Campaign labels are deliberately withheld: naming the campaign is what pushes the model to answer the
   // topic question with the campaign rather than the resident's actual ask.
   it('never leaks campaign labels into the prompt', () => {
-    const labels = { ...empty(), campaigns: ['08-04-25 primary election campaign'], impact: ['Info gap filled'] }
+    const labels = { ...empty(), campaigns: ['08-04-25 primary election campaign'], keywords: ['REPAY'] }
     const prompt = formatLabelsForPrompt(labels)
     assertEquals(prompt?.includes('primary election'), false)
-    assertEquals(prompt?.includes('Info gap filled'), true)
+    assertEquals(prompt?.includes('REPAY'), true)
   })
 
-  it('renders impact, keyword and other labels', () => {
+  it('renders keyword and other labels', () => {
     const prompt = formatLabelsForPrompt({
-      impact: ['user satisfaction'],
+      impact: [],
       keywords: ['REPAY', 'home repair'],
       campaigns: [],
       other: ['Backend/Replied'],
     })
-    assertEquals(prompt?.includes('user satisfaction'), true)
     assertEquals(prompt?.includes('REPAY, home repair'), true)
     assertEquals(prompt?.includes('Backend/Replied'), true)
+  })
+
+  // The impact label is the newsroom's answer, and it overrides the model's tag outright. Showing it to the
+  // model cannot change the tag anyone sees, but it would let the model echo the answer - making model_tag
+  // an echo rather than the blind comparison it exists to be.
+  it('never leaks impact labels into the prompt', () => {
+    const prompt = formatLabelsForPrompt({
+      impact: ['Info gap filled', 'user satisfaction'],
+      keywords: ['REPAY'],
+      campaigns: [],
+      other: [],
+    })
+    assertEquals(prompt?.includes('Info gap filled'), false)
+    assertEquals(prompt?.includes('user satisfaction'), false)
+    assertEquals(prompt?.includes('REPAY'), true)
+  })
+
+  it('returns null when a conversation carries only impact and campaign labels', () => {
+    assertEquals(
+      formatLabelsForPrompt({
+        impact: ['Info gap filled'],
+        keywords: [],
+        campaigns: ['08-04-25 primary election campaign'],
+        other: [],
+      }),
+      null,
+    )
   })
 })
 

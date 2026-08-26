@@ -153,13 +153,23 @@ export const applyHumanTag = <
   return applied
 }
 
-// Rendered into the system prompt. Campaign labels are withheld (see ConversationLabels above).
+// Rendered into the system prompt.
+//
+// IMPACT labels are deliberately withheld, even though they are the most informative labels here. Where one
+// exists it overrides the model's tag outright, so showing it to the model cannot change the tag the
+// newsroom sees - it can only contaminate `model_tag`, which exists precisely to measure how well the model
+// classifies WITHOUT the answer. A model shown "Info gap filled" can simply echo it, and rising agreement
+// would then be indistinguishable from label copying, making the comparison worthless.
+//
+// Withholding costs nothing: on a labelled conversation the label wins regardless, and on an unlabelled one
+// there is no impact label to pass. The generalisable lesson from those labels - that Outlier's automated
+// replies are signed with staff names and must not be read as reporter engagement - lives in the base
+// system prompt instead, where it helps the unlabelled majority too.
+//
+// Campaign labels are withheld for a different reason (see ConversationLabels above).
 // Returns null when there is nothing worth telling the model, so the prompt gains no empty section.
 export const formatLabelsForPrompt = (labelsOnConversation: ConversationLabels): string | null => {
   const lines: string[] = []
-  if (labelsOnConversation.impact.length > 0) {
-    lines.push(`- Impact labels applied by the newsroom: ${labelsOnConversation.impact.join(', ')}`)
-  }
   if (labelsOnConversation.keywords.length > 0) {
     lines.push(`- Keyword labels on this conversation: ${labelsOnConversation.keywords.join(', ')}`)
   }
