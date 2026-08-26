@@ -440,6 +440,11 @@ export const conversationAnalyses = pgTable('conversation_analyses', {
   topic: text('topic'),
   processAfter: timestamp('process_after', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   suppressReason: text('suppress_reason'),
+  // What the model chose, kept even when a Missive impact label overrode it, so newsroom-vs-model
+  // agreement stays measurable instead of being silently overwritten.
+  modelTag: text('model_tag'),
+  tagSource: text('tag_source'),
+  missiveLabels: text('missive_labels').array().default([]),
 }, (table) => {
   return {
     statusIdx: index('idx_conversation_analyses_status').on(table.status),

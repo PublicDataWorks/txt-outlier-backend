@@ -220,7 +220,7 @@ const formatTranscript = (messages: TranscriptMessage[]): string =>
 // to choose something the structured-output enum no longer offers, pushing those conversations into whatever
 // category remains. Any active tag missing from this list is appended, so a newly added tag is never dropped
 // from the guidance.
-const TAG_PRIORITY_ORDER = [
+export const TAG_PRIORITY_ORDER = [
   'automation-failure',
   'noise-test',
   'wrong-audience',
@@ -233,7 +233,7 @@ const TAG_PRIORITY_ORDER = [
   'no-impact',
 ]
 
-const buildSystemPrompt = (tags: { name: string; description: string }[]): string => {
+const buildSystemPrompt = (tags: { name: string; description: string }[], labelContext?: string | null): string => {
   const taxonomy = tags.map((tag) => `- ${tag.name}: ${tag.description}`).join('\n')
   const activeNames = tags.map((tag) => tag.name)
   const priorityOrder = [
@@ -269,7 +269,21 @@ unmet_demand_reason, otherwise set unmet_demand_reason to null. Set confidence t
 analysis, from 0 (low) to 1 (high) - use below 0.5 only when the transcript is genuinely ambiguous.
 
 Respond with a single JSON object matching the required schema. Choose at most 2 secondary tags; return an \
-empty array when no secondary theme applies.`
+empty array when no secondary theme applies.${
+    labelContext
+      ? `
+
+This conversation carries labels applied in Missive by the Outlier team:
+${labelContext}
+
+Impact labels are the newsroom's own recorded judgment of what happened, made by a person who could see \
+context the transcript does not carry. Treat them as strong evidence and do not contradict one without a \
+clear reason in the transcript. In particular, an "Info gap filled" or "user satisfaction" label means the \
+resident's need was met - usually by automation or a keyword reply - so it is NOT reporter-engaged unless a \
+named staff member visibly did personalized work in the transcript. Keyword labels indicate what the \
+resident asked about and are useful for choosing the topic.`
+      : ''
+  }`
 }
 
 // Strict Structured Outputs schema. Constraining tag/topic with `enum` is the main reliability win over
@@ -549,7 +563,7 @@ const extractOutputText = (data: any): string => {
 export const analyzeTranscript = async (
   transcript: TranscriptMessage[],
   tags: { name: string; description: string }[],
-  options: { model?: string; residentNames?: string[] } = {},
+  options: { model?: string; residentNames?: string[]; labelContext?: string | null } = {},
 ): Promise<AnalysisResult> => {
   if (tags.length === 0) {
     // An empty taxonomy would produce an empty `enum`, which the API rejects outright.
@@ -593,7 +607,7 @@ export const analyzeTranscript = async (
       },
       body: JSON.stringify({
         model,
-        instructions: buildSystemPrompt(tags),
+        instructions: buildSystemPrompt(tags, options.labelContext),
         input: userContent,
         reasoning: { effort: resolveReasoningEffort() },
         max_output_tokens: MAX_OUTPUT_TOKENS,
