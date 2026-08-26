@@ -20,6 +20,10 @@ Everything you need in hand before starting:
 
 ## Step 1 - Create the Slack app
 
+> To hand this step to a browser or computer-use agent instead of doing it yourself, give it
+> [`docs/slack-setup-agent-instructions.md`](./slack-setup-agent-instructions.md). It covers the same
+> ground click by click and reports back the three values Step 2 needs.
+
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → *From scratch* → name it (e.g. `Conversation Insights`), pick the Outlier workspace.
 2. **OAuth & Permissions → Bot Token Scopes** - add exactly these two:
    - `chat:write` (post and update analysis messages)
