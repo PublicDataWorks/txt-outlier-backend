@@ -2,7 +2,11 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import supabase from '../lib/supabase.ts'
 import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
-import { AnalysisResult, TranscriptMessage } from '../types/analysis.ts'
+import { AnalysisResult, TAG_PRIORITY_ORDER, TranscriptMessage } from '../types/analysis.ts'
+
+// Re-exported for existing importers; the definition lives in types/analysis.ts so the user-actions
+// webhook path can read it without pulling this module's dependencies in.
+export { TAG_PRIORITY_ORDER }
 
 // Bumped from 'q2-v2-openai' when Missive labels became prompt evidence and impact labels became
 // authoritative. The instructions materially change how a labelled conversation is classified, so rows
@@ -224,19 +228,6 @@ const formatTranscript = (messages: TranscriptMessage[]): string =>
 // to choose something the structured-output enum no longer offers, pushing those conversations into whatever
 // category remains. Any active tag missing from this list is appended, so a newly added tag is never dropped
 // from the guidance.
-export const TAG_PRIORITY_ORDER = [
-  'automation-failure',
-  'noise-test',
-  'wrong-audience',
-  'unsubscribe',
-  'story-tip',
-  'reporter-engaged',
-  'unmet-demand',
-  'info-gap',
-  'user-sat',
-  'no-impact',
-]
-
 const buildSystemPrompt = (tags: { name: string; description: string }[], labelContext?: string | null): string => {
   const taxonomy = tags.map((tag) => `- ${tag.name}: ${tag.description}`).join('\n')
   const activeNames = tags.map((tag) => tag.name)
