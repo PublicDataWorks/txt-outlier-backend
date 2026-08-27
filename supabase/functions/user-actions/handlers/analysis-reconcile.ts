@@ -2,7 +2,10 @@ import { and, eq, sql } from 'drizzle-orm'
 import supabase from '../../_shared/lib/supabase.ts'
 import { analysisTags, conversationAnalyses } from '../../_shared/drizzle/schema.ts'
 import { getConversationLabels, resolveHumanTag } from '../../_shared/services/MissiveLabels.ts'
-import { TAG_PRIORITY_ORDER } from '../../_shared/services/AnalysisService.ts'
+// From types/analysis.ts, not AnalysisService: this runs in the user-actions webhook, and pulling the
+// analysis stack (zod, the OpenAI client, the PII regexes) into that function's cold start pushed it past
+// CI's 60s readiness probe.
+import { TAG_PRIORITY_ORDER } from '../../_shared/types/analysis.ts'
 import Sentry from '../../_shared/lib/Sentry.ts'
 
 // A completed analysis is never revisited: handleLabelChange only touches the conversation and its label
