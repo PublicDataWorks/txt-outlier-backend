@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import supabase from '../../_shared/lib/supabase.ts'
 import { analysisTags, conversationAnalyses } from '../../_shared/drizzle/schema.ts'
 import { getConversationLabels, resolveHumanTag } from '../../_shared/services/MissiveLabels.ts'
@@ -80,7 +80,15 @@ export const reconcileAnalysisAfterLabelChange = async (conversationId: string):
   // - process_after is NOW(), not NOW() + the realtime delay. That delay exists to let a just-closed
   //   conversation settle; this one closed and was analyzed long ago, and the editor is waiting on the
   //   correction.
-  await supabase
+  // Compare-and-swap, not a blind write. Three awaits separate the status check above from this update,
+  // and the row can move in between: a reopen/re-close resets it to 'pending', the queue then claims it to
+  // 'processing'. Resetting attempts to 0 under a live claim is not merely wasteful - processQueue uses
+  // attempts as the lease-ownership token, so the in-flight worker would no longer recognise its own lease
+  // and the row could be analyzed twice.
+  //
+  // Guarding on the tag too means a concurrent re-analysis or a second label_change webhook that already
+  // moved the row makes this a no-op rather than stomping the newer result.
+  const [requeued] = await supabase
     .update(conversationAnalyses)
     .set({
       status: 'pending',
@@ -89,7 +97,18 @@ export const reconcileAnalysisAfterLabelChange = async (conversationId: string):
       error: null,
       updatedAt: new Date().toISOString(),
     })
-    .where(eq(conversationAnalyses.id, existing.id))
+    .where(and(
+      eq(conversationAnalyses.id, existing.id),
+      eq(conversationAnalyses.status, 'completed'),
+      sql`${conversationAnalyses.tag} IS NOT DISTINCT FROM ${existing.tag}`,
+    ))
+    .returning({ id: conversationAnalyses.id })
+
+  if (!requeued) {
+    console.log(
+      `Analysis ${existing.id}: row moved since the label check, leaving it to the queue`,
+    )
+  }
 }
 
 // Never fails the webhook. Missive retries a non-2xx delivery, and a reconciliation failure must not cost
