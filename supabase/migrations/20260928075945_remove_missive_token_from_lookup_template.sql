@@ -7,10 +7,14 @@
 -- un-expose a value that has been sitting in every database backup.
 --
 -- Background: row name='missive_secret' held the Missive API token as plaintext `content`. The
--- only consumer was txt-outlier-lookups, which switched to reading MISSIVE_SECRET from the
--- environment in PR #82 (merged 2025-10-27). The row has been orphaned ever since, but its value
--- still matches the live token in 1Password, so it remained a real credential sitting in a data
--- table that three analyst roles could read until 2026-09-27.
+-- only reader of the ROW was txt-outlier-lookups, which switched to reading MISSIVE_SECRET from
+-- the environment in PR #82 (merged 2025-10-27). The row has been orphaned ever since, but its
+-- value still matches the live token, so it remained a real credential sitting in a data table
+-- that three analyst roles could read until 2026-09-27.
+--
+-- Note for rotation: that same token VALUE is also the backend's MISSIVE_SECRET_NON_BROADCAST
+-- (verified by hash), so it is shared across two services even though only one read it from here.
+-- Deleting this row is safe on its own, but rotating the token is not a single-service change.
 
 delete from public.lookup_template where name = 'missive_secret';
 

@@ -48,13 +48,26 @@ treated as exposed and rotated.
 2. **Apply the migration** — `supabase db push`, or run the file directly. Safe at any time; no
    consumer reads the row.
 
-3. **Rotate the Missive token.** Generate a new API token in Missive
-   (Settings → API), then update every place the old one lives:
-   - 1Password → Outlier vault → `txt-outlier-lookups` → `MISSIVE_SECRET`
-     (note: that item currently has **two** fields labelled `MISSIVE_SECRET` with different
-     values — the 82-character one is the live token. Delete the stale one while you are there.)
-   - The deployed lookups service environment.
-   - Any other service reading `MISSIVE_SECRET`.
+3. **Rotate the Missive token.** ⚠️ **The exposed token is shared by two services.** The same
+   value is both `txt-outlier-lookups` → `MISSIVE_SECRET` and `txt-outlier-backend` →
+   `MISSIVE_SECRET_NON_BROADCAST` (verified by hash, 2026-09-28). Rotating it without updating
+   both will break one of them. In the backend it authenticates `createPost`,
+   `getMissiveMessage`, and shared-label create/list — i.e. conversation analysis posts and label
+   management.
+
+   **Issue two separate tokens, one per service,** rather than restoring the shared one. The
+   services have independent deploy cycles, and a shared credential means every future rotation is
+   a coordinated outage risk.
+
+   Old Missive tokens keep working until explicitly revoked, so there is no downtime window —
+   **do not revoke the old token until both services are updated and verified.**
+
+   | Where | What to update |
+   |---|---|
+   | 1Password → Outlier → `txt-outlier-backend` | `MISSIVE_SECRET_NON_BROADCAST` |
+   | 1Password → Outlier → `txt-outlier-lookups` | `MISSIVE_SECRET` — the **82-character** field. That item has **two** fields with this label; the 36-character one is stale, delete it. |
+   | Supabase → Edge Functions → Secrets | `MISSIVE_SECRET_NON_BROADCAST`, then redeploy the functions |
+   | EC2 lookups host | `.env` in `/home/ubuntu/outlier-experiments`, then `docker compose up -d` |
 
 4. **Verify** the lookups service can still call Missive, then revoke the old token in Missive.
 
