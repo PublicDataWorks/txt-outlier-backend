@@ -1,5 +1,8 @@
 # Rotating the secret key
 
+For Missive, Twilio, OpenAI and other application credentials — which live in edge function
+environment variables rather than Vault — see [application-secrets.md](application-secrets.md).
+
 The edge functions and the database cron jobs both authenticate with the project's
 secret key (`sb_secret_…`):
 
