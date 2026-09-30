@@ -11,30 +11,33 @@
 -- Two fixes below: restore the lost grants, and set default privileges so tables created in this
 -- schema by postgres (the owner the pipeline runs as) carry the SELECT grants automatically.
 --
--- Applied to production as 20260928051500. The roles and schemas it touches exist only in production, so
--- the statements run only when role readonly_outlier, role readonly_kate, role address-lookup-readonly, schema address_lookup exist. A fresh database (CI's `supabase start`,
--- local development) skips this migration instead of failing.
+-- Applied to production as 20260928051500. These roles and the address_lookup schema exist only in
+-- production, so each role is handled on its own: an existing role always gets its grants and default
+-- privileges, and an absent one is skipped. A fresh database (CI's `supabase start`, local
+-- development) has no address_lookup schema and skips the whole migration.
 
 DO $guard$
+DECLARE
+  r text;
 BEGIN
-  IF NOT (EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_outlier')
-     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_kate')
-     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'address-lookup-readonly')
-     AND EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'address_lookup')) THEN
-    RAISE NOTICE 'Skipping 20260928051500: requires role readonly_outlier, role readonly_kate, role address-lookup-readonly, schema address_lookup';
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'address_lookup') THEN
+    RAISE NOTICE 'Skipping 20260928051500: requires schema address_lookup';
     RETURN;
   END IF;
 
-  EXECUTE $migration$
-grant select on address_lookup.mi_wayne_detroit to readonly_outlier;
-grant select on address_lookup.residential_rental_registrations to readonly_outlier;
+  FOREACH r IN ARRAY ARRAY['readonly_outlier', 'readonly_kate', 'address-lookup-readonly'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      RAISE NOTICE 'Skipping 20260928051500 for role %: role does not exist', r;
+      CONTINUE;
+    END IF;
 
-alter default privileges for role postgres in schema address_lookup
-  grant select on tables to readonly_outlier;
-alter default privileges for role postgres in schema address_lookup
-  grant select on tables to readonly_kate;
-alter default privileges for role postgres in schema address_lookup
-  grant select on tables to "address-lookup-readonly";
-$migration$;
+    -- Only readonly_outlier had lost its grants on the two recreated tables.
+    IF r = 'readonly_outlier' THEN
+      EXECUTE format('grant select on address_lookup.mi_wayne_detroit to %I', r);
+      EXECUTE format('grant select on address_lookup.residential_rental_registrations to %I', r);
+    END IF;
+
+    EXECUTE format('alter default privileges for role postgres in schema address_lookup grant select on tables to %I', r);
+  END LOOP;
 END
 $guard$;
