@@ -9,27 +9,23 @@
 -- Both the grant and the RLS policy must go. Dropping only the policy would still leave the grant,
 -- and a future policy change could silently re-expose the table.
 --
--- Applied to production as 20260928064500. The roles and schemas it touches exist only in production, so
--- the statements run only when role readonly_outlier, role readonly_kate, role address-lookup-readonly exist. A fresh database (CI's `supabase start`,
--- local development) skips this migration instead of failing.
+-- Applied to production as 20260928064500. These roles exist only in production, so each role is
+-- handled on its own: an existing role always loses its grant and policy, and an absent one is
+-- skipped. A fresh database (CI's `supabase start`, local development) has none of them and skips
+-- the whole migration.
 
 DO $guard$
+DECLARE
+  r text;
 BEGIN
-  IF NOT (EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_outlier')
-     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_kate')
-     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'address-lookup-readonly')) THEN
-    RAISE NOTICE 'Skipping 20260928064500: requires role readonly_outlier, role readonly_kate, role address-lookup-readonly';
-    RETURN;
-  END IF;
+  FOREACH r IN ARRAY ARRAY['readonly_outlier', 'readonly_kate', 'address-lookup-readonly'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      RAISE NOTICE 'Skipping 20260928064500 for role %: role does not exist', r;
+      CONTINUE;
+    END IF;
 
-  EXECUTE $migration$
-revoke select on public.lookup_template from readonly_outlier;
-revoke select on public.lookup_template from readonly_kate;
-revoke select on public.lookup_template from "address-lookup-readonly";
-
-drop policy if exists "readonly_outlier read access" on public.lookup_template;
-drop policy if exists "readonly_kate read access" on public.lookup_template;
-drop policy if exists "address-lookup-readonly read access" on public.lookup_template;
-$migration$;
+    EXECUTE format('revoke select on public.lookup_template from %I', r);
+    EXECUTE format('drop policy if exists %I on public.lookup_template', r || ' read access');
+  END LOOP;
 END
 $guard$;
