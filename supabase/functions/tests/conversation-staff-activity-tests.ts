@@ -30,7 +30,8 @@ const fetchActivity = async (conversationId: string): Promise<ActivityRow[]> => 
   const rows = await supabase.execute(sql`
     SELECT * FROM conversation_staff_activity WHERE conversation_id = ${conversationId} ORDER BY user_name
   `)
-  return rows as unknown as ActivityRow[]
+  // The driver returns a Result (an Array subclass); copy it so assertEquals compares plain arrays
+  return [...(rows as unknown as ActivityRow[])]
 }
 
 const iso = (value: Date | string | null) => (value === null ? null : new Date(value).toISOString())
