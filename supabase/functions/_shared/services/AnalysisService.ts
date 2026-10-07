@@ -75,8 +75,9 @@ const MAX_TRANSCRIPT_CHARS = 30000
 
 // Residents of this conversation who also belong to at least one OTHER conversation.
 //
-// This exists because twilio_messages carries no conversation_id: a message is tied to a conversation only
-// through the phone numbers it shares with conversations_authors. So when one resident phone appears on
+// This exists because getConversationTranscript still ties a message to a conversation only through the phone
+// numbers it shares with conversations_authors (twilio_messages.conversation_id is now recorded at ingest, but
+// the transcript query does not use it yet - see the note on getConversationTranscript). So when one resident phone appears on
 // several conversations, their messages cannot be attributed to a particular one, and every transcript built
 // for that phone is the merged history of all of them - which would produce a summary and quote describing
 // the wrong conversation. processRow skips these rather than publishing a confident wrong answer.
@@ -108,10 +109,15 @@ export const findAmbiguousResidentPhones = async (conversationId: string): Promi
   return (rows as unknown as { phone: string }[]).map((row) => row.phone)
 }
 
-// twilio_messages has no conversation_id column - it's linked to a conversation only indirectly, through
-// phone numbers shared with conversations_authors. The Outlier number can itself appear as a conversation
-// author (it is on ~595k of them), and matching on it would pull in every resident's messages, so the query
-// is scoped strictly to the resident phone(s) of this conversation.
+// This links messages to the conversation indirectly, through phone numbers shared with conversations_authors.
+// twilio_messages.conversation_id now exists, but it is NULL for messages that predate it until the backfill in
+// supabase/scripts has run. Follow-up: match rows with conversation_id = this conversation, and fall back to the
+// phone match only for rows where it is NULL (never prefer it outright, or a conversation with both old and new
+// messages would lose its old ones), then relax the ambiguity skip.
+//
+// The Outlier number can itself appear as a conversation author (it is on ~595k of them), and matching on it
+// would pull in every resident's messages, so the query is scoped strictly to the resident phone(s) of this
+// conversation.
 export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
   if (!OUTLIER_PHONE_NUMBER) {
     // Without it, the Outlier number can't be filtered out of residentPhones and every

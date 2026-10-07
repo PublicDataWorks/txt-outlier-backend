@@ -1,0 +1,99 @@
+-- Record which Missive conversation each SMS belongs to, and expose per-conversation staff activity.
+--
+-- twilio_messages used to carry no conversation_id: a message was tied to a conversation only through the phone
+-- numbers in conversations_authors, which is ambiguous when one resident has several conversations. The
+-- user-actions webhook always knows requestBody.conversation.id when it inserts a message, so it now stores it.
+--
+-- Cost on the ~2.4M row table: ADD COLUMN of a nullable column without a default is a catalog-only change (no
+-- rewrite). The column stays NULL for existing rows; supabase/scripts/backfill_twilio_messages_conversation_id.sql
+-- fills it in batches from invoke_history, run manually by an operator.
+ALTER TABLE public.twilio_messages
+  ADD COLUMN IF NOT EXISTS conversation_id uuid;
+
+-- The handler upserts the conversation in the same transaction before inserting the message, so a foreign key is
+-- safe for new rows. It is added NOT VALID so the migration does not scan the table while holding a lock: the
+-- constraint is enforced for every new or updated row immediately, and the backfill script validates it
+-- (VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock) once existing rows are filled. SET NULL, not
+-- CASCADE, so deleting a conversation never deletes the SMS history.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'twilio_messages_conversation_id_fkey'
+  ) THEN
+    ALTER TABLE public.twilio_messages
+      ADD CONSTRAINT twilio_messages_conversation_id_fkey
+      FOREIGN KEY (conversation_id) REFERENCES public.conversations (id) ON DELETE SET NULL NOT VALID;
+  END IF;
+END $$;
+
+-- Partial, so it is empty when created and only ever holds rows that have a conversation. A migration runs in a
+-- transaction, where CREATE INDEX CONCURRENTLY is not allowed. On production, build it beforehand with
+-- CONCURRENTLY (see the backfill script header) and this statement becomes a no-op.
+CREATE INDEX IF NOT EXISTS idx_twilio_messages_conversation_id
+  ON public.twilio_messages (conversation_id, delivered_at)
+  WHERE conversation_id IS NOT NULL;
+
+-- One row per (conversation, staff user) with any recorded work on that conversation.
+--
+-- replies_sent / first_reply_at / last_reply_at: outbound SMS with a sender_id that are not broadcast sends.
+-- Broadcast messages are sent through the Missive API as a staff user too (so they carry a sender_id), but their
+-- Missive id is recorded in message_statuses.missive_id, which is how they are excluded. Replies sent by
+-- keyword/automation rules have no sender_id and never appear here.
+-- Only rows with conversation_id set count; until the backfill has run, older messages are not attributed.
+-- comments_count: comments the user left on the conversation.
+-- currently_assigned: the user's inbox row for the conversation has assigned = true.
+-- A user appears only if they replied, commented, or are currently assigned.
+--
+-- security_invoker makes the view obey the RLS policies of the underlying tables. Without it the view runs with its
+-- owner's rights, and since public views are exposed through the API, staff names and emails would become readable
+-- by the anon key.
+CREATE OR REPLACE VIEW public.conversation_staff_activity
+WITH (security_invoker = true) AS
+WITH replies AS (
+  SELECT
+    tm.conversation_id,
+    tm.sender_id AS user_id,
+    count(*) AS replies_sent,
+    min(tm.delivered_at) AS first_reply_at,
+    max(tm.delivered_at) AS last_reply_at
+  FROM public.twilio_messages tm
+  WHERE tm.conversation_id IS NOT NULL
+    AND tm.sender_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM public.message_statuses ms WHERE ms.missive_id = tm.id)
+  GROUP BY tm.conversation_id, tm.sender_id
+),
+comment_counts AS (
+  SELECT c.conversation_id, c.user_id, count(*) AS comments_count
+  FROM public.comments c
+  WHERE c.conversation_id IS NOT NULL
+  GROUP BY c.conversation_id, c.user_id
+),
+assignments AS (
+  SELECT ca.conversation_id, ca.user_id, bool_or(ca.assigned) AS currently_assigned
+  FROM public.conversations_assignees ca
+  GROUP BY ca.conversation_id, ca.user_id
+),
+participants AS (
+  SELECT conversation_id, user_id FROM replies
+  UNION
+  SELECT conversation_id, user_id FROM comment_counts
+  UNION
+  SELECT conversation_id, user_id FROM assignments WHERE currently_assigned
+)
+SELECT
+  p.conversation_id,
+  p.user_id,
+  u.name AS user_name,
+  u.email AS user_email,
+  COALESCE(r.replies_sent, 0)::integer AS replies_sent,
+  r.first_reply_at,
+  r.last_reply_at,
+  COALESCE(cc.comments_count, 0)::integer AS comments_count,
+  COALESCE(a.currently_assigned, false) AS currently_assigned
+FROM participants p
+JOIN public.users u ON u.id = p.user_id
+LEFT JOIN replies r ON r.conversation_id = p.conversation_id AND r.user_id = p.user_id
+LEFT JOIN comment_counts cc ON cc.conversation_id = p.conversation_id AND cc.user_id = p.user_id
+LEFT JOIN assignments a ON a.conversation_id = p.conversation_id AND a.user_id = p.user_id;
+
+REVOKE ALL ON public.conversation_staff_activity FROM PUBLIC, anon, authenticated;

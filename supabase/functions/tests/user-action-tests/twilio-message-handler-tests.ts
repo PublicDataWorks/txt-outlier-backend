@@ -185,5 +185,68 @@ describe(
       // Verify senderId is set to the author's ID
       assertEquals(message.senderId, testUser.id)
     })
+
+    it('stores the webhook conversation id on incoming messages', async () => {
+      const requestData = structuredClone(newIncomingSmsRequest)
+      const messageId = crypto.randomUUID()
+      const conversationId = crypto.randomUUID()
+      requestData.message!.id = messageId
+      requestData.conversation.id = conversationId
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: requestData,
+      })
+
+      const [message] = await supabase.select().from(twilioMessages).where(eq(twilioMessages.id, messageId))
+      assertEquals(message.conversationId, conversationId)
+    })
+
+    it('stores the webhook conversation id on outgoing messages', async () => {
+      const testUser = await createUser()
+      const requestData = structuredClone(newOutgoingSmsRequest)
+      const messageId = crypto.randomUUID()
+      const conversationId = crypto.randomUUID()
+      requestData.message!.id = messageId
+      requestData.message!.author = { id: testUser.id }
+      requestData.conversation.id = conversationId
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: requestData,
+      })
+
+      const [message] = await supabase.select().from(twilioMessages).where(eq(twilioMessages.id, messageId))
+      assertEquals(message.conversationId, conversationId)
+      assertEquals(message.senderId, testUser.id)
+    })
+
+    it('keeps two messages from the same resident on their own conversations', async () => {
+      // The ambiguity this column exists to resolve: one phone number appearing in several conversations.
+      const firstConversationId = crypto.randomUUID()
+      const secondConversationId = crypto.randomUUID()
+      const firstMessageId = crypto.randomUUID()
+      const secondMessageId = crypto.randomUUID()
+
+      for (
+        const [messageId, conversationId] of [
+          [firstMessageId, firstConversationId],
+          [secondMessageId, secondConversationId],
+        ]
+      ) {
+        const requestData = structuredClone(newIncomingSmsRequest)
+        requestData.message!.id = messageId
+        requestData.conversation.id = conversationId
+        await client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: requestData,
+        })
+      }
+
+      const rows = await supabase.select().from(twilioMessages)
+      const byId = new Map(rows.map((row) => [row.id, row.conversationId]))
+      assertEquals(byId.get(firstMessageId), firstConversationId)
+      assertEquals(byId.get(secondMessageId), secondConversationId)
+    })
   },
 )
