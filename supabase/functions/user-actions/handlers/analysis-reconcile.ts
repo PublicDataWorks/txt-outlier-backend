@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import supabase from '../../_shared/lib/supabase.ts'
-import { analysisTags, conversationAnalyses } from '../../_shared/drizzle/schema.ts'
+import { analysisTags, conversationAnalyses, conversations } from '../../_shared/drizzle/schema.ts'
 import { getConversationLabels, resolveHumanTag } from '../../_shared/services/MissiveLabels.ts'
 // From types/analysis.ts, not AnalysisService: this runs in the user-actions webhook, and pulling the
 // analysis stack (zod, the OpenAI client, the PII regexes) into that function's cold start pushed it past
@@ -33,7 +33,12 @@ export const expectedTagAfterLabelChange = (
 export const shouldRequeueForLabelChange = (
   stored: { status: string; tag: string | null; modelTag: string | null },
   humanTag: { tag: string } | null,
+  conversationClosed = true,
 ): boolean => {
+  // A reopened conversation is mid-cycle. Requeueing now bumps updated_at, which erases the evidence
+  // enqueueConversationAnalysis uses to tell a real reopen/re-close from a redelivered close webhook, so
+  // the next close would not reset the cycle. The close that follows reads the labels anyway.
+  if (!conversationClosed) return false
   // Only a finished cycle. A pending row will pick the labels up when it runs, and a processing row is
   // mid-flight under a lease - resetting it would fight the queue for ownership.
   if (stored.status !== 'completed') return false
@@ -56,6 +61,11 @@ export const reconcileAnalysisAfterLabelChange = async (conversationId: string):
 
   if (!existing || existing.status !== 'completed') return
 
+  const [conversation] = await supabase
+    .select({ closed: conversations.closed })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+
   const activeTags = await supabase
     .select({ name: analysisTags.name })
     .from(analysisTags)
@@ -65,7 +75,7 @@ export const reconcileAnalysisAfterLabelChange = async (conversationId: string):
   const labels = await getConversationLabels(conversationId)
   const humanTag = resolveHumanTag(labels, activeTags.map((tag) => tag.name), TAG_PRIORITY_ORDER)
 
-  if (!shouldRequeueForLabelChange(existing, humanTag)) return
+  if (!shouldRequeueForLabelChange(existing, humanTag, conversation?.closed === true)) return
   const expectedTag = expectedTagAfterLabelChange(existing, humanTag)
 
   console.log(
@@ -104,6 +114,8 @@ export const reconcileAnalysisAfterLabelChange = async (conversationId: string):
       eq(conversationAnalyses.id, existing.id),
       eq(conversationAnalyses.status, 'completed'),
       sql`${conversationAnalyses.tag} IS NOT DISTINCT FROM ${existing.tag}`,
+      // Re-checked in the write itself: a reopen can land between the read above and this update.
+      sql`EXISTS (SELECT 1 FROM conversations c WHERE c.id = ${conversationId} AND c.closed IS TRUE)`,
     ))
     .returning({ id: conversationAnalyses.id })
 

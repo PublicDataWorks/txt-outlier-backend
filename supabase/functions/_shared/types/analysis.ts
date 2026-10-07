@@ -34,3 +34,13 @@ export const TAG_PRIORITY_ORDER = [
   'user-sat',
   'no-impact',
 ]
+
+// A suppressed result is withdrawn from Slack and excluded from every metric, so it must not stay
+// "promoted": the weekly briefing and the insights dashboard count promoted_at on its own, which would
+// report a story idea pointing at a withdrawn message. Before label reconciliation a completed, promoted
+// row could not be re-processed, so this state was unreachable; reconciliation keeps promotions across a
+// rerun on purpose (a re-tag does not undo an editor's decision), and a new tag that means "never should
+// have been posted" is the one case that has to clear it.
+export const promotionAfterCompletion = (
+  suppressed: boolean,
+): { promotedAt?: null; promotedBy?: null } => suppressed ? { promotedAt: null, promotedBy: null } : {}

@@ -6,6 +6,10 @@ import {
   expectedTagAfterLabelChange,
   shouldRequeueForLabelChange,
 } from '../../user-actions/handlers/analysis-reconcile.ts'
+import { resolveHumanTag } from '../../_shared/services/MissiveLabels.ts'
+import { promotionAfterCompletion, TAG_PRIORITY_ORDER } from '../../_shared/types/analysis.ts'
+
+const ACTIVE = [...TAG_PRIORITY_ORDER]
 
 const completed = (over: Partial<{ tag: string | null; modelTag: string | null }> = {}) => ({
   status: 'completed',
@@ -66,5 +70,46 @@ describe('shouldRequeueForLabelChange', () => {
         status,
       )
     }
+  })
+})
+
+describe('shouldRequeueForLabelChange on a reopened conversation', () => {
+  it('does not requeue while the conversation is open, even if a label disagrees', () => {
+    assertEquals(shouldRequeueForLabelChange(completed(), { tag: 'info-gap' }, false), false)
+  })
+
+  it('requeues once it is closed', () => {
+    assertEquals(shouldRequeueForLabelChange(completed(), { tag: 'info-gap' }, true), true)
+  })
+})
+
+// 'address lookup failed' is applied by a Missive automation rule, not a person, so it no longer maps to a
+// tag. Adding or removing it must therefore never requeue an analysis.
+describe('labels that do not map to a tag', () => {
+  const resolve = (impact: string[]) =>
+    resolveHumanTag({ impact, keywords: [], campaigns: [], other: [] }, ACTIVE, TAG_PRIORITY_ORDER)
+
+  it('resolves no human tag for address lookup failed', () => {
+    assertEquals(resolve(['address lookup failed']), null)
+  })
+
+  it('does not requeue a model-tagged row when only address lookup failed is applied', () => {
+    const stored = completed({ tag: 'reporter-engaged', modelTag: 'reporter-engaged' })
+    assertEquals(shouldRequeueForLabelChange(stored, resolve(['address lookup failed'])), false)
+  })
+
+  it('does not requeue a human-tagged row when address lookup failed is added alongside the verdict', () => {
+    const stored = completed({ tag: 'info-gap', modelTag: 'reporter-engaged' })
+    assertEquals(shouldRequeueForLabelChange(stored, resolve(['Info gap filled', 'address lookup failed'])), false)
+  })
+})
+
+describe('promotionAfterCompletion', () => {
+  it('clears the promotion when the result is suppressed', () => {
+    assertEquals(promotionAfterCompletion(true), { promotedAt: null, promotedBy: null })
+  })
+
+  it('leaves the promotion alone otherwise', () => {
+    assertEquals(promotionAfterCompletion(false), {})
   })
 })

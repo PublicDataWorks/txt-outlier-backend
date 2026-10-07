@@ -8,6 +8,7 @@ import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { analysisTags, conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
 import { RuleType } from '../user-actions/types.ts'
+import { promotionAfterCompletion } from '../_shared/types/analysis.ts'
 import {
   analyzeTranscript,
   findAmbiguousResidentPhones,
@@ -423,6 +424,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       lastMessageAt,
       slackChannel: slackMessage?.channel ?? null,
       slackMessageTs: slackMessage?.ts ?? null,
+      ...promotionAfterCompletion(suppressed),
       error: null,
       updatedAt: new Date().toISOString(),
     })
