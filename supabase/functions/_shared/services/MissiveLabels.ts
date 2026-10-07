@@ -41,11 +41,15 @@ export type ConversationLabels = {
 //     - too vague to map; could mean satisfied, could mean nothing needed doing
 //   accountability gap
 //     - reads like a story signal but is genuinely ambiguous between story-tip and unmet-demand
+//   address lookup failed
+//     - applied by a Missive automation rule right after the system's "We don't have info for <address>"
+//       reply, not by a person. Missive keeps one long-lived thread per phone, so it only means a lookup
+//       failed somewhere in the thread, not that this episode was an automation failure. Mapping it would
+//       also force 'automation-failure' (first in TAG_PRIORITY_ORDER) over episodes a reporter hand-filled.
 const IMPACT_LABEL_TO_TAG: Record<string, string> = {
   'Info gap filled': 'info-gap',
   'user satisfaction': 'user-sat',
   'Story tip': 'story-tip',
-  'address lookup failed': 'automation-failure',
   'Not Detroit': 'wrong-audience',
   'unsatisfied': 'unmet-demand',
   'resource gap': 'unmet-demand',
