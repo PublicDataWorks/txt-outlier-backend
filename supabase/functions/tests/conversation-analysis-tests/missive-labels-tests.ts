@@ -33,7 +33,6 @@ describe('resolveHumanTag', () => {
       ['Info gap filled', 'info-gap'],
       ['user satisfaction', 'user-sat'],
       ['Story tip', 'story-tip'],
-      ['address lookup failed', 'automation-failure'],
       ['Not Detroit', 'wrong-audience'],
       ['unsatisfied', 'unmet-demand'],
       ['resource gap', 'unmet-demand'],
@@ -70,21 +69,36 @@ describe('resolveHumanTag', () => {
         'Interesting conversation / convo of note',
         'All Good',
         'accountability gap',
+        'address lookup failed',
       ]
     ) {
       assertEquals(resolveHumanTag({ ...empty(), impact: [label] }, ACTIVE, TAG_PRIORITY_ORDER), null, label)
     }
   })
 
+  // "address lookup failed" is applied by a Missive automation rule and is thread-scoped, so it is not a
+  // human verdict and must not override the model, alone or alongside a real outcome label.
+  it('does not treat the automation-applied "address lookup failed" label as a human verdict', () => {
+    assertEquals(
+      resolveHumanTag({ ...empty(), impact: ['address lookup failed'] }, ACTIVE, TAG_PRIORITY_ORDER),
+      null,
+    )
+    const both = ['Info gap filled', 'address lookup failed']
+    assertEquals(resolveHumanTag({ ...empty(), impact: both }, ACTIVE, TAG_PRIORITY_ORDER)?.tag, 'info-gap')
+    assertEquals(
+      resolveHumanTag({ ...empty(), impact: [...both].reverse() }, ACTIVE, TAG_PRIORITY_ORDER)?.tag,
+      'info-gap',
+    )
+  })
+
   // A conversation can accumulate several impact labels over its life. The winner must be deterministic
   // and must match how the taxonomy itself ranks overlapping outcomes, not label insertion order.
   it('resolves multiple impact labels by taxonomy priority, regardless of order', () => {
-    const both = ['Info gap filled', 'address lookup failed']
-    // automation-failure outranks info-gap in TAG_PRIORITY_ORDER.
-    assertEquals(resolveHumanTag({ ...empty(), impact: both }, ACTIVE, TAG_PRIORITY_ORDER)?.tag, 'automation-failure')
+    const both = ['Info gap filled', 'Story tip']
+    assertEquals(resolveHumanTag({ ...empty(), impact: both }, ACTIVE, TAG_PRIORITY_ORDER)?.tag, 'story-tip')
     assertEquals(
       resolveHumanTag({ ...empty(), impact: [...both].reverse() }, ACTIVE, TAG_PRIORITY_ORDER)?.tag,
-      'automation-failure',
+      'story-tip',
     )
   })
 
@@ -96,10 +110,10 @@ describe('resolveHumanTag', () => {
   })
 
   it('falls back to a still-active label when the higher-priority one is deactivated', () => {
-    const withoutAutomationFailure = ACTIVE.filter((tag) => tag !== 'automation-failure')
+    const withoutStoryTip = ACTIVE.filter((tag) => tag !== 'story-tip')
     const resolved = resolveHumanTag(
-      { ...empty(), impact: ['Info gap filled', 'address lookup failed'] },
-      withoutAutomationFailure,
+      { ...empty(), impact: ['Info gap filled', 'Story tip'] },
+      withoutStoryTip,
       TAG_PRIORITY_ORDER,
     )
     assertEquals(resolved?.tag, 'info-gap')
