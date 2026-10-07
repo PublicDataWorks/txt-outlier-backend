@@ -12,8 +12,9 @@ ALTER TABLE public.twilio_messages
 
 -- The handler upserts the conversation in the same transaction before inserting the message, so a foreign key is
 -- safe for new rows. It is added NOT VALID so the migration does not scan the table while holding a lock: the
--- constraint is enforced for every new or updated row immediately, and the backfill script validates it
--- (VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock) once existing rows are filled. SET NULL, not
+-- constraint is enforced for every new or updated row immediately. Validating existing rows is a manual step
+-- (step 5 in supabase/scripts/backfill_twilio_messages_conversation_id.sql), run once the backfill has filled
+-- them; VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock. SET NULL, not
 -- CASCADE, so deleting a conversation never deletes the SMS history.
 DO $$
 BEGIN
