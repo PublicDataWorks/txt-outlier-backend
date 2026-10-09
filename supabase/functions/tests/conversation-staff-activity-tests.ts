@@ -182,11 +182,14 @@ describe('conversation_staff_activity access', { sanitizeOps: false, sanitizeRes
   // The view joins users, so it carries staff names and emails. It must stay unreadable to the API roles.
   for (const role of ['anon', 'authenticated']) {
     it(`is not readable by the ${role} role`, async () => {
-      await assertRejects(() =>
-        supabase.transaction(async (tx) => {
-          await tx.execute(sql.raw(`SET LOCAL ROLE ${role}`))
-          await tx.execute(sql`SELECT * FROM conversation_staff_activity LIMIT 1`)
-        })
+      await assertRejects(
+        () =>
+          supabase.transaction(async (tx) => {
+            await tx.execute(sql.raw(`SET LOCAL ROLE ${role}`))
+            await tx.execute(sql`SELECT * FROM conversation_staff_activity LIMIT 1`)
+          }),
+        Error,
+        'permission denied',
       )
     })
   }

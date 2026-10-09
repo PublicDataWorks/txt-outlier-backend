@@ -8,10 +8,12 @@
 -- rewrite). The column stays NULL for existing rows; supabase/scripts/backfill_twilio_messages_conversation_id.sql
 -- fills it in batches from invoke_history, run manually by an operator.
 --
--- The ALTER TABLE and ADD CONSTRAINT below need locks that every inbound SMS also needs: ADD CONSTRAINT takes SHARE
--- ROW EXCLUSIVE on twilio_messages and on conversations. If a long query holds a conflicting lock, the waiting ALTER
--- queues every webhook write behind it. lock_timeout makes the migration fail after 5 seconds instead; run it again
--- when the table is quiet.
+-- The ALTER TABLE and ADD CONSTRAINT below need locks that every inbound SMS also needs: ADD COLUMN takes ACCESS
+-- EXCLUSIVE on twilio_messages, and ADD CONSTRAINT takes SHARE ROW EXCLUSIVE on twilio_messages and on conversations.
+-- A migration file runs as one transaction, so these locks are held until the file commits. Keep this file free of
+-- slow statements; the index is built by the next migration for that reason. If a long query holds a conflicting
+-- lock, the waiting ALTER queues every webhook write behind it, so lock_timeout makes the migration fail after 5
+-- seconds instead; run it again when the table is quiet.
 SET lock_timeout = '5s';
 
 ALTER TABLE public.twilio_messages
@@ -20,7 +22,7 @@ ALTER TABLE public.twilio_messages
 -- The handler upserts the conversation in the same transaction before inserting the message, so a foreign key is
 -- safe for new rows. It is added NOT VALID so the migration does not scan the table while holding a lock: the
 -- constraint is enforced for every new or updated row immediately. Validating existing rows is a manual step
--- (step 5 in supabase/scripts/backfill_twilio_messages_conversation_id.sql), run once the backfill has filled
+-- (step 6 in supabase/scripts/backfill_twilio_messages_conversation_id.sql), run once the backfill has filled
 -- them; VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock. SET NULL, not
 -- CASCADE, so deleting a conversation never deletes the SMS history.
 DO $$
@@ -35,14 +37,6 @@ BEGIN
       FOREIGN KEY (conversation_id) REFERENCES public.conversations (id) ON DELETE SET NULL NOT VALID;
   END IF;
 END $$;
-
--- Partial, so it is empty when created and only ever holds rows that have a conversation. Creating it here still
--- scans the whole table once, under a lock that blocks writes, and a migration runs in a transaction, where CREATE
--- INDEX CONCURRENTLY is not allowed. On production, build it beforehand with CONCURRENTLY (see the backfill script
--- header) and this statement becomes a no-op.
-CREATE INDEX IF NOT EXISTS idx_twilio_messages_conversation_id
-  ON public.twilio_messages (conversation_id, delivered_at)
-  WHERE conversation_id IS NOT NULL;
 
 -- One row per (conversation, staff user) with any recorded work on that conversation.
 --
@@ -112,5 +106,14 @@ LEFT JOIN comment_counts cc ON cc.conversation_id = p.conversation_id AND cc.use
 LEFT JOIN assignments a ON a.conversation_id = p.conversation_id AND a.user_id = p.user_id;
 
 REVOKE ALL ON public.conversation_staff_activity FROM PUBLIC, anon, authenticated;
+
+-- The default privileges set in 20260928055000 give address-lookup-readonly SELECT on every new relation in public.
+-- It has no use for staff names and emails. The role only exists in production, hence the check.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'address-lookup-readonly') THEN
+    REVOKE ALL ON public.conversation_staff_activity FROM "address-lookup-readonly";
+  END IF;
+END $$;
 
 RESET lock_timeout;
