@@ -212,3 +212,70 @@ describe('conversation-analysis process-queue', { sanitizeOps: false, sanitizeRe
     }
   })
 })
+
+// A label change requeues a finished row (see analysis-reconcile.ts). If the rerun then hits one of the skip
+// checks, the row has to go back to completed with its result and Slack post untouched. Marking it skipped
+// would leave the old post live while dropping the row from every completed-analysis count.
+describe(
+  'conversation-analysis re-analysis that cannot go ahead',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    const PREVIOUS_TS = '1700000000.000100'
+
+    const createRequeuedRow = (conversationId: string) =>
+      createConversationAnalysis({
+        conversationId,
+        status: 'pending',
+        source: 'realtime',
+        tag: 'info-gap',
+        summary: 'Earlier summary',
+        promptVersion: 'q3-v1-missive-labels',
+        slackChannel: 'C0TEST',
+        slackMessageTs: PREVIOUS_TS,
+      })
+
+    const assertPreviousResultKept = async (id: number) => {
+      const row = await fetchRow(id)
+      assertEquals(row.status, 'completed')
+      assertEquals(row.tag, 'info-gap')
+      assertEquals(row.summary, 'Earlier summary')
+      assertEquals(row.slackMessageTs, PREVIOUS_TS)
+      assertEquals(row.suppressReason, null)
+    }
+
+    it('keeps the previous result when the conversation has no inbound message', async () => {
+      const conversation = await createConversation()
+      const residentPhone = '+13135556001'
+      await createAuthor(residentPhone)
+      await createAuthor(OUTLIER_PHONE_NUMBER)
+      await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
+      await createTwilioMessage({ fromField: OUTLIER_PHONE_NUMBER, toField: residentPhone })
+      const row = await createRequeuedRow(conversation.id)
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+    })
+
+    it('keeps the previous result when the resident now appears on another conversation', async () => {
+      const residentPhone = '+13135556002'
+      const conversation = await createConversationWithInboundMessage(residentPhone, true)
+      const other = await createConversation()
+      await createConversationAuthor({ conversationId: other.id, authorPhoneNumber: residentPhone })
+      const row = await createRequeuedRow(conversation.id)
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+    })
+
+    it('keeps the previous result when the conversation was reopened', async () => {
+      const conversation = await createConversationWithInboundMessage('+13135556003', false)
+      const row = await createRequeuedRow(conversation.id)
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+    })
+  },
+)

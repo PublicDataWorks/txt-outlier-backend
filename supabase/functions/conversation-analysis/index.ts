@@ -69,6 +69,9 @@ type ClaimedRow = {
   source: string
   slackChannel: string | null
   slackMessageTs: string | null
+  // Set only when the row already holds a finished model result, which is what a label-change rerun starts from.
+  // Finalization always records it and a re-close clears it, so a first run never has one.
+  promptVersion: string | null
 }
 
 // Atomically claims up to `batchSize` pending rows (realtime before backfill, oldest first within each source),
@@ -89,7 +92,8 @@ const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
       FOR UPDATE SKIP LOCKED
     )
     RETURNING id, conversation_id AS "conversationId", attempts, source,
-      slack_channel AS "slackChannel", slack_message_ts AS "slackMessageTs"
+      slack_channel AS "slackChannel", slack_message_ts AS "slackMessageTs",
+      prompt_version AS "promptVersion"
   `)
   return claimed as unknown as ClaimedRow[]
 }
@@ -187,11 +191,25 @@ const countTagThisQuarter = async (tag: string, conversationLastMessageAt: strin
   return ((row as unknown as { count: number })?.count ?? 0) + 1
 }
 
-const markSkipped = (id: number) =>
-  supabase
+// A row requeued by a label change (see analysis-reconcile.ts) already holds a finished result and a live Slack
+// post. When the rerun cannot go ahead, put the row back as it was. Marking it skipped would leave the old
+// post up while dropping the row from every completed-analysis count.
+const skipRow = async (row: ClaimedRow, suppressReason?: string) => {
+  const updatedAt = new Date().toISOString()
+  if (row.promptVersion !== null) {
+    console.warn(
+      `conversation_analyses id=${row.id}: re-analysis not possible (${suppressReason ?? 'no inbound message'}), ` +
+        `keeping the previous result`,
+    )
+    await supabase.update(conversationAnalyses).set({ status: 'completed', updatedAt })
+      .where(eq(conversationAnalyses.id, row.id))
+    return
+  }
+  await supabase
     .update(conversationAnalyses)
-    .set({ status: 'skipped', updatedAt: new Date().toISOString() })
-    .where(eq(conversationAnalyses.id, id))
+    .set({ status: 'skipped', ...(suppressReason ? { suppressReason } : {}), updatedAt })
+    .where(eq(conversationAnalyses.id, row.id))
+}
 
 // Exponential backoff before a retried row becomes claimable again. Without it, requeueing as 'pending'
 // leaves process_after in the past, so the every-minute cron reclaims the row on the very next tick: a brief
@@ -220,7 +238,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   const transcript = await getConversationTranscript(row.conversationId)
   const hasInboundMessage = transcript.some((message) => message.direction === 'inbound')
   if (transcript.length === 0 || !hasInboundMessage) {
-    await markSkipped(row.id)
+    await skipRow(row)
     return
   }
 
@@ -233,10 +251,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       `Skipping conversation_analyses id=${row.id}: ${ambiguousPhones.length} resident phone(s) span multiple ` +
         `conversations, so the transcript cannot be attributed to this one`,
     )
-    await supabase
-      .update(conversationAnalyses)
-      .set({ status: 'skipped', suppressReason: 'ambiguous-transcript', updatedAt: new Date().toISOString() })
-      .where(eq(conversationAnalyses.id, row.id))
+    await skipRow(row, 'ambiguous-transcript')
     return
   }
 
@@ -246,14 +261,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   // definite `true` is ineligible: conversations.closed is nullable and plain message ingestion never sets
   // it, so a NULL here means "never observed closed", not "closed".
   if (conversationMeta.closed !== true) {
-    await supabase
-      .update(conversationAnalyses)
-      .set({
-        status: 'skipped',
-        suppressReason: conversationMeta.closed === false ? 'reopened-before-processing' : 'not-closed',
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(conversationAnalyses.id, row.id))
+    await skipRow(row, conversationMeta.closed === false ? 'reopened-before-processing' : 'not-closed')
     return
   }
 

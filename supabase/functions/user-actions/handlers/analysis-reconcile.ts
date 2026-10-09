@@ -15,10 +15,13 @@ import Sentry from '../../_shared/lib/Sentry.ts'
 // more than 72 hours after close, mean lag 652 hours. Without this the feature's central claim, that a
 // human verdict is authoritative, held for roughly three quarters of the verdicts the newsroom records.
 //
-// Requeues for a FULL re-analysis rather than patching the tag in place. The summary, quote and topic were
-// written to justify the old tag; leaving them beside a new one produces a Slack post whose narrative
-// contradicts its own header. Re-running costs one model call per genuine label change - bounded by the
-// mapped-tag guard below - and keeps the post coherent.
+// Requeues for a FULL re-analysis rather than patching the tag in place, so the summary, quote and topic are
+// regenerated too. The model never sees the impact labels (formatLabelsForPrompt withholds them, which keeps
+// model_tag a blind comparison), so the regenerated narrative is written from the transcript alone and can
+// still disagree with a human tag that overrides the model's. A rerun costs one model call per genuine label
+// change, bounded by the mapped-tag guard below. Patching tag, unmet_demand and secondary_tags in place, or
+// giving the narrative step the verdict, would close that gap.
+
 // The whole decision, isolated from the database so it can be tested directly.
 //
 // `expectedTag` is what this row's tag SHOULD be given the labels as they stand now. Falling back to
@@ -33,7 +36,7 @@ export const expectedTagAfterLabelChange = (
 export const shouldRequeueForLabelChange = (
   stored: { status: string; tag: string | null; modelTag: string | null },
   humanTag: { tag: string } | null,
-  conversationClosed = true,
+  conversationClosed: boolean,
 ): boolean => {
   // A reopened conversation is mid-cycle. Requeueing now bumps updated_at, which erases the evidence
   // enqueueConversationAnalysis uses to tell a real reopen/re-close from a redelivered close webhook, so
