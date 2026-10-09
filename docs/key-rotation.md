@@ -11,8 +11,22 @@ secret key (`sb_secret_…`):
   header against the project's secret keys, which Supabase injects automatically — a
   new key works the moment it exists, nothing to change here.
 - **Postgres cron jobs** call those edge functions via `net.http_post` and send the key
-  in the `apikey` header. They read it from the Vault secret named **`secret_key`**, so
-  this is the one you must update on rotation — otherwise every cron call returns 401.
+  in the `apikey` header. The standing named jobs run SQL functions that read it from the
+  Vault secret named **`secret_key`**, so that is the first thing to update on rotation —
+  otherwise those cron calls return 401.
+- **Some jobs hold a copy of the key instead.** Jobs created at runtime (the
+  `send-first-messages` and `send-second-messages` workers and the per-minute workers that
+  the daily reconciliation, failed-delivery and archive jobs start) copy the key into
+  `cron.job.command` when they are scheduled; see the migrations that call `cron.schedule`.
+  As of 2026-10-09 three unnamed standing jobs (`job-<number>`) also contain an `sb_secret_`
+  key. Updating Vault does not change any of these. List them without printing the key:
+  ```sql
+  select jobname, command like '%sb_secret_%' as embeds_key
+  from cron.job
+  order by jobname;
+  ```
+  Rotate while no broadcast is running, and unschedule and recreate every job that shows
+  `embeds_key = true` with the new key before you revoke the old one.
 
 ## Steps
 

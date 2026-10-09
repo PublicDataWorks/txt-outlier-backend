@@ -45,8 +45,9 @@ treated as exposed and rotated.
    has therefore been receiving an empty token; fix or delete it separately, and do **not**
    "fix" it by adding the row back.
 
-2. **Apply the migration** — `supabase db push`, or run the file directly. Safe at any time; no
-   consumer reads the row.
+2. **Apply the migration.** Safe at any time; no consumer reads the row. Run
+   `supabase db push --dry-run` first and confirm it lists only this file, then push, or run the
+   file directly in the SQL editor.
 
 3. **Rotate the Missive token.** ⚠️ **The exposed token is shared by two services.** The same
    value is both `txt-outlier-lookups` → `MISSIVE_SECRET` and `txt-outlier-backend` →
@@ -59,8 +60,10 @@ treated as exposed and rotated.
    services have independent deploy cycles, and a shared credential means every future rotation is
    a coordinated outage risk.
 
-   Old Missive tokens keep working until explicitly revoked, so there is no downtime window —
-   **do not revoke the old token until both services are updated and verified.**
+   Old Missive tokens should keep working until explicitly revoked, so there is no downtime
+   window. Check in Missive that you can hold several active tokens, and that the old one still
+   works after the new one exists, before relying on this.
+   **Do not revoke the old token until both services are updated and verified.**
 
    | Where | What to update |
    |---|---|

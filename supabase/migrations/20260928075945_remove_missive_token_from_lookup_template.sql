@@ -2,9 +2,9 @@
 -- table away from the anon/authenticated roles.
 --
 -- NOT YET APPLIED. Unlike the other migrations in this directory, this one is proposed rather than
--- recorded after the fact. Apply it only after working through docs/application-secrets.md --
--- specifically, the token must be rotated in Missive, because deleting the row does not
--- un-expose a value that has been sitting in every database backup.
+-- recorded after the fact. Applying it is safe at any time, because nothing reads the row. The
+-- token must still be rotated in Missive (docs/application-secrets.md), because deleting the row
+-- does not un-expose a value that has been sitting in every database backup.
 --
 -- Background: row name='missive_secret' held the Missive API token as plaintext `content`. The
 -- only reader of the ROW was txt-outlier-lookups, which switched to reading MISSIVE_SECRET from
