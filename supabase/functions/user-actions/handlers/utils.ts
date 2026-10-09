@@ -307,17 +307,14 @@ export const upsertLabel = async (
         eq(conversationsLabels.conversationId, requestConvo.id!),
         notInArray(conversationsLabels.labelId, labelIds),
       ))
-    // DO UPDATE rather than DO NOTHING: the statement above archives every link absent from this payload,
-    // so a label that was removed and later re-added already has a row with is_archived = true. DO NOTHING
-    // left that row archived forever, and the conversation-analysis label reader filters on
-    // is_archived = false - so a re-added impact label would silently stop counting as the newsroom's
-    // verdict, exactly for remove/re-add workflows.
+    // The unique index on (conversation_id, label_id) only covers rows with is_archived = false (see
+    // 20261006110000_conversations_labels_partial_unique_index.sql), so a label that was removed and then
+    // re-added does not conflict with its archived row. DO NOTHING inserts a fresh active row in that case
+    // and ignores a link that is already active. Do not turn this into DO UPDATE on (conversation_id,
+    // label_id): Postgres rejects that conflict target for a partial index, which would fail every webhook.
     await tx.insert(conversationsLabels).values([
       ...requestConversationsLabels.values(),
-    ]).onConflictDoUpdate({
-      target: [conversationsLabels.conversationId, conversationsLabels.labelId],
-      set: { isArchived: false },
-    })
+    ]).onConflictDoNothing()
   }
 }
 
