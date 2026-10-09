@@ -6,7 +6,20 @@
 -- readonly_kate has a password set and no expiry, so it is a live, usable login -- it just could
 -- not see anything. This brings it to parity with readonly_outlier: full analyst read access,
 -- matching the access level already chosen for this user (includes resident PII).
+--
+-- Applied to production as 20260928050000. The roles and schemas it touches exist only in production, so
+-- the statements run only when role readonly_kate, schema address_lookup exist. A fresh database (CI's `supabase start`,
+-- local development) skips this migration instead of failing.
 
+DO $guard$
+BEGIN
+  IF NOT (EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_kate')
+     AND EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'address_lookup')) THEN
+    RAISE NOTICE 'Skipping 20260928050000: requires role readonly_kate, schema address_lookup';
+    RETURN;
+  END IF;
+
+  EXECUTE $migration$
 create policy "readonly_kate read access" on public.analysis_tags for select to readonly_kate using (true);
 create policy "readonly_kate read access" on public.audience_segments for select to readonly_kate using (true);
 create policy "readonly_kate read access" on public.authors for select to readonly_kate using (true);
@@ -55,3 +68,6 @@ grant select on address_lookup.posible_homeowner_windfalls to readonly_kate;
 
 create policy "readonly_kate read access" on address_lookup.posible_homeowner_windfalls
   for select to readonly_kate using (true);
+$migration$;
+END
+$guard$;

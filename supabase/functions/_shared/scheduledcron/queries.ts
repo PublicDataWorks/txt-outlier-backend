@@ -184,32 +184,41 @@ function getPastCampaignsWithStatsQuery(page: number, pageSize: number) {
   `
 }
 
+// Phones whose last three messages were all undelivered. A phone can only start matching when it gets a new
+// message or a status change, so only phones with an undelivered message in the last 30 days are checked.
+// Ranking every row in message_statuses instead took 25-60s per call and drove the Disk IO spikes on
+// broadcast evenings, when this runs every minute for up to three hours.
 const FAILED_DELIVERED_QUERY = `
-  WITH RankedMessages AS (
-    SELECT
-        twilio_sent_status,
-        recipient_phone_number,
-        missive_conversation_id,
-        ROW_NUMBER() OVER (
-            PARTITION BY recipient_phone_number
-            ORDER BY id DESC
-        ) as rn
-    FROM message_statuses
+  WITH candidates AS MATERIALIZED (
+    SELECT DISTINCT ms.recipient_phone_number
+    FROM message_statuses ms
+    WHERE ms.created_at > NOW() - INTERVAL '30 days'
+      AND ms.twilio_sent_status IS DISTINCT FROM 'delivered'
+  ),
+  last_three AS (
+    SELECT c.recipient_phone_number, m.id, m.twilio_sent_status, m.missive_conversation_id
+    FROM candidates c
+    JOIN authors a ON a.phone_number = c.recipient_phone_number
+    CROSS JOIN LATERAL (
+      SELECT ms.id, ms.twilio_sent_status, ms.missive_conversation_id
+      FROM message_statuses ms
+      WHERE ms.recipient_phone_number = c.recipient_phone_number
+      ORDER BY ms.id DESC
+      LIMIT 3
+    ) m
+    WHERE a.exclude = FALSE
   )
   SELECT
     r.recipient_phone_number as phone_number,
-    (array_agg(r.missive_conversation_id))[1] as missive_conversation_id
-  FROM RankedMessages r
-  JOIN authors a ON a.phone_number = r.recipient_phone_number
-  WHERE r.rn <= 3
-    AND a.exclude = FALSE
-    AND NOT EXISTS (
-      SELECT 1 FROM conversations_labels cl
-      WHERE
-        cl.conversation_id = r.missive_conversation_id
-        AND cl.label_id = '${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}'
-        AND cl.is_archived = FALSE
-    )
+    (array_agg(r.missive_conversation_id ORDER BY r.id DESC))[1] as missive_conversation_id
+  FROM last_three r
+  WHERE NOT EXISTS (
+    SELECT 1 FROM conversations_labels cl
+    WHERE
+      cl.conversation_id = r.missive_conversation_id
+      AND cl.label_id = '${Deno.env.get('MISSIVE_REPLY_LABEL_ID')!}'
+      AND cl.is_archived = FALSE
+  )
   GROUP BY r.recipient_phone_number
   HAVING COUNT(*) = 3
     AND SUM(CASE WHEN r.twilio_sent_status = 'delivered' THEN 1 ELSE 0 END) = 0

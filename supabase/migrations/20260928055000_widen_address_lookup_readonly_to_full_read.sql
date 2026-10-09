@@ -12,7 +12,19 @@
 -- Every table in the public schema has RLS enabled, so a SELECT grant alone is not enough --
 -- without a matching policy Postgres silently returns zero rows. The loop below creates a policy
 -- for every RLS-enabled relation it can, alongside the grant.
+--
+-- Applied to production as 20260928055000. The roles and schemas it touches exist only in production, so
+-- the statements run only when role address-lookup-readonly exist. A fresh database (CI's `supabase start`,
+-- local development) skips this migration instead of failing.
 
+DO $guard$
+BEGIN
+  IF NOT (EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'address-lookup-readonly')) THEN
+    RAISE NOTICE 'Skipping 20260928055000: requires role address-lookup-readonly';
+    RETURN;
+  END IF;
+
+  EXECUTE $migration$
 do $$
 declare
   r record;
@@ -59,3 +71,6 @@ begin
   end loop;
 end
 $$;
+$migration$;
+END
+$guard$;

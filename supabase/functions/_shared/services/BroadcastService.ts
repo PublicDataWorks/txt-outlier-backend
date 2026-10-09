@@ -304,6 +304,7 @@ const handleFailedDeliveries = async () => {
 
   let conversationsToUpdate = []
   let phonesToUpdate = []
+  let processedCount = 0
   for (const conversation of failedDelivers) {
     const response = await MissiveUtils.createPost(
       conversation.missive_conversation_id,
@@ -321,6 +322,7 @@ const handleFailedDeliveries = async () => {
 
     conversationsToUpdate.push(conversation.missive_conversation_id)
     phonesToUpdate.push(conversation.phone_number)
+    processedCount++
     if (conversationsToUpdate.length > 4) {
       await supabase
         .update(messageStatuses)
@@ -336,7 +338,7 @@ const handleFailedDeliveries = async () => {
     }
     const elapsedTime = Date.now() - startTime
     if (elapsedTime > MAX_RUN_TIME) {
-      console.info(`Approaching time limit. Processed ${conversationsToUpdate.length} conversations. Stopping.`)
+      console.info(`Approaching time limit. Processed ${processedCount} conversations. Stopping.`)
       break
     }
     await new Promise((resolve) => setTimeout(resolve, MISSIVE_API_RATE_LIMIT))

@@ -5,8 +5,8 @@
 --
 -- Note for any fresh environment: these are plain (non-CONCURRENT) CREATE INDEX statements, because
 -- in production the indexes were built CONCURRENTLY by hand first and this migration only recorded
--- that fact. Running this file against a large existing table will take an ACCESS EXCLUSIVE lock
--- and block writes for the duration of the build.
+-- that fact. Running this file against a large existing table takes a SHARE lock for the duration
+-- of the build: reads continue, but writes wait until the index is built.
 
 -- Built CONCURRENTLY beforehand; recorded here so the migration history matches.
 CREATE INDEX IF NOT EXISTS idx_message_statuses_missive_conversation_id ON public.message_statuses (missive_conversation_id);

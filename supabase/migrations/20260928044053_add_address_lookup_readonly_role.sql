@@ -8,7 +8,19 @@
 --   alter role "address-lookup-readonly" password '<value from 1Password>';
 -- On the live project the role already exists with its password set; the guard below makes this
 -- migration a no-op there.
+--
+-- Applied to production as 20260928044053. The roles and schemas it touches exist only in production, so
+-- the statements run only when schema address_lookup exist. A fresh database (CI's `supabase start`,
+-- local development) skips this migration instead of failing.
 
+DO $guard$
+BEGIN
+  IF NOT (EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'address_lookup')) THEN
+    RAISE NOTICE 'Skipping 20260928044053: requires schema address_lookup';
+    RETURN;
+  END IF;
+
+  EXECUTE $migration$
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'address-lookup-readonly') then
@@ -39,3 +51,6 @@ begin
   end if;
 end
 $$;
+$migration$;
+END
+$guard$;
