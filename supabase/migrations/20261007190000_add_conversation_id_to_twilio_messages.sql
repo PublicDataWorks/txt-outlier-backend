@@ -7,6 +7,13 @@
 -- Cost on the ~2.4M row table: ADD COLUMN of a nullable column without a default is a catalog-only change (no
 -- rewrite). The column stays NULL for existing rows; supabase/scripts/backfill_twilio_messages_conversation_id.sql
 -- fills it in batches from invoke_history, run manually by an operator.
+--
+-- The ALTER TABLE and ADD CONSTRAINT below need locks that every inbound SMS also needs: ADD CONSTRAINT takes SHARE
+-- ROW EXCLUSIVE on twilio_messages and on conversations. If a long query holds a conflicting lock, the waiting ALTER
+-- queues every webhook write behind it. lock_timeout makes the migration fail after 5 seconds instead; run it again
+-- when the table is quiet.
+SET lock_timeout = '5s';
+
 ALTER TABLE public.twilio_messages
   ADD COLUMN IF NOT EXISTS conversation_id uuid;
 
@@ -19,7 +26,9 @@ ALTER TABLE public.twilio_messages
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'twilio_messages_conversation_id_fkey'
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'twilio_messages_conversation_id_fkey'
+      AND conrelid = 'public.twilio_messages'::regclass
   ) THEN
     ALTER TABLE public.twilio_messages
       ADD CONSTRAINT twilio_messages_conversation_id_fkey
@@ -27,9 +36,10 @@ BEGIN
   END IF;
 END $$;
 
--- Partial, so it is empty when created and only ever holds rows that have a conversation. A migration runs in a
--- transaction, where CREATE INDEX CONCURRENTLY is not allowed. On production, build it beforehand with
--- CONCURRENTLY (see the backfill script header) and this statement becomes a no-op.
+-- Partial, so it is empty when created and only ever holds rows that have a conversation. Creating it here still
+-- scans the whole table once, under a lock that blocks writes, and a migration runs in a transaction, where CREATE
+-- INDEX CONCURRENTLY is not allowed. On production, build it beforehand with CONCURRENTLY (see the backfill script
+-- header) and this statement becomes a no-op.
 CREATE INDEX IF NOT EXISTS idx_twilio_messages_conversation_id
   ON public.twilio_messages (conversation_id, delivered_at)
   WHERE conversation_id IS NOT NULL;
@@ -45,12 +55,16 @@ CREATE INDEX IF NOT EXISTS idx_twilio_messages_conversation_id
 -- currently_assigned: the user's inbox row for the conversation has assigned = true.
 -- A user appears only if they replied, commented, or are currently assigned.
 --
+-- Each CTE is referenced more than once, which makes Postgres compute it over the whole table before the outer
+-- filter applies. NOT MATERIALIZED lets a WHERE conversation_id = ... reach twilio_messages and use
+-- idx_twilio_messages_conversation_id.
+--
 -- security_invoker makes the view obey the RLS policies of the underlying tables. Without it the view runs with its
 -- owner's rights, and since public views are exposed through the API, staff names and emails would become readable
 -- by the anon key.
 CREATE OR REPLACE VIEW public.conversation_staff_activity
 WITH (security_invoker = true) AS
-WITH replies AS (
+WITH replies AS NOT MATERIALIZED (
   SELECT
     tm.conversation_id,
     tm.sender_id AS user_id,
@@ -63,18 +77,18 @@ WITH replies AS (
     AND NOT EXISTS (SELECT 1 FROM public.message_statuses ms WHERE ms.missive_id = tm.id)
   GROUP BY tm.conversation_id, tm.sender_id
 ),
-comment_counts AS (
+comment_counts AS NOT MATERIALIZED (
   SELECT c.conversation_id, c.user_id, count(*) AS comments_count
   FROM public.comments c
   WHERE c.conversation_id IS NOT NULL
   GROUP BY c.conversation_id, c.user_id
 ),
-assignments AS (
+assignments AS NOT MATERIALIZED (
   SELECT ca.conversation_id, ca.user_id, bool_or(ca.assigned) AS currently_assigned
   FROM public.conversations_assignees ca
   GROUP BY ca.conversation_id, ca.user_id
 ),
-participants AS (
+participants AS NOT MATERIALIZED (
   SELECT conversation_id, user_id FROM replies
   UNION
   SELECT conversation_id, user_id FROM comment_counts
@@ -98,3 +112,5 @@ LEFT JOIN comment_counts cc ON cc.conversation_id = p.conversation_id AND cc.use
 LEFT JOIN assignments a ON a.conversation_id = p.conversation_id AND a.user_id = p.user_id;
 
 REVOKE ALL ON public.conversation_staff_activity FROM PUBLIC, anon, authenticated;
+
+RESET lock_timeout;

@@ -1,10 +1,11 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
-import { assertEquals } from 'jsr:@std/assert'
+import { assertEquals, assertRejects } from 'jsr:@std/assert'
 import { sql } from 'drizzle-orm'
 
 import './setup.ts'
 import supabase from '../_shared/lib/supabase.ts'
-import { comments, conversationsAssignees } from '../_shared/drizzle/schema.ts'
+import { eq } from 'drizzle-orm'
+import { comments, conversations, conversationsAssignees, twilioMessages } from '../_shared/drizzle/schema.ts'
 import { createUser } from './factories/user.ts'
 import { createAuthor } from './factories/author.ts'
 import { createConversation } from './factories/conversation.ts'
@@ -153,4 +154,40 @@ describe('conversation_staff_activity view', { sanitizeOps: false, sanitizeResou
 
     assertEquals(await fetchActivity(conversation.id), [])
   })
+})
+
+describe('twilio_messages.conversation_id', { sanitizeOps: false, sanitizeResources: false }, () => {
+  // ON DELETE SET NULL: deleting a conversation must never delete the SMS history attached to it.
+  it('keeps the message and clears its conversation when the conversation is deleted', async () => {
+    await createAuthor(OUTLIER_PHONE_NUMBER)
+    await createAuthor(RESIDENT_PHONE_NUMBER)
+    const conversation = await createConversation()
+    const message = await outboundReply({ conversationId: conversation.id })
+
+    await supabase.delete(conversations).where(eq(conversations.id, conversation.id))
+
+    const [kept] = await supabase.select().from(twilioMessages).where(eq(twilioMessages.id, message.id))
+    assertEquals(kept.conversationId, null)
+  })
+
+  it('rejects a message that points at a conversation that does not exist', async () => {
+    await createAuthor(OUTLIER_PHONE_NUMBER)
+    await createAuthor(RESIDENT_PHONE_NUMBER)
+
+    await assertRejects(() => outboundReply({ conversationId: crypto.randomUUID() }))
+  })
+})
+
+describe('conversation_staff_activity access', { sanitizeOps: false, sanitizeResources: false }, () => {
+  // The view joins users, so it carries staff names and emails. It must stay unreadable to the API roles.
+  for (const role of ['anon', 'authenticated']) {
+    it(`is not readable by the ${role} role`, async () => {
+      await assertRejects(() =>
+        supabase.transaction(async (tx) => {
+          await tx.execute(sql.raw(`SET LOCAL ROLE ${role}`))
+          await tx.execute(sql`SELECT * FROM conversation_staff_activity LIMIT 1`)
+        })
+      )
+    })
+  }
 })
