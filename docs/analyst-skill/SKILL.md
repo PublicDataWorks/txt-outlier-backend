@@ -253,7 +253,7 @@ where is_reply = true and reply_to_broadcast = $1;
 9. **`public.lookup_template` is deliberately blocked** and will return `permission denied`. It
    mixes SMS templates and prompt text with configuration that can hold credentials (a Missive token
    was stored there as a row until it was removed), so no analyst role can read it. This is
-   intentional — don't try to route around it.
+   intentional. Don't try to route around it.
 
 ## Answering well
 
