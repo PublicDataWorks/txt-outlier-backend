@@ -127,7 +127,8 @@ FROM numbered_conversations c
 CROSS JOIN generate_series(1, 3) n  -- Each conversation gets up to 3 labels
 JOIN available_labels l
     ON l.label_num = (((c.conv_num - 1) * 3 + n) % 10) + 1  -- Distribute labels across conversations
-ON CONFLICT (conversation_id, label_id) DO NOTHING;
+-- The unique index only covers active rows, so the conflict target needs the same predicate.
+ON CONFLICT (conversation_id, label_id) WHERE is_archived = false DO NOTHING;
 -- Insert data for Campaign
 INSERT INTO campaigns (
     title,

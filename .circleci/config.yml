@@ -42,6 +42,20 @@ jobs:
             echo 'user-actions did not become ready within 60 seconds' >&2
             exit 1
       - run:
+          # deno.land and the npm registry sometimes reset the connection mid-download with
+          # "detected excessive load generating behavior". Downloads already completed stay
+          # cached, so each retry resumes instead of starting over.
+          name: Cache test dependencies
+          command: |
+            shopt -s globstar
+            cd supabase/functions/tests
+            for attempt in 1 2 3 4 5; do
+              /home/circleci/.deno/bin/deno cache --no-lock **/*.ts && exit 0
+              echo "deno cache failed on attempt ${attempt}, retrying in $((attempt * 15))s" >&2
+              sleep $((attempt * 15))
+            done
+            exit 1
+      - run:
           name: Run tests
           command: /home/circleci/.deno/bin/deno task test
       - run:

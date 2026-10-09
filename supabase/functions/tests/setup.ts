@@ -21,11 +21,12 @@ beforeEach(async () => {
     '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
     '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
     '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
-    '../../migrations/20260712090000_add_conversation_analysis.sql',
-    '../../migrations/20260712170000_conversation_analysis_q2_taxonomy.sql',
-    '../../migrations/20260826162500_weekly_digest_thursday_eastern.sql',
-    '../../migrations/20260827000000_analysis_missive_label_source.sql',
-    '../../migrations/20260923183000_index_conversation_lookups.sql',
+    '../../migrations/20260826041414_add_conversation_analysis.sql',
+    '../../migrations/20260826041435_conversation_analysis_q2_taxonomy.sql',
+    '../../migrations/20260826211248_weekly_digest_thursday_eastern.sql',
+    '../../migrations/20260923183122_index_message_statuses_conversation_and_conversations_labels_conversation.sql',
+    '../../migrations/20261006110000_conversations_labels_partial_unique_index.sql',
+    '../../migrations/20261006120000_analysis_missive_label_source.sql',
   ]
 
   const conn = await postgresClient.reserve()
