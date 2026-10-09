@@ -11,11 +11,11 @@
 -- measurable rather than being silently overwritten.
 
 ALTER TABLE conversation_analyses
-  ADD COLUMN model_tag TEXT,
-  ADD COLUMN tag_source TEXT CHECK (tag_source IN ('missive-label', 'model')),
-  ADD COLUMN missive_labels TEXT[] DEFAULT '{}';
+  ADD COLUMN IF NOT EXISTS model_tag TEXT,
+  ADD COLUMN IF NOT EXISTS tag_source TEXT CHECK (tag_source IN ('missive-label', 'model')),
+  ADD COLUMN IF NOT EXISTS missive_labels TEXT[] DEFAULT '{}';
 
-CREATE INDEX idx_conversation_analyses_tag_source ON conversation_analyses (tag_source);
+CREATE INDEX IF NOT EXISTS idx_conversation_analyses_tag_source ON conversation_analyses (tag_source);
 
 COMMENT ON COLUMN conversation_analyses.model_tag IS
   'The tag the model chose, retained even when a Missive impact label overrode it.';
