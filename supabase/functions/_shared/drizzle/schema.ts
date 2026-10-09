@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 export const cronSchema = pgSchema('cron')
 
@@ -137,7 +138,10 @@ export const conversationsLabels = pgTable('conversations_labels', {
   isArchived: boolean('is_archived').default(false).notNull(),
 }, (table) => {
   return {
-    conversationLabel: uniqueIndex('conversation_label').on(table.conversationId, table.labelId),
+    // Only active links are unique: user-actions archives instead of deleting, and a re-added label gets a new row.
+    // Matches 20261006110000_conversations_labels_partial_unique_index.sql and production.
+    activeConversationLabel: uniqueIndex('idx_unique_active_conversation_label').on(table.conversationId, table.labelId)
+      .where(sql`${table.isArchived} = false`),
   }
 })
 

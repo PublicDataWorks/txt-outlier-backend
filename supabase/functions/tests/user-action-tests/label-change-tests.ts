@@ -70,7 +70,7 @@ describe(
     // Removing a label archives its link. The unique index only covers active rows, so re-adding the label
     // inserts a fresh active row and leaves the archived one as history. conversation-analysis reads impact
     // labels filtered on is_archived = false, so exactly one active row must come back.
-    it('makes a label active again when it is removed and then re-added', async () => {
+    it('inserts a fresh active link when a removed label is re-added', async () => {
       await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: labelChangeRequest })
 
       const [linked] = await supabase.select().from(conversationsLabels)
