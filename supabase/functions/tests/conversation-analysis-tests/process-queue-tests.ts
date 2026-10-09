@@ -269,13 +269,38 @@ describe(
       await assertPreviousResultKept(row.id)
     })
 
-    it('keeps the previous result when the conversation was reopened', async () => {
+    // A reopen must stay visible as 'skipped' with this reason: enqueueConversationAnalysis uses it to treat the
+    // next close as a new cycle. Restoring the row to completed would make that close look like a duplicate. A
+    // row with a Slack post would also have its post withdrawn, which needs Slack, so this uses a row without one.
+    it('skips a rerun whose conversation was reopened, so the next close starts a new cycle', async () => {
       const conversation = await createConversationWithInboundMessage('+13135556003', false)
-      const row = await createRequeuedRow(conversation.id)
+      const row = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'pending',
+        source: 'realtime',
+        tag: 'noise-test',
+        promptVersion: 'q3-v1-missive-labels',
+      })
 
       await invokeProcessQueue()
 
-      await assertPreviousResultKept(row.id)
+      const updated = await fetchRow(row.id)
+      assertEquals(updated.status, 'skipped')
+      assertEquals(updated.suppressReason, 'reopened-before-processing')
+    })
+
+    it('still marks a first run skipped when the resident appears on another conversation', async () => {
+      const residentPhone = '+13135556004'
+      const conversation = await createConversationWithInboundMessage(residentPhone, true)
+      const other = await createConversation()
+      await createConversationAuthor({ conversationId: other.id, authorPhoneNumber: residentPhone })
+      const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending', tag: null })
+
+      await invokeProcessQueue()
+
+      const updated = await fetchRow(row.id)
+      assertEquals(updated.status, 'skipped')
+      assertEquals(updated.suppressReason, 'ambiguous-transcript')
     })
   },
 )

@@ -194,21 +194,29 @@ const countTagThisQuarter = async (tag: string, conversationLastMessageAt: strin
 // A row requeued by a label change (see analysis-reconcile.ts) already holds a finished result and a live Slack
 // post. When the rerun cannot go ahead, put the row back as it was. Marking it skipped would leave the old
 // post up while dropping the row from every completed-analysis count.
+//
+// A reopen is the exception. enqueueConversationAnalysis recognises the next close as a new cycle by finding the
+// row skipped with this reason, and the reopened conversation is open for editorial review again, so any post
+// has to come down. This is the same handling as a reopen that lands mid-flight.
 const skipRow = async (row: ClaimedRow, suppressReason?: string) => {
   const updatedAt = new Date().toISOString()
-  if (row.promptVersion !== null) {
+  const ownsRow = and(eq(conversationAnalyses.id, row.id), eq(conversationAnalyses.attempts, row.attempts))
+  const reopened = suppressReason === 'reopened-before-processing'
+  if (row.promptVersion !== null && !reopened) {
     console.warn(
       `conversation_analyses id=${row.id}: re-analysis not possible (${suppressReason ?? 'no inbound message'}), ` +
         `keeping the previous result`,
     )
-    await supabase.update(conversationAnalyses).set({ status: 'completed', updatedAt })
-      .where(eq(conversationAnalyses.id, row.id))
+    await supabase.update(conversationAnalyses).set({ status: 'completed', updatedAt }).where(ownsRow)
     return
+  }
+  if (reopened && row.slackChannel && row.slackMessageTs) {
+    await withdrawAnalysisMessage(row.slackChannel, row.slackMessageTs, 'the conversation was reopened')
   }
   await supabase
     .update(conversationAnalyses)
     .set({ status: 'skipped', ...(suppressReason ? { suppressReason } : {}), updatedAt })
-    .where(eq(conversationAnalyses.id, row.id))
+    .where(ownsRow)
 }
 
 // Exponential backoff before a retried row becomes claimable again. Without it, requeueing as 'pending'
