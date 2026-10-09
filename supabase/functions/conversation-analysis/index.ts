@@ -210,13 +210,24 @@ const skipRow = async (row: ClaimedRow, suppressReason?: string) => {
     await supabase.update(conversationAnalyses).set({ status: 'completed', updatedAt }).where(ownsRow)
     return
   }
-  if (reopened && row.slackChannel && row.slackMessageTs) {
-    await withdrawAnalysisMessage(row.slackChannel, row.slackMessageTs, 'the conversation was reopened')
-  }
-  await supabase
+  const skipped = await supabase
     .update(conversationAnalyses)
     .set({ status: 'skipped', ...(suppressReason ? { suppressReason } : {}), updatedAt })
     .where(ownsRow)
+    .returning({ id: conversationAnalyses.id })
+  // Withdraw only after taking the row, so a worker that lost its lease cannot take down a post the new owner is
+  // about to rewrite. Skipped is final, so a failed withdrawal is logged for manual cleanup, not retried.
+  if (skipped.length > 0 && reopened && row.slackChannel && row.slackMessageTs) {
+    try {
+      await withdrawAnalysisMessage(row.slackChannel, row.slackMessageTs, 'the conversation was reopened')
+    } catch (error) {
+      console.error(
+        `MANUAL CLEANUP NEEDED: failed to withdraw Slack message channel=${row.slackChannel} ts=${row.slackMessageTs}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+  }
 }
 
 // Exponential backoff before a retried row becomes claimable again. Without it, requeueing as 'pending'
