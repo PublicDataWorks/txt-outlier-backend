@@ -19,13 +19,17 @@ describe('DateUtils', () => {
     })
   })
 
+  // Math.round, not Math.floor. Time passes between constructing the target date and measuring against it,
+  // so the difference is never exactly +/-30: it is 29.9999 or -30.0001. Math.floor turns those into 29 and
+  // -31 respectively, which made both assertions fail whenever the clock ticked mid-test (seen on CI).
+  // Rounding is stable while still catching a genuinely wrong sign or magnitude.
   describe('diffInMinutes', () => {
     it('should calculate positive difference in minutes', () => {
       const now = new Date()
       const future = new Date(now.getTime() + 30 * 60 * 1000) // 30 minutes in future
 
       const result = DateUtils.diffInMinutes(future)
-      assertEquals(Math.floor(result), 30, 'Should be approximately 30 minutes')
+      assertEquals(Math.round(result), 30, 'Should be approximately 30 minutes')
     })
 
     it('should calculate negative difference in minutes', () => {
@@ -33,7 +37,7 @@ describe('DateUtils', () => {
       const past = new Date(now.getTime() - 30 * 60 * 1000) // 30 minutes in past
 
       const result = DateUtils.diffInMinutes(past)
-      assertEquals(Math.floor(result), -30, 'Should be approximately -30 minutes')
+      assertEquals(Math.round(result), -30, 'Should be approximately -30 minutes')
     })
   })
 

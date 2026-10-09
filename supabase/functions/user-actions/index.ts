@@ -1,5 +1,5 @@
 import { RuleType } from './types.ts'
-import { handleError, insertHistory } from './handlers/utils.ts'
+import { ensureOrganizationExists, ensureRuleExists, handleError, insertHistory } from './handlers/utils.ts'
 import { handleNewComment } from './handlers/comment-handler.ts'
 import { handleTeamChange } from './handlers/team-handler.ts'
 import { handleLabelChange } from './handlers/label-handler.ts'
@@ -30,6 +30,10 @@ Deno.serve(async (req: Request) => {
       `Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}, ${requestBody.conversation?.id}`,
     )
     await insertHistory(requestBody)
+    await ensureRuleExists(requestBody.rule)
+    if (requestBody.conversation?.organization) {
+      await ensureOrganizationExists(requestBody.conversation.organization)
+    }
     switch (requestBody.rule.type) {
       case RuleType.NewComment:
         await handleNewComment(requestBody)

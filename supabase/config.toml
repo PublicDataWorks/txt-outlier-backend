@@ -95,6 +95,7 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
+secret_key = "sb_secret_a_secret"
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
 site_url = "http://localhost:5173"
@@ -259,15 +260,41 @@ inspector_port = 8083
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/MY_FUNCTION_NAME/*.html" ]
 
-# Public Missive webhook receiver. It authenticates requests itself via the
-# Missive HMAC signature (x-hook-signature) in Missive.verifySignature, so the
-# gateway JWT gate is redundant. Disabling verify_jwt decouples webhook delivery
-# from Supabase API keys, so rotating keys can't 401 incoming webhooks.
+[functions.make]
+verify_jwt = false
+
+[functions.send-messages]
+verify_jwt = false
+
+[functions.reconcile-twilio-status]
+verify_jwt = false
+
+[functions.handle-failed-deliveries]
+verify_jwt = false
+
+[functions.archive-double-failures]
+verify_jwt = false
+
+[functions.conversation-analysis]
+verify_jwt = false
+
+[functions.slack-interactions]
+verify_jwt = false
+
+[functions.weekly-digest]
+verify_jwt = false
+
+[functions.insights-dashboard]
+verify_jwt = false
+
+[functions.admin-action]
+verify_jwt = false
+
 [functions.user-actions]
 verify_jwt = false
 
 [analytics]
-enabled = true
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

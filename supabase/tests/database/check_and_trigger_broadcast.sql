@@ -8,7 +8,7 @@ DELETE FROM broadcasts;
 DO $$
 BEGIN
     -- Create test secrets
-    PERFORM vault.create_secret('test_key', 'service_role_key');
+    PERFORM vault.create_secret('test_key', 'secret_key');
     PERFORM vault.create_secret('http://test.com/', 'edge_function_url');
 END $$;
 

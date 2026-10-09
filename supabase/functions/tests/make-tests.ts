@@ -1,6 +1,6 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
 import { assert, assertEquals, assertInstanceOf } from 'jsr:@std/assert'
-import { client } from './utils.ts'
+import { serviceClient as client } from './utils.ts'
 import './setup.ts'
 import { createAuthors } from './factories/author.ts'
 import { createBroadcast } from './factories/broadcast.ts'
@@ -10,6 +10,16 @@ import { and, eq, gt, sql } from 'drizzle-orm'
 import { broadcasts } from '../_shared/drizzle/schema.ts'
 
 const FUNCTION_NAME = 'make/'
+
+// The make endpoint only accepts run_at_utc equal to its own current minute. Waiting out the last seconds of a
+// minute keeps the request from arriving after the minute it was stamped with.
+const runAtUtc = async (minutesAhead = 0) => {
+  const seconds = new Date().getUTCSeconds()
+  if (seconds >= 55) await new Promise((resolve) => setTimeout(resolve, (61 - seconds) * 1000))
+  const date = new Date()
+  date.setMinutes(date.getMinutes() + minutesAhead)
+  return date.toISOString().slice(0, 16).replace('T', ' ')
+}
 
 describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () => {
   it('should successfully make a broadcast with segments', async () => {
@@ -27,7 +37,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
-      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+      body: { run_at_utc: await runAtUtc() },
     })
     // @ts-ignore: Property broadcasts exists at runtime
     const updatedBroadcast = await supabase.query.broadcasts.findFirst({
@@ -94,7 +104,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
-      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+      body: { run_at_utc: await runAtUtc() },
     })
 
     const queuedMessages = await supabase.execute(
@@ -146,7 +156,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
-      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+      body: { run_at_utc: await runAtUtc() },
     })
 
     const secondBroadcast = await createBroadcast({
@@ -162,7 +172,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
 
     await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',
-      body: { run_at_utc: new Date().toISOString().slice(0, 16).replace('T', ' ') },
+      body: { run_at_utc: await runAtUtc() },
     })
 
     // @ts-ignore: Property broadcasts exists at runtime
@@ -187,9 +197,7 @@ describe('MAKE BROADCAST', { sanitizeOps: false, sanitizeResources: false }, () 
     await createSegment({ broadcastId: broadcast.id!, name: 'make-test', ratio: 10 })
 
     // Set run_at_utc to 1 minute in the future
-    const futureDate = new Date()
-    futureDate.setMinutes(futureDate.getMinutes() + 1)
-    const future_run_at_utc = futureDate.toISOString().slice(0, 16).replace('T', ' ')
+    const future_run_at_utc = await runAtUtc(1)
 
     await client.functions.invoke(FUNCTION_NAME, {
       method: 'POST',

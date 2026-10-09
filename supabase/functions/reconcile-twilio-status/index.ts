@@ -1,15 +1,19 @@
 import { Hono } from 'hono'
+import { withSupabase } from '@supabase/server/adapters/hono'
 
 import BroadcastService from '../_shared/services/BroadcastService.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 
 const app = new Hono()
+app.use('*', withSupabase({ auth: 'secret' }))
 
 app.post('/reconcile-twilio-status/', async (c) => {
   const { broadcastId, campaignId } = await c.req.json()
   if (!broadcastId && !campaignId) {
-    return AppResponse.badRequest('Either broadcastId or campaignId must be provided')
+    return AppResponse.badRequest(
+      'Either broadcastId or campaignId must be provided',
+    )
   }
 
   try {
@@ -21,7 +25,9 @@ app.post('/reconcile-twilio-status/', async (c) => {
       await BroadcastService.reconcileTwilioStatus({ campaignId })
     }
   } catch (error) {
-    console.error(`Error in BroadcastService.reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`)
+    console.error(
+      `Error in BroadcastService.reconcileTwilioStatus: ${error.message}. Stack: ${error.stack}`,
+    )
     Sentry.captureException(error)
     // Still return 200 since it's called by CRON
   }

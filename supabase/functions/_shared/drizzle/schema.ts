@@ -7,6 +7,7 @@ import {
   pgEnum,
   pgSchema,
   pgTable,
+  real,
   serial,
   smallint,
   text,
@@ -410,6 +411,52 @@ export const campaignFileRecipients = pgTable('campaign_file_recipients', {
   }
 })
 
+export const conversationAnalyses = pgTable('conversation_analyses', {
+  id: serial('id').primaryKey().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
+  conversationId: uuid('conversation_id').notNull().unique().references(() => conversations.id, {
+    onDelete: 'cascade',
+  }),
+  status: text('status').default('pending').notNull(),
+  source: text('source').default('realtime').notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  error: text('error'),
+  tag: text('tag'),
+  secondaryTags: text('secondary_tags').array().default([]),
+  summary: text('summary'),
+  supportingQuote: text('supporting_quote'),
+  unmetDemand: boolean('unmet_demand').default(false).notNull(),
+  unmetDemandReason: text('unmet_demand_reason'),
+  confidence: real('confidence'),
+  model: text('model'),
+  promptVersion: text('prompt_version'),
+  messageCount: integer('message_count'),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true, mode: 'string' }),
+  slackChannel: text('slack_channel'),
+  slackMessageTs: text('slack_message_ts'),
+  promotedAt: timestamp('promoted_at', { withTimezone: true, mode: 'string' }),
+  promotedBy: text('promoted_by'),
+  topic: text('topic'),
+  processAfter: timestamp('process_after', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  suppressReason: text('suppress_reason'),
+}, (table) => {
+  return {
+    statusIdx: index('idx_conversation_analyses_status').on(table.status),
+    tagIdx: index('idx_conversation_analyses_tag').on(table.tag),
+    createdAtIdx: index('idx_conversation_analyses_created_at').on(table.createdAt),
+    topicIdx: index('idx_conversation_analyses_topic').on(table.topic),
+  }
+})
+
+export const analysisTags = pgTable('analysis_tags', {
+  id: serial('id').primaryKey().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  name: text('name').notNull().unique(),
+  description: text('description').notNull(),
+  active: boolean('active').default(true).notNull(),
+})
+
 export type Rule = typeof rules.$inferInsert
 export type User = typeof users.$inferInsert
 export type UserHistory = typeof userHistory.$inferInsert
@@ -431,3 +478,5 @@ export type AudienceSegment = typeof audienceSegments.$inferInsert
 export type BroadcastSettings = typeof broadcastSettings.$inferInsert
 export type UnsubscribedMessage = typeof unsubscribedMessages.$inferInsert
 export type Campaign = typeof campaigns.$inferInsert
+export type ConversationAnalysis = typeof conversationAnalyses.$inferInsert
+export type AnalysisTag = typeof analysisTags.$inferInsert

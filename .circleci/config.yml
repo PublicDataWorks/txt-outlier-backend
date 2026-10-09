@@ -16,28 +16,54 @@ jobs:
           command: /home/circleci/.deno/bin/deno task fmt --check
 
       - run: curl -fsSL https://deb.nodesource.com/setup_21.x | sudo -E bash - && sudo apt-get install -y nodejs
+      - run: npm install -g supabase@2.101.0
       - run:
           name: Setup Supabase
-          command: npx supabase@2.9.6 start
+          command: supabase start
       - run:
           name: Start Functions Server
-          command: npx supabase@2.9.6 functions serve --env-file supabase/functions/tests/.env.edge_testing
+          command: /home/circleci/.deno/bin/deno task test:setup
           background: true
       - run:
           name: Wait for services
-          command: sleep 30
+          command: |
+            set -a
+            source supabase/functions/tests/.env.testing
+            set +a
+            for attempt in $(seq 1 30); do
+              task_http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                http://localhost:54321/functions/v1/user-actions/ \
+                -H "apikey: ${LOCAL_SECRET_KEY}")
+              case "$task_http_code" in
+                2*|4*) exit 0 ;;
+              esac
+              sleep 2
+            done
+            echo 'user-actions did not become ready within 60 seconds' >&2
+            exit 1
       - run:
-          name: Run tests with coverage
-          command: /home/circleci/.deno/bin/deno task test:coverage
+          # deno.land and the npm registry sometimes reset the connection mid-download with
+          # "detected excessive load generating behavior". Downloads already completed stay
+          # cached, so each retry resumes instead of starting over.
+          name: Cache test dependencies
+          command: |
+            shopt -s globstar
+            cd supabase/functions/tests
+            for attempt in 1 2 3 4 5; do
+              /home/circleci/.deno/bin/deno cache --no-lock **/*.ts && exit 0
+              echo "deno cache failed on attempt ${attempt}, retrying in $((attempt * 15))s" >&2
+              sleep $((attempt * 15))
+            done
+            exit 1
+      - run:
+          name: Run tests
+          command: /home/circleci/.deno/bin/deno task test
       - run:
           name: Run DB tests
-          command: npx supabase@2.9.6 db test
-      - run:
-          name: Generate coverage report
-          command: /home/circleci/.deno/bin/deno task coverage
+          command: supabase db test
       - run:
           name: Clean up after test
-          command: npx supabase@2.9.6 stop
+          command: supabase stop
           when: always
 
 workflows:

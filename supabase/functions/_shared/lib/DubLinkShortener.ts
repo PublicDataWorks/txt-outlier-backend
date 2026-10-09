@@ -11,12 +11,15 @@ const detectLinksToShorten = (message: string): string[] => {
   const matches = urlMatches.map((url) => url.replace(/[.,;:!?)]+$/, ''))
 
   // Filter out already shortened URLs (bit.ly, dub.sh, etc.)
+  const shortenerDomains = ['bit.ly', 'dub.sh', 'tinyurl.com', 'goo.gl', 't.co', 'ow.ly', 'go.outliermedia.org']
   const filteredMatches = matches.filter((url) => {
-    const lowerUrl = url.toLowerCase()
-    return !lowerUrl.includes('//bit.ly/') &&
-      !lowerUrl.includes('https://dub.sh/') &&
-      !lowerUrl.includes('https://tinyurl.com/') &&
-      !lowerUrl.includes('https://goo.gl/')
+    try {
+      const hostname = new URL(url).hostname.toLowerCase()
+      return !shortenerDomains.includes(hostname)
+    } catch (error) {
+      console.error(`Failed to parse URL: ${url}`, error)
+      return false
+    }
   })
 
   return [...new Set(filteredMatches)]
@@ -35,6 +38,8 @@ const shortenLinksInMessage = async (message: string, id: number): Promise<[stri
       return [message, false]
     }
 
+    const folderId = Deno.env.get('DUB_FOLDER_ID')!
+
     const linksResponse = await dub.links.list({ tagNames: [tagName] })
     const existingLinks = linksResponse.result
 
@@ -45,7 +50,7 @@ const shortenLinksInMessage = async (message: string, id: number): Promise<[stri
     // @ts-ignore - LinkSchema is not exported
     let newLinks = []
     if (urlsToCreate.length > 0) {
-      const bulkCreatePayload = urlsToCreate.map((url) => ({ url, tagNames: [tagName] }))
+      const bulkCreatePayload = urlsToCreate.map((url) => ({ url, tagNames: [tagName], folderId }))
       newLinks = await dub.links.createMany(bulkCreatePayload)
       console.log(`Created ${newLinks.length} new shortened links in bulk. Data: ${JSON.stringify(newLinks)}`)
     }

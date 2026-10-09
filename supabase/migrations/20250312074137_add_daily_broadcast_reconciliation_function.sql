@@ -12,7 +12,7 @@ BEGIN
     -- Get secrets from vault
     SELECT decrypted_secret INTO service_key
     FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
+    WHERE name = 'secret_key';
 
     SELECT decrypted_secret INTO edge_url
     FROM vault.decrypted_secrets
@@ -42,7 +42,7 @@ BEGIN
                     body:=''{"broadcastId": "%s"}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer %s"
+                        "apikey": "%s"
                     }''::jsonb
                 ) as request_id;',
                 edge_url,
@@ -91,7 +91,7 @@ BEGIN
                     body:=''{"campaignId": "%s"}''::jsonb,
                     headers:=''{
                         "Content-Type": "application/json",
-                        "Authorization": "Bearer %s"
+                        "apikey": "%s"
                     }''::jsonb
                 ) as request_id;',
                 edge_url,
@@ -136,7 +136,7 @@ BEGIN
     -- Get secrets from vault
     SELECT decrypted_secret INTO service_key
     FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
+    WHERE name = 'secret_key';
 
     SELECT decrypted_secret INTO edge_url
     FROM vault.decrypted_secrets
@@ -150,7 +150,7 @@ BEGIN
                 url:=''%s/handle-failed-deliveries/'',
                 headers:=''{
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer %s"
+                    "apikey": "%s"
                 }''::jsonb
             ) as request_id;',
             edge_url,
@@ -194,7 +194,7 @@ BEGIN
     -- Get secrets from vault
     SELECT decrypted_secret INTO service_key
     FROM vault.decrypted_secrets
-    WHERE name = 'service_role_key';
+    WHERE name = 'secret_key';
 
     SELECT decrypted_secret INTO edge_url
     FROM vault.decrypted_secrets
@@ -209,7 +209,7 @@ BEGIN
                 body:=''{}''::jsonb,
                 headers:=''{
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer %s"
+                    "apikey": "%s"
                 }''::jsonb
             ) as request_id;',
             edge_url,

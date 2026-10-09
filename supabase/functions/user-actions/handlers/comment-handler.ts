@@ -2,7 +2,7 @@ import { PostgresJsTransaction } from 'drizzle-orm/postgres-js'
 import { sql } from 'drizzle-orm'
 
 import { MentionTeam, MentionUser, RequestBody, RequestTask } from '../types.ts'
-import { upsertConversation, upsertRule, upsertUsers } from './utils.ts'
+import { upsertConversation, upsertUsers } from './utils.ts'
 import {
   Comment,
   CommentMention,
@@ -16,7 +16,6 @@ import supabase from '../../_shared/lib/supabase.ts'
 
 export const handleNewComment = async (requestBody: RequestBody) => {
   await supabase.transaction(async (tx) => {
-    await upsertRule(tx, requestBody.rule)
     const users = [
       requestBody.comment!.author,
       ...requestBody.comment!.task?.assignees ?? [],

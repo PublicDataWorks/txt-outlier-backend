@@ -16,6 +16,7 @@ import labelService from './labelService.ts'
 import DubLinkShortener from '../_shared/lib/DubLinkShortener.ts'
 
 const RECIPIENT_FILE_BUCKET_NAME = 'campaign-recipients'
+const SUPABASE_SECRET_KEY = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')!)['default']
 
 const getAllSegmentIds = (config: SegmentConfig): string[] => {
   if (!Array.isArray(config)) {
@@ -252,7 +253,7 @@ async function uploadRecipientFile(file: File, campaignId: number) {
       fileName += `.${extension}`
     }
   }
-  const supabaseClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const supabaseClient = createClient(Deno.env.get('SUPABASE_URL')!, SUPABASE_SECRET_KEY)
 
   const { error } = await supabaseClient.storage
     .from(RECIPIENT_FILE_BUCKET_NAME)
@@ -269,10 +270,7 @@ async function uploadRecipientFile(file: File, campaignId: number) {
 }
 
 export async function deleteRecipientFile(fileUrl: string) {
-  const supabaseClient = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-  )
+  const supabaseClient = createClient(Deno.env.get('SUPABASE_URL')!, SUPABASE_SECRET_KEY)
 
   const url = new URL(fileUrl)
   const pathParts = url.pathname.split('/')

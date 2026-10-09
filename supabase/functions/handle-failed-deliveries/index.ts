@@ -1,8 +1,10 @@
+import { withSupabase } from '@supabase/server'
+
 import BroadcastService from '../_shared/services/BroadcastService.ts'
 import AppResponse from '../_shared/misc/AppResponse.ts'
 import Sentry from '../_shared/lib/Sentry.ts'
 
-Deno.serve(async () => {
+Deno.serve(withSupabase({ auth: 'secret' }, async () => {
   try {
     await BroadcastService.handleFailedDeliveries()
   } catch (error) {
@@ -11,4 +13,4 @@ Deno.serve(async () => {
     Sentry.captureException(error)
   }
   return AppResponse.ok()
-})
+}))

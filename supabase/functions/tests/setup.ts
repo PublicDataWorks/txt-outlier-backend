@@ -1,10 +1,8 @@
-import { sql } from 'drizzle-orm'
 import { afterAll, beforeEach } from 'jsr:@std/testing/bdd'
-import supabase, { postgresClient } from '../_shared/lib/supabase.ts'
+import { postgresClient } from '../_shared/lib/supabase.ts'
 
 // This needs to be at the top level
 beforeEach(async () => {
-  await supabase.execute(sql.raw(DROP_ALL_TABLES))
   const migrationFiles = [
     '../../migrations/0000_minor_magik.sql',
     '../../migrations/0001_true_naoko.sql',
@@ -23,11 +21,23 @@ beforeEach(async () => {
     '../../migrations/20250506034003_add_campaign_personalized_recipients.sql',
     '../../migrations/20250507070855_add_label_id_to_campaigns.sql',
     '../../migrations/20250508095220_add_original_messages_to_broadcasts.sql',
+    '../../migrations/20260826041414_add_conversation_analysis.sql',
+    '../../migrations/20260826041435_conversation_analysis_q2_taxonomy.sql',
+    '../../migrations/20260826211248_weekly_digest_thursday_eastern.sql',
+    '../../migrations/20260923183122_index_message_statuses_conversation_and_conversations_labels_conversation.sql',
   ]
 
-  for (const filePath of migrationFiles) {
-    const sqlScript = await Deno.readTextFile(filePath)
-    await supabase.execute(sql.raw(sqlScript))
+  const conn = await postgresClient.reserve()
+  try {
+    await conn.unsafe('SELECT pg_advisory_lock(987654321)')
+    await conn.unsafe(DROP_ALL_TABLES)
+    for (const filePath of migrationFiles) {
+      const sqlScript = await Deno.readTextFile(filePath)
+      await conn.unsafe(sqlScript)
+    }
+  } finally {
+    await conn.unsafe('SELECT pg_advisory_unlock(987654321)')
+    conn.release()
   }
 })
 
@@ -71,5 +81,7 @@ export const DROP_ALL_TABLES = `
   DROP TABLE IF EXISTS "campaigns" CASCADE;
   DROP TABLE IF EXISTS "campaign_file_recipients" CASCADE;
   DROP TABLE IF EXISTS "campaign_personalized_recipients" CASCADE;
+  DROP TABLE IF EXISTS "conversation_analyses" CASCADE;
+  DROP TABLE IF EXISTS "analysis_tags" CASCADE;
   DROP FUNCTION IF EXISTS queue_campaign_messages(INTEGER);
 `
