@@ -1,8 +1,6 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals } from 'jsr:@std/assert'
 
-import '../setup.ts'
-
 // IS_TESTING skips the signature check in the edge runtime, so these cover only what happens
 // before it: the method check and body parsing. Signature handling is in missive-signature-tests.ts.
 const FUNCTION_URL = `${Deno.env.get('SUPABASE_URL')}/functions/v1/user-actions/`

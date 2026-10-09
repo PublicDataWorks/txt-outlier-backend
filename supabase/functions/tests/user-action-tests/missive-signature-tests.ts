@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals, assertRejects } from 'jsr:@std/assert'
 
-import Missive from '../../_shared/lib/Missive.ts'
+import { verifySignature } from '../../_shared/lib/MissiveSignature.ts'
 import UnauthorizedError from '../../_shared/exception/UnauthorizedError.ts'
 
 const SECRET = 'test-hmac-secret'
@@ -23,7 +23,7 @@ const requestWithSignature = (signature?: string) =>
     headers: signature === undefined ? {} : { 'x-hook-signature': signature },
   })
 
-describe('Missive.verifySignature', () => {
+describe('verifySignature', () => {
   let previousIsTesting: string | undefined
   let previousSecret: string | undefined
 
@@ -43,26 +43,26 @@ describe('Missive.verifySignature', () => {
   })
 
   it('throws Unauthorized when the signature header is missing', async () => {
-    await assertRejects(() => Missive.verifySignature(requestWithSignature(), BODY), UnauthorizedError)
+    await assertRejects(() => verifySignature(requestWithSignature(), BODY), UnauthorizedError)
   })
 
   it('returns false for a signature that is not hex', async () => {
-    assertEquals(await Missive.verifySignature(requestWithSignature('not-hex-at-all'), BODY), false)
+    assertEquals(await verifySignature(requestWithSignature('not-hex-at-all'), BODY), false)
   })
 
   it('returns false for a hex signature of odd length', async () => {
-    assertEquals(await Missive.verifySignature(requestWithSignature('abc'), BODY), false)
+    assertEquals(await verifySignature(requestWithSignature('abc'), BODY), false)
   })
 
   it('returns false for a well-formed signature that does not match', async () => {
-    assertEquals(await Missive.verifySignature(requestWithSignature('00'.repeat(32)), BODY), false)
+    assertEquals(await verifySignature(requestWithSignature('00'.repeat(32)), BODY), false)
   })
 
   it('returns true for a correct signature', async () => {
-    assertEquals(await Missive.verifySignature(requestWithSignature(await sign(BODY)), BODY), true)
+    assertEquals(await verifySignature(requestWithSignature(await sign(BODY)), BODY), true)
   })
 
   it('returns true for a correct signature with the sha256= prefix', async () => {
-    assertEquals(await Missive.verifySignature(requestWithSignature(`sha256=${await sign(BODY)}`), BODY), true)
+    assertEquals(await verifySignature(requestWithSignature(`sha256=${await sign(BODY)}`), BODY), true)
   })
 })

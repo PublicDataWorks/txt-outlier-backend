@@ -15,6 +15,9 @@ import Sentry from '../_shared/lib/Sentry.ts'
 
 Deno.serve(async (req: Request) => {
   let requestBody
+  // Nothing in the request is trusted until the signature check passes, so errors before that point are
+  // never written to the errors table.
+  let verified = false
   try {
     if (req.method !== 'POST') {
       throw new BadRequestError('Method not allowed')
@@ -29,6 +32,7 @@ Deno.serve(async (req: Request) => {
     if (!isVerified) {
       throw new UnauthorizedError('Invalid signature')
     }
+    verified = true
 
     console.info(
       `Start handling rule: ${requestBody.rule.id}, ${requestBody.rule.type}, ${requestBody.conversation?.id}`,
@@ -78,23 +82,24 @@ Deno.serve(async (req: Request) => {
     console.info(`Successfully handled rule: ${requestBody.rule.id}, ${requestBody.rule.type}`)
   } catch (error) {
     console.error(`Error processing request: ${error.message}, stack: ${error.stack}`)
-    // This function is publicly reachable (verify_jwt is disabled because it
-    // authenticates via the Missive HMAC signature), so unsigned or malformed
-    // requests reach here. Reject them cleanly without running handleError,
-    // which expects a verified Missive payload and would otherwise throw on a
-    // missing `rule` or spam the `errors` table with unauthenticated traffic.
-    if (error instanceof UnauthorizedError) {
-      return AppResponse.unauthorized(error.message)
-    }
-    if (error instanceof BadRequestError) {
-      return AppResponse.badRequest(error.message)
-    }
-    if (requestBody) {
-      try {
-        await handleError(requestBody, error)
-      } catch {
-        console.error('Failed to record error while handling request')
+    // This function is publicly reachable (verify_jwt is disabled because it authenticates via the Missive
+    // HMAC signature). Reject unsigned or malformed requests cleanly: handleError expects a verified Missive
+    // payload and would otherwise throw on a missing `rule` or record unauthenticated traffic.
+    if (!verified) {
+      if (error instanceof UnauthorizedError) {
+        return AppResponse.unauthorized(error.message)
       }
+      if (error instanceof BadRequestError) {
+        return AppResponse.badRequest(error.message)
+      }
+      // Anything else here is a deployment problem such as a missing HMAC_SECRET. Fail loudly so Missive retries.
+      Sentry.captureException(error)
+      return AppResponse.internalServerError()
+    }
+    try {
+      await handleError(requestBody, error)
+    } catch {
+      console.error('Failed to record error while handling request')
     }
     if (
       typeof error.message === 'string' &&
