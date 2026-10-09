@@ -36,8 +36,8 @@ dashboard** exposes the same data (tags over time, unmet demand, promoted count)
 
 ## Database Schema
 
-Added in `supabase/migrations/20260712090000_add_conversation_analysis.sql`, extended in
-`supabase/migrations/20260712170000_conversation_analysis_q2_taxonomy.sql` (the evidence-based taxonomy, `topic`,
+Added in `supabase/migrations/20260826041414_add_conversation_analysis.sql`, extended in
+`supabase/migrations/20260826041435_conversation_analysis_q2_taxonomy.sql` (the evidence-based taxonomy, `topic`,
 `process_after`, and `suppress_reason`).
 
 ### `conversation_analyses`
