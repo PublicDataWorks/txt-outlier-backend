@@ -8,6 +8,7 @@ import Sentry from '../_shared/lib/Sentry.ts'
 import supabase from '../_shared/lib/supabase.ts'
 import { analysisTags, conversationAnalyses, conversations } from '../_shared/drizzle/schema.ts'
 import { RuleType } from '../user-actions/types.ts'
+import { promotionAfterCompletion } from '../_shared/types/analysis.ts'
 import {
   analyzeTranscript,
   findAmbiguousResidentPhones,
@@ -68,6 +69,9 @@ type ClaimedRow = {
   source: string
   slackChannel: string | null
   slackMessageTs: string | null
+  // Set only when the row already holds a finished model result, which is what a label-change rerun starts from.
+  // Finalization always records it and a re-close clears it, so a first run never has one.
+  promptVersion: string | null
 }
 
 // Atomically claims up to `batchSize` pending rows (realtime before backfill, oldest first within each source),
@@ -88,7 +92,8 @@ const claimPendingRows = async (batchSize: number): Promise<ClaimedRow[]> => {
       FOR UPDATE SKIP LOCKED
     )
     RETURNING id, conversation_id AS "conversationId", attempts, source,
-      slack_channel AS "slackChannel", slack_message_ts AS "slackMessageTs"
+      slack_channel AS "slackChannel", slack_message_ts AS "slackMessageTs",
+      prompt_version AS "promptVersion"
   `)
   return claimed as unknown as ClaimedRow[]
 }
@@ -186,11 +191,44 @@ const countTagThisQuarter = async (tag: string, conversationLastMessageAt: strin
   return ((row as unknown as { count: number })?.count ?? 0) + 1
 }
 
-const markSkipped = (id: number) =>
-  supabase
+// A row requeued by a label change (see analysis-reconcile.ts) already holds a finished result and a live Slack
+// post. When the rerun cannot go ahead, put the row back as it was. Marking it skipped would leave the old
+// post up while dropping the row from every completed-analysis count.
+//
+// A reopen is the exception. enqueueConversationAnalysis recognises the next close as a new cycle by finding the
+// row skipped with this reason, and the reopened conversation is open for editorial review again, so any post
+// has to come down. This is the same handling as a reopen that lands mid-flight.
+const skipRow = async (row: ClaimedRow, suppressReason?: string) => {
+  const updatedAt = new Date().toISOString()
+  const ownsRow = and(eq(conversationAnalyses.id, row.id), eq(conversationAnalyses.attempts, row.attempts))
+  const reopened = suppressReason === 'reopened-before-processing'
+  if (row.promptVersion !== null && !reopened) {
+    console.warn(
+      `conversation_analyses id=${row.id}: re-analysis not possible (${suppressReason ?? 'no inbound message'}), ` +
+        `keeping the previous result`,
+    )
+    await supabase.update(conversationAnalyses).set({ status: 'completed', updatedAt }).where(ownsRow)
+    return
+  }
+  const skipped = await supabase
     .update(conversationAnalyses)
-    .set({ status: 'skipped', updatedAt: new Date().toISOString() })
-    .where(eq(conversationAnalyses.id, id))
+    .set({ status: 'skipped', ...(suppressReason ? { suppressReason } : {}), updatedAt })
+    .where(ownsRow)
+    .returning({ id: conversationAnalyses.id })
+  // Withdraw only after taking the row, so a worker that lost its lease cannot take down a post the new owner is
+  // about to rewrite. Skipped is final, so a failed withdrawal is logged for manual cleanup, not retried.
+  if (skipped.length > 0 && reopened && row.slackChannel && row.slackMessageTs) {
+    try {
+      await withdrawAnalysisMessage(row.slackChannel, row.slackMessageTs, 'the conversation was reopened')
+    } catch (error) {
+      console.error(
+        `MANUAL CLEANUP NEEDED: failed to withdraw Slack message channel=${row.slackChannel} ts=${row.slackMessageTs}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+  }
+}
 
 // Exponential backoff before a retried row becomes claimable again. Without it, requeueing as 'pending'
 // leaves process_after in the past, so the every-minute cron reclaims the row on the very next tick: a brief
@@ -219,7 +257,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   const transcript = await getConversationTranscript(row.conversationId)
   const hasInboundMessage = transcript.some((message) => message.direction === 'inbound')
   if (transcript.length === 0 || !hasInboundMessage) {
-    await markSkipped(row.id)
+    await skipRow(row)
     return
   }
 
@@ -232,10 +270,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       `Skipping conversation_analyses id=${row.id}: ${ambiguousPhones.length} resident phone(s) span multiple ` +
         `conversations, so the transcript cannot be attributed to this one`,
     )
-    await supabase
-      .update(conversationAnalyses)
-      .set({ status: 'skipped', suppressReason: 'ambiguous-transcript', updatedAt: new Date().toISOString() })
-      .where(eq(conversationAnalyses.id, row.id))
+    await skipRow(row, 'ambiguous-transcript')
     return
   }
 
@@ -245,14 +280,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
   // definite `true` is ineligible: conversations.closed is nullable and plain message ingestion never sets
   // it, so a NULL here means "never observed closed", not "closed".
   if (conversationMeta.closed !== true) {
-    await supabase
-      .update(conversationAnalyses)
-      .set({
-        status: 'skipped',
-        suppressReason: conversationMeta.closed === false ? 'reopened-before-processing' : 'not-closed',
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(conversationAnalyses.id, row.id))
+    await skipRow(row, conversationMeta.closed === false ? 'reopened-before-processing' : 'not-closed')
     return
   }
 
@@ -423,6 +451,7 @@ const processRow = async (row: ClaimedRow, tags: { name: string; description: st
       lastMessageAt,
       slackChannel: slackMessage?.channel ?? null,
       slackMessageTs: slackMessage?.ts ?? null,
+      ...promotionAfterCompletion(suppressed),
       error: null,
       updatedAt: new Date().toISOString(),
     })
