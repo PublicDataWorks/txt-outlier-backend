@@ -127,7 +127,13 @@ const verifySignature = async (req: Request, requestBody: any): Promise<boolean>
     ['sign', 'verify'],
   )
 
-  const receivedSignature = decodeHex(cleanedHeaderSig)
+  // decodeHex throws on non-hex characters and on odd lengths. Both are just a bad signature.
+  let receivedSignature: Uint8Array
+  try {
+    receivedSignature = decodeHex(cleanedHeaderSig)
+  } catch {
+    return false
+  }
 
   return await crypto.subtle.verify(
     { name: 'HMAC', hash: 'SHA-256' },

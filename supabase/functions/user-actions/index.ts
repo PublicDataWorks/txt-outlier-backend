@@ -20,7 +20,11 @@ Deno.serve(async (req: Request) => {
       throw new BadRequestError('Method not allowed')
     }
 
-    requestBody = await req.json()
+    try {
+      requestBody = await req.json()
+    } catch {
+      throw new BadRequestError('Request body is not valid JSON')
+    }
     const isVerified = await Missive.verifySignature(req, requestBody)
     if (!isVerified) {
       throw new UnauthorizedError('Invalid signature')
