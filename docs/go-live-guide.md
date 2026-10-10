@@ -74,6 +74,8 @@ Leaving the optional variables **unset or blank is safe** - empty values fall ba
    - `20260826041414_add_conversation_analysis.sql` - tables, RLS, cron jobs, RPC lockdown
    - `20260826041435_conversation_analysis_q2_taxonomy.sql` - the 10-tag taxonomy, delay + suppression columns
    - `20260826211248_weekly_digest_thursday_eastern.sql` - Thursday 9:00 AM Eastern digest schedule
+   - `20261006110000_conversations_labels_partial_unique_index.sql` - makes the active-link unique index partial, as in production (a no-op there)
+   - `20261006120000_analysis_missive_label_source.sql` - Missive impact labels as the authoritative tag source
 3. Deploy the functions (new: `conversation-analysis`, `slack-interactions`, `weekly-digest`, `insights-dashboard`; changed: `user-actions` and shared code):
 
    ```bash

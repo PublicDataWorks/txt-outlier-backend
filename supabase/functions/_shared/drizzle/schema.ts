@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 export const cronSchema = pgSchema('cron')
 
@@ -137,7 +138,10 @@ export const conversationsLabels = pgTable('conversations_labels', {
   isArchived: boolean('is_archived').default(false).notNull(),
 }, (table) => {
   return {
-    conversationLabel: uniqueIndex('conversation_label').on(table.conversationId, table.labelId),
+    // Only active links are unique: user-actions archives instead of deleting, and a re-added label gets a new row.
+    // Matches 20261006110000_conversations_labels_partial_unique_index.sql and production.
+    activeConversationLabel: uniqueIndex('idx_unique_active_conversation_label').on(table.conversationId, table.labelId)
+      .where(sql`${table.isArchived} = false`),
   }
 })
 
@@ -440,6 +444,11 @@ export const conversationAnalyses = pgTable('conversation_analyses', {
   topic: text('topic'),
   processAfter: timestamp('process_after', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   suppressReason: text('suppress_reason'),
+  // What the model chose, kept even when a Missive impact label overrode it, so newsroom-vs-model
+  // agreement stays measurable instead of being silently overwritten.
+  modelTag: text('model_tag'),
+  tagSource: text('tag_source'),
+  missiveLabels: text('missive_labels').array().default([]),
 }, (table) => {
   return {
     statusIdx: index('idx_conversation_analyses_status').on(table.status),
