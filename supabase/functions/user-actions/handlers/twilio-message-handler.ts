@@ -58,6 +58,10 @@ const insertTwilioMessage = async (
   const isOutgoing = requestBody.rule.type === RuleType.OutgoingTwilioMessage ||
     requestBody.rule.type === RuleType.OutgoingSmsMessage
   twilioMessage.senderId = isOutgoing ? requestMessage.author?.id : undefined
+  // Record the conversation so messages can be attributed to it without matching on phone numbers, which is
+  // ambiguous when a resident has several conversations. upsertConversation ran earlier in this transaction,
+  // so the foreign key is satisfied.
+  twilioMessage.conversationId = requestBody.conversation.id
   await tx.insert(twilioMessages).values(twilioMessage)
 }
 

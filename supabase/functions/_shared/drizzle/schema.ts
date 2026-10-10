@@ -293,6 +293,9 @@ export const twilioMessages = pgTable('twilio_messages', {
   replyToBroadcast: bigint('reply_to_broadcast', { mode: 'number' }),
   replyToCampaign: bigint('reply_to_campaign', { mode: 'number' }),
   senderId: uuid('sender_id').references(() => users.id, { onDelete: 'cascade' }),
+  // Missive conversation the message belongs to. NULL for messages ingested before the column existed and not
+  // yet backfilled (see supabase/scripts/backfill_twilio_messages_conversation_id.sql).
+  conversationId: uuid('conversation_id').references(() => conversations.id, { onDelete: 'set null' }),
 }, (table) => {
   return {
     deliveredAtIdx: index('twilio_messages_delivered_at_idx').on(table.deliveredAt),
