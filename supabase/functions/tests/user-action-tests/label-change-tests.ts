@@ -3,7 +3,7 @@ import { assertEquals } from 'jsr:@std/assert'
 
 import '../setup.ts'
 import { labelChangeRequest } from '../fixtures/label-change-request.ts'
-import { labels } from '../../_shared/drizzle/schema.ts'
+import { conversationsLabels, labels } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { client } from '../utils.ts'
 
@@ -65,6 +65,57 @@ describe(
         requestLabel.share_with_organization,
       )
       assertEquals(label[0].visibility, requestLabel.visibility)
+    })
+
+    // Removing a label archives its link. The unique index only covers active rows, so re-adding the label
+    // inserts a fresh active row and leaves the archived one as history. conversation-analysis reads impact
+    // labels filtered on is_archived = false, so exactly one active row must come back.
+    it('inserts a fresh active link when a removed label is re-added', async () => {
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: labelChangeRequest })
+
+      const [linked] = await supabase.select().from(conversationsLabels)
+      assertEquals(linked.isArchived, false)
+
+      // Same conversation, no labels: every link on it is archived.
+      const removed = JSON.parse(JSON.stringify(labelChangeRequest))
+      removed.conversation.shared_labels = []
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: removed })
+
+      const afterRemoval = await supabase.select().from(conversationsLabels)
+      assertEquals(afterRemoval.filter((row) => !row.isArchived).length, 0)
+
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: labelChangeRequest })
+
+      const rows = await supabase.select().from(conversationsLabels)
+      assertEquals(rows.filter((row) => !row.isArchived).length, 1, 'exactly one active link after re-adding')
+      assertEquals(rows.filter((row) => row.isArchived).length, 1, 'the earlier link is kept as history')
+    })
+
+    it('does not duplicate a link that is already active', async () => {
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: labelChangeRequest })
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: labelChangeRequest })
+
+      const rows = await supabase.select().from(conversationsLabels)
+      assertEquals(rows.length, 1)
+      assertEquals(rows[0].isArchived, false)
+    })
+
+    // The labels insert uses ON CONFLICT DO UPDATE, which Postgres aborts if one statement presents the same
+    // conflict key twice ("cannot affect row a second time") - taking the whole webhook transaction with it.
+    // Missive payloads are external input, so a repeated label must not be fatal.
+    it('survives a payload that repeats the same label', async () => {
+      const duplicated = JSON.parse(JSON.stringify(labelChangeRequest))
+      duplicated.conversation.shared_labels = [
+        duplicated.conversation.shared_labels[0],
+        { ...duplicated.conversation.shared_labels[0] },
+      ]
+
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: duplicated })
+
+      assertEquals((await supabase.select().from(labels)).length, 1)
+      const rows = await supabase.select().from(conversationsLabels)
+      assertEquals(rows.length, 1)
+      assertEquals(rows[0].isArchived, false)
     })
   },
 )

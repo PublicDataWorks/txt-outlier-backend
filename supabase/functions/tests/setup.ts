@@ -25,6 +25,8 @@ beforeEach(async () => {
     '../../migrations/20260826041435_conversation_analysis_q2_taxonomy.sql',
     '../../migrations/20260826211248_weekly_digest_thursday_eastern.sql',
     '../../migrations/20260923183122_index_message_statuses_conversation_and_conversations_labels_conversation.sql',
+    '../../migrations/20261006110000_conversations_labels_partial_unique_index.sql',
+    '../../migrations/20261006120000_analysis_missive_label_source.sql',
   ]
 
   const conn = await postgresClient.reserve()
