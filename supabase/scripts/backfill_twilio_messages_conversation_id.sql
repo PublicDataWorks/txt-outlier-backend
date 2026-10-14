@@ -22,7 +22,11 @@
 --
 -- ORDER OF OPERATIONS
 --   1. Recommended on production: prepare the column and the index by hand, so the migrations do almost nothing.
+--        SET lock_timeout = '3s';
 --        ALTER TABLE public.twilio_messages ADD COLUMN IF NOT EXISTS conversation_id uuid;   -- momentary lock
+--      Set lock_timeout first. ALTER TABLE queues for ACCESS EXCLUSIVE before it checks IF NOT EXISTS, and a long
+--      analyst query or an autovacuum on the table would otherwise make every SMS insert queue behind the ALTER.
+--      If it times out, run it again a minute later.
 --        CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_twilio_messages_conversation_id
 --          ON public.twilio_messages (conversation_id, delivered_at) WHERE conversation_id IS NOT NULL;
 --      CONCURRENTLY cannot run inside a transaction, so send these as separate statements from psql, not as one
@@ -32,7 +36,8 @@
 --      If it is false, run DROP INDEX CONCURRENTLY public.idx_twilio_messages_conversation_id; and build it again.
 --   2. Apply the migrations 20261007190000 and 20261007190100 FIRST, then deploy the user-actions edge function.
 --      If the function ships first, every message insert fails on the missing column; the webhook swallows the
---      error and still returns 200, so the SMS is lost. New messages get a conversation_id from then on.
+--      error and still returns 200, so the SMS is lost. New messages get a conversation_id from then on. Messages
+--      stored between the column existing and the new function going live have NULL; step 5 picks them up.
 --   3. Find the id range: SELECT min(id), max(id) FROM invoke_history;   (3575 .. ~3.03M on 2026-10-07)
 --   4. Run this file once per batch, advancing from_id by batch_size each time, until from_id passes max(id).
 --      Example driver (psql connection string in $DATABASE_URL):
@@ -40,20 +45,35 @@
 --        from=0; max=3100000; size=20000
 --        while [ "$from" -le "$max" ]; do
 --          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v from_id="$from" -v batch_size="$size" \
---            -f supabase/scripts/backfill_twilio_messages_conversation_id.sql
+--            -f supabase/scripts/backfill_twilio_messages_conversation_id.sql || { echo "stopped at from_id=$from"; break; }
 --          from=$((from + size))
 --          sleep 1
 --        done
 --
 --      Start with one batch and check the UPDATE count and timing before looping. Lower batch_size if a batch
---      takes more than a few seconds. Run it outside peak hours; each batch is its own short transaction.
+--      takes more than a few seconds. Run it only between 04:00 and 12:00 UTC and never across the Tue/Wed/Thu
+--      14:00 UTC broadcasts; each batch is its own short transaction.
 --      Every UPDATE is non-HOT now that conversation_id is indexed, so the run rewrites about 2.4M rows and their
---      index entries. Watch WAL volume and replication lag while it runs.
+--      index entries, which is several GB of WAL. twilio_messages is in the supabase_realtime publication, so each
+--      updated row is also a change event for any postgres_changes subscriber (RLS is checked per subscriber).
+--      Watch WAL volume, replication slot lag and replication lag while it runs, and stop if a slot falls behind.
 --   5. Re-run step 4 over the full range once more if you want to catch rows that arrived during the run
 --      (it is idempotent), then run the check below.
 --   6. Reclaim the dead rows, then validate the foreign key (cheap lock, scans the table once):
 --        VACUUM (ANALYZE) public.twilio_messages;
 --        ALTER TABLE public.twilio_messages VALIDATE CONSTRAINT twilio_messages_conversation_id_fkey;
+--
+-- ROLLBACK
+--   Order matters: the new user-actions inserts conversation_id, so dropping the column while it is deployed makes
+--   every message insert fail, and the webhook still returns 200 (the SMS is silently lost).
+--   1. Redeploy the previous user-actions version (always safe on its own, before or after the migrations).
+--   2. Then, with SET lock_timeout = '3s' in the session:
+--        DROP VIEW IF EXISTS public.conversation_staff_activity;
+--        ALTER TABLE public.twilio_messages DROP CONSTRAINT IF EXISTS twilio_messages_conversation_id_fkey;
+--        DROP INDEX CONCURRENTLY IF EXISTS public.idx_twilio_messages_conversation_id;   -- its own statement
+--        ALTER TABLE public.twilio_messages DROP COLUMN IF EXISTS conversation_id;
+--   3. supabase migration repair --status reverted 20261007190000 20261007190100
+--   After the backfill the column only costs dead rows and index space, so leaving it in place is also safe.
 --
 -- CHECK (read-only; scans twilio_messages once, so run it off-peak)
 --   SELECT count(*) FILTER (WHERE conversation_id IS NULL) AS unattributed,

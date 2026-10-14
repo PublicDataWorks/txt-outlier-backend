@@ -10,23 +10,41 @@
 --
 -- The ALTER TABLE and ADD CONSTRAINT below need locks that every inbound SMS also needs: ADD COLUMN takes ACCESS
 -- EXCLUSIVE on twilio_messages, and ADD CONSTRAINT takes SHARE ROW EXCLUSIVE on twilio_messages and on conversations.
--- A migration file runs as one transaction, so these locks are held until the file commits. Keep this file free of
--- slow statements; the index is built by the next migration for that reason. If a long query holds a conflicting
--- lock, the waiting ALTER queues every webhook write behind it, so lock_timeout makes the migration fail after 5
--- seconds instead; run it again when the table is quiet.
+-- The Supabase CLI runs each statement of a migration file as its own transaction (a bare LOCK TABLE fails with
+-- "can only be used in transaction blocks"), so the steps that must hold several locks together, and the view with
+-- its REVOKE, are each a single DO block below. Keep this file free of slow statements; the index is built by the
+-- next migration for that reason. If a long query holds a conflicting lock, the waiting ALTER queues every webhook
+-- write behind it, so lock_timeout makes the migration fail after 5 seconds instead; run it again when the table is
+-- quiet. Every step is guarded, so a run that stopped part-way can simply be repeated.
 SET lock_timeout = '5s';
 
-ALTER TABLE public.twilio_messages
-  ADD COLUMN IF NOT EXISTS conversation_id uuid;
-
--- The handler upserts the conversation in the same transaction before inserting the message, so a foreign key is
--- safe for new rows. It is added NOT VALID so the migration does not scan the table while holding a lock: the
+-- One DO block, so these locks are held together and taken in the order the webhook takes them:
+-- handleTwilioMessage upserts the conversation first and inserts the message second. Locking twilio_messages first
+-- (the ALTER) and conversations second (the foreign key) is the opposite order, so a webhook between its two
+-- statements and this migration would each wait for the other and Postgres would abort one after about a second.
+--
+-- The column is looked up in the catalog instead of relying on IF NOT EXISTS, because ALTER TABLE takes ACCESS
+-- EXCLUSIVE before it looks. When the column was added by hand beforehand, no ALTER runs here.
+--
+-- The foreign key is safe for new rows because the handler upserts the conversation in the same transaction before
+-- inserting the message. It is added NOT VALID so the migration does not scan the table while holding a lock: the
 -- constraint is enforced for every new or updated row immediately. Validating existing rows is a manual step
 -- (step 6 in supabase/scripts/backfill_twilio_messages_conversation_id.sql), run once the backfill has filled
--- them; VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock. SET NULL, not
--- CASCADE, so deleting a conversation never deletes the SMS history.
+-- them; VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock. SET NULL, not CASCADE, so deleting a
+-- conversation never deletes the SMS history.
 DO $$
 BEGIN
+  LOCK TABLE public.conversations IN SHARE ROW EXCLUSIVE MODE;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = 'public.twilio_messages'::regclass
+      AND attname = 'conversation_id'
+      AND NOT attisdropped
+  ) THEN
+    ALTER TABLE public.twilio_messages ADD COLUMN conversation_id uuid;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'twilio_messages_conversation_id_fkey'
@@ -46,7 +64,10 @@ END $$;
 -- keyword/automation rules have no sender_id and never appear here.
 -- Only rows with conversation_id set count; until the backfill has run, older messages are not attributed.
 -- comments_count: comments the user left on the conversation.
--- currently_assigned: the user's inbox row for the conversation has assigned = true.
+-- currently_assigned: the user's inbox row for the conversation has assigned = true. Known limit: the assignee
+-- webhook handler returns early when Missive reports no assignees, so conversations_assignees keeps the previous
+-- assignee after a conversation is unassigned from everyone. Treat true as "was assigned at the last assignment
+-- that named someone" until the handler clears the rows (follow-up).
 -- A user appears only if they replied, commented, or are currently assigned.
 --
 -- Each CTE is referenced more than once, which makes Postgres compute it over the whole table before the outer
@@ -56,6 +77,13 @@ END $$;
 -- security_invoker makes the view obey the RLS policies of the underlying tables. Without it the view runs with its
 -- owner's rights, and since public views are exposed through the API, staff names and emails would become readable
 -- by the anon key.
+-- The view and its REVOKE are one statement: as separate statements the view would exist for a moment with the
+-- default privileges, which let anon and authenticated read it. The default privileges set in 20260928055000
+-- also give address-lookup-readonly SELECT on every new relation in public; it has no use for staff names and
+-- emails, and the role only exists in production, hence the check.
+DO $migration$
+BEGIN
+  EXECUTE $view$
 CREATE OR REPLACE VIEW public.conversation_staff_activity
 WITH (security_invoker = true) AS
 WITH replies AS NOT MATERIALIZED (
@@ -104,16 +132,13 @@ JOIN public.users u ON u.id = p.user_id
 LEFT JOIN replies r ON r.conversation_id = p.conversation_id AND r.user_id = p.user_id
 LEFT JOIN comment_counts cc ON cc.conversation_id = p.conversation_id AND cc.user_id = p.user_id
 LEFT JOIN assignments a ON a.conversation_id = p.conversation_id AND a.user_id = p.user_id;
+  $view$;
 
-REVOKE ALL ON public.conversation_staff_activity FROM PUBLIC, anon, authenticated;
+  REVOKE ALL ON public.conversation_staff_activity FROM PUBLIC, anon, authenticated;
 
--- The default privileges set in 20260928055000 give address-lookup-readonly SELECT on every new relation in public.
--- It has no use for staff names and emails. The role only exists in production, hence the check.
-DO $$
-BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'address-lookup-readonly') THEN
     REVOKE ALL ON public.conversation_staff_activity FROM "address-lookup-readonly";
   END IF;
-END $$;
+END $migration$;
 
 RESET lock_timeout;
