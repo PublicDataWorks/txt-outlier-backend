@@ -145,6 +145,16 @@ LEFT JOIN assignments a ON a.conversation_id = p.conversation_id AND a.user_id =
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'address-lookup-readonly') THEN
     REVOKE ALL ON public.conversation_staff_activity FROM "address-lookup-readonly";
   END IF;
+
+  -- The analysts this view is for. Production already gives them SELECT on new relations through default
+  -- privileges applied by hand, which no migration records, so the grant is stated here instead of assumed.
+  -- They read through the view's security_invoker, so their row policies on the underlying tables still apply.
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_outlier') THEN
+    GRANT SELECT ON public.conversation_staff_activity TO readonly_outlier;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'readonly_kate') THEN
+    GRANT SELECT ON public.conversation_staff_activity TO readonly_kate;
+  END IF;
 END $migration$;
 
 RESET lock_timeout;
