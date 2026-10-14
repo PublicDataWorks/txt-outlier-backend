@@ -33,23 +33,29 @@ SET lock_timeout = '5s';
 -- them; VALIDATE CONSTRAINT takes only a SHARE UPDATE EXCLUSIVE lock. SET NULL, not CASCADE, so deleting a
 -- conversation never deletes the SMS history.
 DO $$
-BEGIN
-  LOCK TABLE public.conversations IN SHARE ROW EXCLUSIVE MODE;
-
-  IF NOT EXISTS (
+DECLARE
+  column_missing boolean := NOT EXISTS (
     SELECT 1 FROM pg_attribute
     WHERE attrelid = 'public.twilio_messages'::regclass
       AND attname = 'conversation_id'
       AND NOT attisdropped
-  ) THEN
-    ALTER TABLE public.twilio_messages ADD COLUMN conversation_id uuid;
-  END IF;
-
-  IF NOT EXISTS (
+  );
+  foreign_key_missing boolean := NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'twilio_messages_conversation_id_fkey'
       AND conrelid = 'public.twilio_messages'::regclass
-  ) THEN
+  );
+BEGIN
+  -- Nothing to lock when a previous run or a manual step already did the work.
+  IF column_missing OR foreign_key_missing THEN
+    LOCK TABLE public.conversations IN SHARE ROW EXCLUSIVE MODE;
+  END IF;
+
+  IF column_missing THEN
+    ALTER TABLE public.twilio_messages ADD COLUMN conversation_id uuid;
+  END IF;
+
+  IF foreign_key_missing THEN
     ALTER TABLE public.twilio_messages
       ADD CONSTRAINT twilio_messages_conversation_id_fkey
       FOREIGN KEY (conversation_id) REFERENCES public.conversations (id) ON DELETE SET NULL NOT VALID;

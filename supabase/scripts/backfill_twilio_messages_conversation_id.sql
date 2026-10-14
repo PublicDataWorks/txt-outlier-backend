@@ -27,6 +27,7 @@
 --      Set lock_timeout first. ALTER TABLE queues for ACCESS EXCLUSIVE before it checks IF NOT EXISTS, and a long
 --      analyst query or an autovacuum on the table would otherwise make every SMS insert queue behind the ALTER.
 --      If it times out, run it again a minute later.
+--        RESET lock_timeout;   -- CONCURRENTLY waits on older transactions, and lock_timeout would abort it after the scans
 --        CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_twilio_messages_conversation_id
 --          ON public.twilio_messages (conversation_id, delivered_at) WHERE conversation_id IS NOT NULL;
 --      CONCURRENTLY cannot run inside a transaction, so send these as separate statements from psql, not as one
@@ -42,7 +43,8 @@
 --   4. Run this file once per batch, advancing from_id by batch_size each time, until from_id passes max(id).
 --      Example driver (psql connection string in $DATABASE_URL):
 --
---        from=0; max=3100000; size=20000
+--        from=0; size=5000
+--        max=$(psql "$DATABASE_URL" -Atc 'select max(id) from public.invoke_history')   # not a fixed number: it keeps growing
 --        while [ "$from" -le "$max" ]; do
 --          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v from_id="$from" -v batch_size="$size" \
 --            -f supabase/scripts/backfill_twilio_messages_conversation_id.sql || { echo "stopped at from_id=$from"; break; }
@@ -50,8 +52,9 @@
 --          sleep 1
 --        done
 --
---      Start with one batch and check the UPDATE count and timing before looping. Lower batch_size if a batch
---      takes more than a few seconds. Run it only between 04:00 and 12:00 UTC and never across the Tue/Wed/Thu
+--      Start with one batch and check the UPDATE count and timing before looping. Keep a batch to a few seconds:
+--      each updated row's foreign key check holds a lock on its conversation row until the batch commits, and the
+--      webhook's conversation upsert needs that row, so a long batch delays the webhook for that conversation. Run it only between 04:00 and 12:00 UTC and never across the Tue/Wed/Thu
 --      14:00 UTC broadcasts; each batch is its own short transaction.
 --      Every UPDATE is non-HOT now that conversation_id is indexed, so the run rewrites about 2.4M rows and their
 --      index entries, which is several GB of WAL. twilio_messages is in the supabase_realtime publication, so each

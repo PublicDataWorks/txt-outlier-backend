@@ -13,8 +13,9 @@ SET lock_timeout = '5s';
 
 -- lock_timeout only limits the wait for the lock, not the scan that follows it, so an accidental plain build on the
 -- production table would block every SMS write for the whole scan. Refuse instead. A fresh database (CI, local) has
--- an empty table and passes. An invalid index from a failed CONCURRENTLY build is refused too, because IF NOT
--- EXISTS below would keep it.
+-- an empty table and passes. An invalid index from a failed CONCURRENTLY build is refused too, because it would
+-- otherwise be kept. The build is inside this block so that, when the index already exists, nothing takes a lock on
+-- twilio_messages here (CREATE INDEX IF NOT EXISTS would lock the table before checking the name).
 DO $$
 BEGIN
   IF EXISTS (
@@ -26,17 +27,19 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'idx_twilio_messages_conversation_id exists but is invalid: DROP INDEX CONCURRENTLY it and rebuild it (step 1 in supabase/scripts/backfill_twilio_messages_conversation_id.sql)';
   END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_class
     WHERE relname = 'idx_twilio_messages_conversation_id'
       AND relnamespace = 'public'::regnamespace
-  ) AND (SELECT reltuples FROM pg_class WHERE oid = 'public.twilio_messages'::regclass) > 100000 THEN
-    RAISE EXCEPTION 'build idx_twilio_messages_conversation_id with CREATE INDEX CONCURRENTLY first (step 1 in supabase/scripts/backfill_twilio_messages_conversation_id.sql); a plain build here blocks all SMS writes';
+  ) THEN
+    IF (SELECT reltuples FROM pg_class WHERE oid = 'public.twilio_messages'::regclass) > 100000 THEN
+      RAISE EXCEPTION 'build idx_twilio_messages_conversation_id with CREATE INDEX CONCURRENTLY first (step 1 in supabase/scripts/backfill_twilio_messages_conversation_id.sql); a plain build here blocks all SMS writes';
+    END IF;
+    CREATE INDEX idx_twilio_messages_conversation_id
+      ON public.twilio_messages (conversation_id, delivered_at)
+      WHERE conversation_id IS NOT NULL;
   END IF;
 END $$;
-
-CREATE INDEX IF NOT EXISTS idx_twilio_messages_conversation_id
-  ON public.twilio_messages (conversation_id, delivered_at)
-  WHERE conversation_id IS NOT NULL;
 
 RESET lock_timeout;
