@@ -36,8 +36,8 @@
 --        SELECT indisvalid FROM pg_index WHERE indexrelid = 'public.idx_twilio_messages_conversation_id'::regclass;
 --      If it is false, run DROP INDEX CONCURRENTLY public.idx_twilio_messages_conversation_id; and build it again.
 --   2. Apply the migrations 20261007190000 and 20261007190100 FIRST, then deploy the user-actions edge function.
---      If the function ships first, every message insert fails on the missing column; the webhook swallows the
---      error and still returns 200, so the SMS is lost. New messages get a conversation_id from then on. Messages
+--      If the function ships before the column exists (step 1 adds it), every message insert fails; the webhook swallows
+--      the error and still returns 200, so the SMS is lost. New messages get a conversation_id from then on. Messages
 --      stored between the column existing and the new function going live have NULL; step 5 picks them up.
 --   3. Find the id range: SELECT min(id), max(id) FROM invoke_history;   (3575 .. ~3.03M on 2026-10-07)
 --   4. Run this file once per batch, advancing from_id by batch_size each time, until from_id passes max(id).
@@ -72,13 +72,24 @@
 --   Order matters: the new user-actions inserts conversation_id, so dropping the column while it is deployed makes
 --   every message insert fail, and the webhook still returns 200 (the SMS is silently lost).
 --   1. Redeploy the previous user-actions version (always safe on its own, before or after the migrations).
---   2. Then, with SET lock_timeout = '3s' in the session:
+--   2. Then, in psql, one statement at a time:
+--        SET lock_timeout = '3s';
 --        DROP VIEW IF EXISTS public.conversation_staff_activity;
---        ALTER TABLE public.twilio_messages DROP CONSTRAINT IF EXISTS twilio_messages_conversation_id_fkey;
+--        BEGIN;
+--          LOCK TABLE public.conversations IN SHARE ROW EXCLUSIVE MODE;   -- the webhook's lock order, avoids a deadlock
+--          ALTER TABLE public.twilio_messages DROP CONSTRAINT IF EXISTS twilio_messages_conversation_id_fkey;
+--          ALTER TABLE public.twilio_messages DROP COLUMN IF EXISTS conversation_id;
+--        COMMIT;
+--        RESET lock_timeout;
 --        DROP INDEX CONCURRENTLY IF EXISTS public.idx_twilio_messages_conversation_id;   -- its own statement
---        ALTER TABLE public.twilio_messages DROP COLUMN IF EXISTS conversation_id;
+--      (Dropping the column also drops the index, so the last line is only needed if you drop the index alone.)
 --   3. supabase migration repair --status reverted 20261007190000 20261007190100
 --   After the backfill the column only costs dead rows and index space, so leaving it in place is also safe.
+--
+-- AFTER THE MIGRATIONS (read-only checks): the view exists and the analyst roles can read it (default privileges grant
+--   them SELECT; the migration revokes address-lookup-readonly, anon and authenticated):
+--   SELECT has_table_privilege('readonly_outlier','public.conversation_staff_activity','SELECT'),
+--          has_table_privilege('anon','public.conversation_staff_activity','SELECT');   -- expect true, false
 --
 -- CHECK (read-only; scans twilio_messages once, so run it off-peak)
 --   SELECT count(*) FILTER (WHERE conversation_id IS NULL) AS unattributed,
