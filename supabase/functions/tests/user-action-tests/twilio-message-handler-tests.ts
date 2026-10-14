@@ -248,5 +248,26 @@ describe(
       assertEquals(byId.get(firstMessageId), firstConversationId)
       assertEquals(byId.get(secondMessageId), secondConversationId)
     })
+
+    // Missive redelivers webhooks, and outgoing messages already hit the primary key daily in production. The
+    // duplicate must stay a harmless rejected insert: the first row keeps its conversation_id.
+    it('keeps the first row and its conversation id when the same message is delivered twice', async () => {
+      const messageId = crypto.randomUUID()
+      const firstConversationId = crypto.randomUUID()
+
+      for (const conversationId of [firstConversationId, crypto.randomUUID()]) {
+        const requestData = structuredClone(newIncomingSmsRequest)
+        requestData.message!.id = messageId
+        requestData.conversation.id = conversationId
+        await client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: requestData,
+        })
+      }
+
+      const rows = await supabase.select().from(twilioMessages).where(eq(twilioMessages.id, messageId))
+      assertEquals(rows.length, 1)
+      assertEquals(rows[0].conversationId, firstConversationId)
+    })
   },
 )
