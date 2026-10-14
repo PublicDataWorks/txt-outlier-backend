@@ -239,13 +239,17 @@ const RETRY_BACKOFF_MINUTES = [5, 30]
 
 const markFailedOrRetry = (row: ClaimedRow, error: unknown) => {
   const exhausted = row.attempts >= MAX_ATTEMPTS
+  // A rerun starts from a finished result, and 'failed' is never reselected: it would drop the row from every
+  // completed count and disable its promote button. When the rerun gives up, keep the previous result and
+  // leave the error on the row for diagnosis. A completed row is only requeued by a later label change.
+  const finalStatus = row.promptVersion !== null ? 'completed' : 'failed'
   // attempts is already incremented by the claim, so attempt 1 waits RETRY_BACKOFF_MINUTES[0].
   const backoffMinutes = RETRY_BACKOFF_MINUTES[Math.min(row.attempts - 1, RETRY_BACKOFF_MINUTES.length - 1)]
 
   return supabase
     .update(conversationAnalyses)
     .set({
-      status: exhausted ? 'failed' : 'pending',
+      status: exhausted ? finalStatus : 'pending',
       error: error instanceof Error ? error.message : String(error),
       updatedAt: new Date().toISOString(),
       ...(exhausted ? {} : { processAfter: new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString() }),

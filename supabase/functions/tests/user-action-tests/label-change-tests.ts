@@ -1,11 +1,14 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals } from 'jsr:@std/assert'
+import { eq } from 'drizzle-orm'
 
 import '../setup.ts'
 import { labelChangeRequest } from '../fixtures/label-change-request.ts'
-import { conversationsLabels, labels } from '../../_shared/drizzle/schema.ts'
+import { conversationAnalyses, conversationsLabels, labels } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { client } from '../utils.ts'
+import { createConversation } from '../factories/conversation.ts'
+import { createConversationAnalysis } from '../factories/analysis.ts'
 
 const FUNCTION_NAME = 'user-actions/'
 
@@ -36,6 +39,32 @@ describe(
         requestLabel.share_with_organization,
       )
       assertEquals(label[0].visibility, requestLabel.visibility)
+    })
+
+    // handleLabelChange must hand a finished analysis to the reconcile. The pure decision is covered in
+    // analysis-reconcile-tests; this is the wiring, so deleting the call fails here.
+    it('requeues a completed analysis when an impact label that disagrees with its tag is applied', async () => {
+      const conversation = await createConversation({ closed: true })
+      const analysis = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'completed',
+        tag: 'info-gap',
+        promptVersion: 'q3-v1-missive-labels',
+        attempts: 1,
+      })
+      const request = JSON.parse(JSON.stringify(labelChangeRequest))
+      request.conversation.id = conversation.id
+      request.conversation.shared_labels[0].name = 'Story tip'
+      request.conversation.shared_labels[0].name_with_parent_names = '..Impact Labels/Story tip'
+
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+
+      const [updated] = await supabase.select().from(conversationAnalyses).where(
+        eq(conversationAnalyses.id, analysis.id),
+      )
+      assertEquals(updated.status, 'pending')
+      assertEquals(updated.attempts, 0)
+      assertEquals(updated.tag, 'info-gap')
     })
 
     it('upsert', async () => {

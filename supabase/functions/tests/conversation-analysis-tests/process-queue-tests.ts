@@ -289,6 +289,30 @@ describe(
       assertEquals(updated.suppressReason, 'reopened-before-processing')
     })
 
+    // attempts above the cap is the path a reclaimed stale row takes, so this reaches the give-up logic without
+    // calling OpenAI or Slack. The same give-up is what a rerun hits when its Slack update or model call keeps throwing.
+    it('keeps the previous result when a rerun runs out of attempts', async () => {
+      const conversation = await createConversationWithInboundMessage('+13135556005', true)
+      const row = await createRequeuedRow(conversation.id)
+      await supabase.update(conversationAnalyses).set({ attempts: 3 }).where(eq(conversationAnalyses.id, row.id))
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+      const updated = await fetchRow(row.id)
+      assertEquals(updated.error?.startsWith('Exceeded 3 attempts'), true)
+    })
+
+    it('still marks a first run failed when it runs out of attempts', async () => {
+      const conversation = await createConversationWithInboundMessage('+13135556006', true)
+      const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending', tag: null })
+      await supabase.update(conversationAnalyses).set({ attempts: 3 }).where(eq(conversationAnalyses.id, row.id))
+
+      await invokeProcessQueue()
+
+      assertEquals((await fetchRow(row.id)).status, 'failed')
+    })
+
     it('still marks a first run skipped when the resident appears on another conversation', async () => {
       const residentPhone = '+13135556004'
       const conversation = await createConversationWithInboundMessage(residentPhone, true)
