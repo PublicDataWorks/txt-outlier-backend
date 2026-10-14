@@ -212,3 +212,119 @@ describe('conversation-analysis process-queue', { sanitizeOps: false, sanitizeRe
     }
   })
 })
+
+// A label change requeues a finished row (see analysis-reconcile.ts). If the rerun then hits one of the skip
+// checks, the row has to go back to completed with its result and Slack post untouched. Marking it skipped
+// would leave the old post live while dropping the row from every completed-analysis count.
+describe(
+  'conversation-analysis re-analysis that cannot go ahead',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    const PREVIOUS_TS = '1700000000.000100'
+
+    const createRequeuedRow = (conversationId: string) =>
+      createConversationAnalysis({
+        conversationId,
+        status: 'pending',
+        source: 'realtime',
+        tag: 'info-gap',
+        summary: 'Earlier summary',
+        promptVersion: 'q3-v1-missive-labels',
+        slackChannel: 'C0TEST',
+        slackMessageTs: PREVIOUS_TS,
+      })
+
+    const assertPreviousResultKept = async (id: number) => {
+      const row = await fetchRow(id)
+      assertEquals(row.status, 'completed')
+      assertEquals(row.tag, 'info-gap')
+      assertEquals(row.summary, 'Earlier summary')
+      assertEquals(row.slackMessageTs, PREVIOUS_TS)
+      assertEquals(row.suppressReason, null)
+    }
+
+    it('keeps the previous result when the conversation has no inbound message', async () => {
+      const conversation = await createConversation()
+      const residentPhone = '+13135556001'
+      await createAuthor(residentPhone)
+      await createAuthor(OUTLIER_PHONE_NUMBER)
+      await createConversationAuthor({ conversationId: conversation.id, authorPhoneNumber: residentPhone })
+      await createTwilioMessage({ fromField: OUTLIER_PHONE_NUMBER, toField: residentPhone })
+      const row = await createRequeuedRow(conversation.id)
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+    })
+
+    it('keeps the previous result when the resident now appears on another conversation', async () => {
+      const residentPhone = '+13135556002'
+      const conversation = await createConversationWithInboundMessage(residentPhone, true)
+      const other = await createConversation()
+      await createConversationAuthor({ conversationId: other.id, authorPhoneNumber: residentPhone })
+      const row = await createRequeuedRow(conversation.id)
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+    })
+
+    // A reopen must stay visible as 'skipped' with this reason: enqueueConversationAnalysis uses it to treat the
+    // next close as a new cycle. Restoring the row to completed would make that close look like a duplicate. A
+    // row with a Slack post would also have its post withdrawn, which needs Slack, so this uses a row without one.
+    it('skips a rerun whose conversation was reopened, so the next close starts a new cycle', async () => {
+      const conversation = await createConversationWithInboundMessage('+13135556003', false)
+      const row = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'pending',
+        source: 'realtime',
+        tag: 'noise-test',
+        promptVersion: 'q3-v1-missive-labels',
+      })
+
+      await invokeProcessQueue()
+
+      const updated = await fetchRow(row.id)
+      assertEquals(updated.status, 'skipped')
+      assertEquals(updated.suppressReason, 'reopened-before-processing')
+    })
+
+    // attempts above the cap is the path a reclaimed stale row takes, so this reaches the give-up logic without
+    // calling OpenAI or Slack. The same give-up is what a rerun hits when its Slack update or model call keeps throwing.
+    it('keeps the previous result when a rerun runs out of attempts', async () => {
+      const conversation = await createConversationWithInboundMessage('+13135556005', true)
+      const row = await createRequeuedRow(conversation.id)
+      await supabase.update(conversationAnalyses).set({ attempts: 3 }).where(eq(conversationAnalyses.id, row.id))
+
+      await invokeProcessQueue()
+
+      await assertPreviousResultKept(row.id)
+      const updated = await fetchRow(row.id)
+      assertEquals(updated.error?.startsWith('Exceeded 3 attempts'), true)
+    })
+
+    it('still marks a first run failed when it runs out of attempts', async () => {
+      const conversation = await createConversationWithInboundMessage('+13135556006', true)
+      const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending', tag: null })
+      await supabase.update(conversationAnalyses).set({ attempts: 3 }).where(eq(conversationAnalyses.id, row.id))
+
+      await invokeProcessQueue()
+
+      assertEquals((await fetchRow(row.id)).status, 'failed')
+    })
+
+    it('still marks a first run skipped when the resident appears on another conversation', async () => {
+      const residentPhone = '+13135556004'
+      const conversation = await createConversationWithInboundMessage(residentPhone, true)
+      const other = await createConversation()
+      await createConversationAuthor({ conversationId: other.id, authorPhoneNumber: residentPhone })
+      const row = await createConversationAnalysis({ conversationId: conversation.id, status: 'pending', tag: null })
+
+      await invokeProcessQueue()
+
+      const updated = await fetchRow(row.id)
+      assertEquals(updated.status, 'skipped')
+      assertEquals(updated.suppressReason, 'ambiguous-transcript')
+    })
+  },
+)
