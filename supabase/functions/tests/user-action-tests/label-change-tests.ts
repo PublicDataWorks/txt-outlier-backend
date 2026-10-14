@@ -1,11 +1,14 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals } from 'jsr:@std/assert'
+import { eq } from 'drizzle-orm'
 
 import '../setup.ts'
 import { labelChangeRequest } from '../fixtures/label-change-request.ts'
-import { conversationsLabels, labels } from '../../_shared/drizzle/schema.ts'
+import { conversationAnalyses, conversationsLabels, labels } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { client } from '../utils.ts'
+import { createConversation } from '../factories/conversation.ts'
+import { createConversationAnalysis } from '../factories/analysis.ts'
 
 const FUNCTION_NAME = 'user-actions/'
 
@@ -36,6 +39,96 @@ describe(
         requestLabel.share_with_organization,
       )
       assertEquals(label[0].visibility, requestLabel.visibility)
+    })
+
+    // handleLabelChange must hand a finished analysis to the reconcile. The pure decision is covered in
+    // analysis-reconcile-tests; this is the wiring, so deleting the call fails here.
+    it('requeues a completed analysis when an impact label that disagrees with its tag is applied', async () => {
+      const conversation = await createConversation({ closed: true })
+      const analysis = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'completed',
+        tag: 'info-gap',
+        promptVersion: 'q3-v1-missive-labels',
+        attempts: 1,
+      })
+      const request = JSON.parse(JSON.stringify(labelChangeRequest))
+      request.conversation.id = conversation.id
+      request.conversation.shared_labels[0].name = 'Story tip'
+      request.conversation.shared_labels[0].name_with_parent_names = '..Impact Labels/Story tip'
+
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+
+      const [updated] = await supabase.select().from(conversationAnalyses).where(
+        eq(conversationAnalyses.id, analysis.id),
+      )
+      assertEquals(updated.status, 'pending')
+      assertEquals(updated.attempts, 0)
+      assertEquals(updated.tag, 'info-gap')
+    })
+
+    // The requeue conditions live in the reconcile's compare-and-swap, not only in the pure decision, so each
+    // negative case is exercised through the webhook against the real database.
+    const applyImpactLabel = async (conversationId: string, labelName: string) => {
+      const request = JSON.parse(JSON.stringify(labelChangeRequest))
+      request.conversation.id = conversationId
+      request.conversation.shared_labels[0].name = labelName
+      request.conversation.shared_labels[0].name_with_parent_names = `..Impact Labels/${labelName}`
+      await client.functions.invoke(FUNCTION_NAME, { method: 'POST', body: request })
+    }
+
+    const fetchAnalysis = async (id: number) => {
+      const [row] = await supabase.select().from(conversationAnalyses).where(eq(conversationAnalyses.id, id))
+      return row
+    }
+
+    it('leaves a completed analysis alone when the conversation is open', async () => {
+      const conversation = await createConversation({ closed: false })
+      const analysis = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'completed',
+        tag: 'info-gap',
+        promptVersion: 'q3-v1-missive-labels',
+        attempts: 1,
+      })
+
+      await applyImpactLabel(conversation.id, 'Story tip')
+
+      assertEquals((await fetchAnalysis(analysis.id)).status, 'completed')
+    })
+
+    it('leaves a completed analysis alone when the applied label agrees with its tag', async () => {
+      const conversation = await createConversation({ closed: true })
+      const analysis = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'completed',
+        tag: 'story-tip',
+        promptVersion: 'q3-v1-missive-labels',
+        attempts: 1,
+      })
+
+      await applyImpactLabel(conversation.id, 'Story tip')
+
+      const updated = await fetchAnalysis(analysis.id)
+      assertEquals(updated.status, 'completed')
+      assertEquals(updated.attempts, 1)
+    })
+
+    it('leaves an analysis that is already processing alone', async () => {
+      const conversation = await createConversation({ closed: true })
+      const analysis = await createConversationAnalysis({
+        conversationId: conversation.id,
+        status: 'processing',
+        tag: 'info-gap',
+        promptVersion: 'q3-v1-missive-labels',
+        attempts: 1,
+      })
+
+      await applyImpactLabel(conversation.id, 'Story tip')
+
+      const updated = await fetchAnalysis(analysis.id)
+      assertEquals(updated.status, 'processing')
+      assertEquals(updated.attempts, 1)
     })
 
     it('upsert', async () => {
