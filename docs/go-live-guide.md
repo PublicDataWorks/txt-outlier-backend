@@ -76,6 +76,7 @@ Leaving the optional variables **unset or blank is safe** - empty values fall ba
    - `20260826211248_weekly_digest_thursday_eastern.sql` - Thursday 9:00 AM Eastern digest schedule
    - `20261006110000_conversations_labels_partial_unique_index.sql` - makes the active-link unique index partial, as in production (a no-op there)
    - `20261006120000_analysis_missive_label_source.sql` - Missive impact labels as the authoritative tag source
+   - `20261007190000_add_conversation_id_to_twilio_messages.sql` and `20261007190100_index_twilio_messages_conversation_id.sql` - `twilio_messages.conversation_id` and the staff activity view. **Not a plain `db push` on production:** follow the runbook at the top of `supabase/scripts/backfill_twilio_messages_conversation_id.sql` (manual column and `CREATE INDEX CONCURRENTLY` first, migrations before the `user-actions` deploy, then the backfill)
 3. Deploy the functions (new: `conversation-analysis`, `slack-interactions`, `weekly-digest`, `insights-dashboard`; changed: `user-actions` and shared code):
 
    ```bash

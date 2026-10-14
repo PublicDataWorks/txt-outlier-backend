@@ -10,9 +10,9 @@
 --
 -- The ALTER TABLE and ADD CONSTRAINT below need locks that every inbound SMS also needs: ADD COLUMN takes ACCESS
 -- EXCLUSIVE on twilio_messages, and ADD CONSTRAINT takes SHARE ROW EXCLUSIVE on twilio_messages and on conversations.
--- The Supabase CLI runs each statement of a migration file as its own transaction (a bare LOCK TABLE fails with
--- "can only be used in transaction blocks"), so the steps that must hold several locks together, and the view with
--- its REVOKE, are each a single DO block below. Keep this file free of slow statements; the index is built by the
+-- Whether the Supabase CLI runs a migration file as one transaction or statement by statement depends on its
+-- version, so nothing here relies on either: the steps that must hold several locks together, and the view with
+-- its REVOKE, are each a single DO block. Keep this file free of slow statements; the index is built by the
 -- next migration for that reason. If a long query holds a conflicting lock, the waiting ALTER queues every webhook
 -- write behind it, so lock_timeout makes the migration fail after 5 seconds instead; run it again when the table is
 -- quiet. Every step is guarded, so a run that stopped part-way can simply be repeated.

@@ -173,7 +173,8 @@ message itself is withdrawn at that point anyway, so the metrics match what the 
 
 ## Transcript attribution (a known limitation)
 
-`twilio_messages` has **no `conversation_id`**. A message is tied to a conversation only indirectly, through the phone
+`twilio_messages.conversation_id` is filled for new messages and, once the backfill has run, for almost all older ones, but
+the transcript query does not use it yet. It still ties a message to a conversation indirectly, through the phone
 numbers it shares with `conversations_authors`. Two consequences, both worth understanding before trusting output:
 
 **`OUTLIER_PHONE_NUMBER` must match the value in `twilio_messages` exactly.** In production that is the short code

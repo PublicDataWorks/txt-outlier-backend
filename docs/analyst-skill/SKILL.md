@@ -74,9 +74,15 @@ carries ~99% of traffic), `+18336856203`, `+13135138400`.
 | `reply_to_broadcast` / `reply_to_campaign` | Which send this was a reply to — the key to per-send response rates |
 | `delivered_at`, `created_at` | Use `created_at` for time-series unless you specifically need delivery time |
 | `sender_id` | Staff user who sent it, joins `users.id` |
+| `conversation_id` | Missive conversation the message belongs to. NULL for messages that could not be backfilled and for any stored before the column existed; treat NULL as "unattributed" |
 | `attachments` | MMS media |
 
 Data starts **2024-03-25**. `twilio_messages_old` is a pre-migration snapshot — ignore it.
+
+**Who worked on a conversation:** the view `conversation_staff_activity` has one row per (`conversation_id`, `user_id`)
+with `replies_sent`, `first_reply_at`, `last_reply_at`, `comments_count` and `currently_assigned`. Replies are outbound
+messages with a `sender_id`, excluding broadcast sends; automated replies have no sender and never appear. Messages with a
+NULL `conversation_id` are not counted. `currently_assigned` can stay true after a conversation is unassigned from everyone.
 
 ### Delivery outcomes — `message_statuses` (2,331,537 rows)
 

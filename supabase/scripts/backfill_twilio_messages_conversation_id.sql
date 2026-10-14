@@ -57,6 +57,8 @@
 --      index entries, which is several GB of WAL. twilio_messages is in the supabase_realtime publication, so each
 --      updated row is also a change event for any postgres_changes subscriber (RLS is checked per subscriber).
 --      Watch WAL volume, replication slot lag and replication lag while it runs, and stop if a slot falls behind.
+--      The sidebar only subscribes to INSERTs on twilio_messages, so it never receives these updates, but Realtime still
+--      decodes every one; if it falls behind, the sidebar's new-message flag is what users would notice.
 --   5. Re-run step 4 over the full range once more if you want to catch rows that arrived during the run
 --      (it is idempotent), then run the check below.
 --   6. Reclaim the dead rows, then validate the foreign key (cheap lock, scans the table once):
