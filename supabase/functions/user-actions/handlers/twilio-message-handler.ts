@@ -7,8 +7,7 @@ import { upsertAuthor, upsertConversation, upsertLabel } from './utils.ts'
 import { adaptTwilioMessage, adaptTwilioRequestAuthor } from '../adapters.ts'
 import Missive from '../../_shared/lib/Missive.ts'
 import supabase from '../../_shared/lib/supabase.ts'
-
-const RESUBSCRIBED_TERMS = ['start', 'resubscribe', 'detroit']
+import { isResubscribeRequest } from '../../_shared/misc/subscriptionKeywords.ts'
 
 const handleTwilioMessage = async (requestBody: RequestBody) => {
   await supabase.transaction(async (tx) => {
@@ -66,7 +65,7 @@ const insertTwilioMessage = async (
 }
 
 const handleResubscribe = async (requestBody: RequestBody) => {
-  if (RESUBSCRIBED_TERMS.some((term) => requestBody.message!.preview.trim().toLowerCase().includes(term))) {
+  if (isResubscribeRequest(requestBody.message!.preview)) {
     const sender = requestBody.message!.from_field.id
     const result = await supabase.select({ unsubscribed: authors.unsubscribed }).from(authors).where(
       eq(authors.phoneNumber, sender),
