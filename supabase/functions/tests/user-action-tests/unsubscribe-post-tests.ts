@@ -8,6 +8,7 @@ import { unsubscribedMessages } from '../../_shared/drizzle/schema.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { handleBroadcastReply } from '../../user-actions/handlers/broadcast-handlers.ts'
 import { handleTwilioMessage } from '../../user-actions/handlers/twilio-message-handler.ts'
+import { ensureOrganizationExists } from '../../user-actions/handlers/utils.ts'
 import { missiveMock } from '../_mock/missive.ts'
 import { createBroadcastMessageStatus } from '../factories/message-status.ts'
 import { newIncomingSmsRequest } from '../fixtures/incoming-twilio-message-request.ts'
@@ -22,7 +23,9 @@ const replyToBroadcast = async (preview: string) => {
     recipient: request.message!.from_field.id,
     createdAt: subMinutes(new Date(), 10).toISOString(),
   })
-  // Same order as user-actions/index.ts: the stored message is what unsubscribed_messages points at.
+  // Same order as user-actions/index.ts: the conversation row needs its organization, and the stored message is
+  // what unsubscribed_messages points at.
+  await ensureOrganizationExists(request.conversation.organization)
   await handleTwilioMessage(request)
   await handleBroadcastReply(request)
   return request
