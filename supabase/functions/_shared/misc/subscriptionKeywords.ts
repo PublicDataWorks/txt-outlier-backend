@@ -25,7 +25,8 @@ const normalize = (text: string): string =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const isOptOutWord = (word: string): boolean => /^s+t+o+p+$/.test(word) || word.startsWith('unsub')
+// Only s, t and p stretch: a doubled o is "stoop", an everyday word in Detroit.
+const isOptOutWord = (word: string): boolean => /^s+t+op+$/.test(word) || word.startsWith('unsub')
 
 const isUnsubscribeRequest = (text: string): boolean => {
   const normalized = normalize(text)

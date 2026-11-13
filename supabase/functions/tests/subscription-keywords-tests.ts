@@ -13,7 +13,15 @@ describe('isUnsubscribeRequest', () => {
   })
 
   it('matches a stretched stop or a word starting with unsub inside a sentence', () => {
-    for (const text of ['Stopp texting me', 'stoppp pls', 'I want to be unsubscribed', 'how do I unsubcribe']) {
+    for (
+      const text of [
+        'Stopp texting me',
+        'sstop texting',
+        'stoppp pls',
+        'I want to be unsubscribed',
+        'how do I unsubcribe',
+      ]
+    ) {
       assertEquals(isUnsubscribeRequest(text), true, text)
     }
   })
@@ -40,7 +48,17 @@ describe('isUnsubscribeRequest', () => {
   })
 
   it('ignores words that only contain stop inside a sentence', () => {
-    for (const text of ['I stopped by', 'nonstop traffic all day', 'stopping by later', '123', 'hello', '']) {
+    for (
+      const text of [
+        'I stopped by',
+        'nonstop traffic all day',
+        'stopping by later',
+        'sitting on my stoop',
+        '123',
+        'hello',
+        '',
+      ]
+    ) {
       assertEquals(isUnsubscribeRequest(text), false, text)
     }
   })
