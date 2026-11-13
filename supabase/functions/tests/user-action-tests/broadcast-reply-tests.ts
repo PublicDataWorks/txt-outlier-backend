@@ -123,6 +123,43 @@ describe(
       assertEquals(unsubscribeAfter[0].twilioMessageId, unsubscribeMsg.message!.id)
     })
 
+    it('stop inside a sentence unsubscribes', async () => {
+      const unsubscribeMsg = newIncomingSmsRequest
+      unsubscribeMsg.message!.preview = 'Can you stop calling me please'
+      unsubscribeMsg.message!.delivered_at = Date.now() / 1000
+      await createBroadcastMessageStatus({
+        recipient: unsubscribeMsg.message!.from_field.id,
+        createdAt: subMinutes(new Date(), 10).toISOString(),
+      })
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: unsubscribeMsg,
+      })
+
+      const unsubscribeAfter = await supabase.select().from(unsubscribedMessages)
+      assertEquals(unsubscribeAfter.length, 1)
+      assertEquals(unsubscribeAfter[0].twilioMessageId, unsubscribeMsg.message!.id)
+    })
+
+    it('words that only contain stop do not unsubscribe', async () => {
+      const msg = newIncomingSmsRequest
+      msg.message!.preview = 'I stopped by the office, nonstop traffic'
+      msg.message!.delivered_at = Date.now() / 1000
+      await createBroadcastMessageStatus({
+        recipient: msg.message!.from_field.id,
+        createdAt: subMinutes(new Date(), 10).toISOString(),
+      })
+
+      await client.functions.invoke(FUNCTION_NAME, {
+        method: 'POST',
+        body: msg,
+      })
+
+      const unsubscribeAfter = await supabase.select().from(unsubscribedMessages)
+      assertEquals(unsubscribeAfter.length, 0)
+    })
+
     it('other terms not count as unsubscribe', async () => {
       const unsubscribeMsg = newIncomingSmsRequest
       unsubscribeMsg.message!.preview = '123'

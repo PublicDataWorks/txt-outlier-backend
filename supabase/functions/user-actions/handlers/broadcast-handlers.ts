@@ -13,9 +13,7 @@ import Missive from '../../_shared/lib/Missive.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
 import { pgmqDelete } from '../../_shared/scheduledcron/queries.ts'
-
-const UNSUBSCRIBED_TERMS = ['stop', 'unsubscribe']
-const START_TERMS = ['start']
+import { isUnsubscribeRequest } from '../../_shared/misc/subscriptionKeywords.ts'
 
 interface BroadcastMessageUpdate {
   twilioSentAt: Date | null
@@ -62,7 +60,18 @@ const updateSubscriptionStatus = async (
       await supabase.insert(unsubscribedMessages).values(newUnsubscribedMessage)
 
       if (conversationId) {
-        await Missive.createPost(conversationId, `This phone number ${phoneNumber} has now been unsubscribed`)
+        // Label and close the conversation, the same end state Missive's own STOP rule produces. Missive's rule only
+        // matches a bare "STOP", so without this a message like "stop texting me" stays open and unlabeled, and the
+        // ELSE auto-reply goes out to someone who just opted out.
+        const unsubscribedLabelId = Deno.env.get('MISSIVE_UNSUBSCRIBED_LABEL_ID') || undefined
+        const response = await Missive.createPost(
+          conversationId,
+          `This phone number ${phoneNumber} has now been unsubscribed`,
+          unsubscribedLabelId,
+        )
+        if (!response?.ok) {
+          console.error(`Failed to post unsubscribe note to conversation ${conversationId}: ${response?.status}`)
+        }
       }
     }
   } catch (error) {
@@ -85,9 +94,7 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
         )
       }
     }
-    const messageContent = requestMessage.preview.trim().toLowerCase()
-
-    if (UNSUBSCRIBED_TERMS.some((term) => messageContent.includes(term))) {
+    if (isUnsubscribeRequest(requestMessage.preview)) {
       await updateSubscriptionStatus(phoneNumber, true, requestBody.conversation.id, {
         broadcastId: sentMessage[0]?.broadcastId,
         messageId: requestMessage.id,
@@ -104,9 +111,7 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
           })
           .where(eq(twilioMessages.id, requestMessage.id))
       }
-      if (START_TERMS.some((term) => messageContent.includes(term))) {
-        await updateSubscriptionStatus(phoneNumber, false)
-      }
+      // Resubscribing is handled by handleResubscribe, which also posts a note to the conversation.
     }
   } catch (error) {
     console.error('Error handling broadcast reply:', error)

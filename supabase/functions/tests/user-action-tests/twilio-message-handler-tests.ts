@@ -31,7 +31,7 @@ describe(
       assertEquals(authorBefore[0].unsubscribed, true)
 
       const resubscribeMsg = structuredClone(newIncomingSmsRequest)
-      resubscribeMsg.message!.preview = 'start11232'
+      resubscribeMsg.message!.preview = 'START'
       resubscribeMsg.message!.from_field.id = phoneNumber
       await client.functions.invoke(FUNCTION_NAME, {
         method: 'POST',
@@ -69,6 +69,35 @@ describe(
         .from(authors)
         .where(eq(authors.phoneNumber, phoneNumber))
       assertEquals(authorAfter[0].unsubscribed, false)
+    })
+
+    it('does not resubscribe when a keyword only appears inside a longer message', async () => {
+      const phoneNumber = '+11234567894'
+      const conversationId = 'b0fdedc9-ac8a-47c5-a11d-b48bcaf33a2e'
+
+      await supabase.insert(authors).values({
+        phoneNumber,
+        unsubscribed: true,
+      })
+
+      for (const preview of ['I live in Detroit', 'when does it start?', 'start11232']) {
+        const msg = structuredClone(newIncomingSmsRequest)
+        msg.message!.preview = preview
+        msg.message!.from_field.id = phoneNumber
+        msg.conversation.id = conversationId
+        msg.message!.id = crypto.randomUUID()
+
+        await client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: msg,
+        })
+      }
+
+      const authorAfter = await supabase
+        .select()
+        .from(authors)
+        .where(eq(authors.phoneNumber, phoneNumber))
+      assertEquals(authorAfter[0].unsubscribed, true)
     })
 
     it('ignores non-resubscribe terms', async () => {

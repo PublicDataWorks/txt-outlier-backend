@@ -13,7 +13,10 @@
 - **Message Status Tracking**: Monitor message statuses through the `send-messages` and `reconcile-twilio-status` edge
   functions, handling success and failure scenarios.
 - **Unsubscribe Handling**: Manage unsubscription requests with the `admin-action` edge function, triggered by Missive
-  rules, and update the `unsubscribe` field accordingly.
+  rules, and update the `unsubscribe` field accordingly. Incoming texts are also checked by `user-actions`
+  (`_shared/misc/subscriptionKeywords.ts`): "stop" or "unsubscribe" as a whole word anywhere in a message unsubscribes
+  the sender, and adds the `MISSIVE_UNSUBSCRIBED_LABEL_ID` label and closes the conversation. Resubscribing requires
+  the whole message to be START, UNSTOP, RESUBSCRIBE or DETROIT.
 - **Failed Message Handling**: Use `handle-failed-deliveries` to process conversations with multiple failed messages,
   applying the `undeliverable` label and updating the `unsubscribe` field.
 - **Message Archival**: Implement `archive-double-failures` to archive conversations with consecutive failed messages,
