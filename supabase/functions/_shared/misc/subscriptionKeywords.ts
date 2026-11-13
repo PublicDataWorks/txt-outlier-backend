@@ -1,7 +1,9 @@
 // Decides whether an incoming text asks to unsubscribe or resubscribe.
 //
 // Unsubscribe is deliberately generous: "stop" or "unsubscribe" as a whole word anywhere in the message counts, so
-// "Can you stop texting me" unsubscribes. Words that merely contain those letters ("stopped", "nonstop") do not.
+// "Can you stop texting me" unsubscribes. Inside a sentence, words that merely contain those letters ("stopped by",
+// "nonstop") do not. A one-word reply that contains "stop" or "unsub" does: on production those are misspelled opt-outs
+// ("stope", "sstop", "stoppppp", "stop2end"), and the carrier ignores them because it only knows the exact keywords.
 // The standard carrier opt-out keywords (CANCEL, END, QUIT, STOPALL) count only when they are the whole message,
 // because they are ordinary words in a sentence.
 //
@@ -21,8 +23,11 @@ const normalize = (text: string): string =>
 
 const isUnsubscribeRequest = (text: string): boolean => {
   const normalized = normalize(text)
+  // UNSTOP contains "stop" but asks for the opposite.
+  if (RESUBSCRIBE_EXACT.includes(normalized)) return false
   if (UNSUBSCRIBE_EXACT.includes(normalized)) return true
   const words = normalized.split(' ')
+  if (words.length === 1 && /stop|unsub/.test(normalized)) return true
   return UNSUBSCRIBE_WORDS.some((term) => words.includes(term))
 }
 
