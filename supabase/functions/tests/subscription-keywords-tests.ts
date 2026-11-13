@@ -12,11 +12,23 @@ describe('isUnsubscribeRequest', () => {
     }
   })
 
-  it('matches carrier opt-out keywords only as the whole message', () => {
-    for (const text of ['CANCEL', 'end', 'Quit', 'STOPALL']) {
+  it('matches a stretched stop or a word starting with unsub inside a sentence', () => {
+    for (const text of ['Stopp texting me', 'stoppp pls', 'I want to be unsubscribed', 'how do I unsubcribe']) {
       assertEquals(isUnsubscribeRequest(text), true, text)
     }
-    for (const text of ['cancel my water shutoff', 'at the end of the block', 'I quit my job']) {
+  })
+
+  it('folds fullwidth and accented letters before matching', () => {
+    for (const text of ['ＳＴＯＰ', 'stöp', 'Stóp texting me']) {
+      assertEquals(isUnsubscribeRequest(text), true, text)
+    }
+  })
+
+  it('matches carrier opt-out keywords only as the whole message', () => {
+    for (const text of ['CANCEL', 'end', 'Quit', 'STOPALL', 'OPTOUT', 'Revoke']) {
+      assertEquals(isUnsubscribeRequest(text), true, text)
+    }
+    for (const text of ['cancel my water shutoff', 'at the end of the block', 'I quit my job', 'revoke my permit']) {
       assertEquals(isUnsubscribeRequest(text), false, text)
     }
   })
