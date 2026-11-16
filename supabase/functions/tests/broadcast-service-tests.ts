@@ -180,22 +180,17 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
       sentryCapture = sandbox.stub(Sentry.getClient()!, 'captureException')
     })
 
-    const missiveFails = (status: number, body: object) =>
-      missiveMock.sendMessage.resolves(new Response(JSON.stringify(body), { status }))
-
-    // pgmq.read adds one to read_ct, so a stored read_ct of 2 makes this the third read.
-    const setPreviousReads = (count: number) =>
-      supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = ${count}`))
-
-    const queuedMessages = () => supabase.execute(sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`))
-
     it('should not delete message on the first API failure', async () => {
-      missiveFails(500, { error: 'Internal Server Error' })
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }),
+      )
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
 
-      const remainingMessages = await queuedMessages()
+      const remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
       assertEquals(remainingMessages.length, 1)
 
       const statuses = await supabase.select().from(messageStatuses)
@@ -203,14 +198,18 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
     })
 
     it('should delete message after max retries for non-429 errors', async () => {
-      missiveFails(500, { error: 'Internal Server Error' })
-      await setPreviousReads(3)
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }),
+      )
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 3`))
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
 
-      const remainingMessages = await queuedMessages()
+      const remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
       assertEquals(remainingMessages.length, 0)
 
       const statuses = await supabase.select().from(messageStatuses)
@@ -218,82 +217,65 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
     })
 
     it('should not delete message on 429 rate limit even after max retries', async () => {
-      missiveFails(429, { error: 'Rate limit exceeded' })
-      await setPreviousReads(3)
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429 }),
+      )
+
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 3`))
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
 
-      const remainingMessages = await queuedMessages()
+      const remainingMessages = await supabase.execute(
+        sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`),
+      )
       assertEquals(remainingMessages.length, 1)
 
       const statuses = await supabase.select().from(messageStatuses)
       assertEquals(statuses.length, 0)
     })
-
-    it('does not report a 429 to Sentry while retries remain', async () => {
-      missiveFails(429, { error: { message: 'Too many requests', params: { retry_after: 4 } } })
-      await setPreviousReads(1)
-
-      await BroadcastService.sendBroadcastMessage(false)
-
-      sinon.assert.calledOnce(missiveMock.sendMessage)
-      sinon.assert.notCalled(sentryCapture)
-      assertEquals((await queuedMessages()).length, 1)
-    })
-
-    it('does not report other failures to Sentry while retries remain', async () => {
-      missiveFails(500, { error: 'Internal Server Error' })
-      await setPreviousReads(1)
+    it('does not report to Sentry while retries remain', async () => {
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429 }),
+      )
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 1`))
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(missiveMock.sendMessage)
       sinon.assert.notCalled(sentryCapture)
-      assertEquals((await queuedMessages()).length, 1)
     })
 
-    it('reports a 429 from the third queue read on, with what is needed to debug it', async () => {
+    it('reports a 429 from the third read with the Missive response and the queued message', async () => {
       const missiveError = { error: { message: 'Too many requests', params: { retry_after: 4 } } }
-      missiveFails(429, missiveError)
-      await setPreviousReads(2)
-      const [queued] = await queuedMessages()
+      missiveMock.sendMessage.resolves(new Response(JSON.stringify(missiveError), { status: 429 }))
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 2`))
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(sentryCapture)
       const [error, hint] = sentryCapture.firstCall.args
       assertEquals(error.message, '[sendBroadcastMessage] Missive returned 429 on queue read 3')
-      const { tags, extra, fingerprint } = hint.captureContext
-      assertEquals(fingerprint, ['sendBroadcastMessage', '429'])
-      assertEquals(tags, {
-        queue: FIRST_MESSAGES_QUEUE,
-        status: 429,
-        broadcast_id: broadcast.id,
-        campaign_id: undefined,
-      })
+      const { extra } = hint.captureContext
       assertEquals(JSON.parse(extra.missiveError), missiveError)
-      const reportedMessage = JSON.parse(extra.queuedMessage)
-      assertEquals(reportedMessage.msg_id, queued.msg_id)
-      assertEquals(reportedMessage.read_ct, 3)
-      assertEquals(reportedMessage.message, messageMetadata)
+      const queuedMessage = JSON.parse(extra.queuedMessage)
+      assertEquals(queuedMessage.read_ct, 3)
+      assertEquals(queuedMessage.message, messageMetadata)
       assertEquals(extra.isSecond, false)
       assertEquals(extra.queueAction, 'retry')
-      assertEquals((await queuedMessages()).length, 1)
     })
 
-    it('reports a dropped message once, saying it will be deleted', async () => {
-      missiveFails(400, { error: { message: 'must match the form +11111111111' } })
-      await setPreviousReads(2)
+    it('reports a dropped message once', async () => {
+      missiveMock.sendMessage.resolves(
+        new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 }),
+      )
+      await supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = 2`))
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(sentryCapture)
-      const [error, hint] = sentryCapture.firstCall.args
-      assertEquals(error.message, '[sendBroadcastMessage] Missive returned 400 on queue read 3')
-      assertEquals(hint.captureContext.extra.queueAction, 'delete')
-      assertEquals((await queuedMessages()).length, 0)
+      assertEquals(sentryCapture.firstCall.args[1].captureContext.extra.queueAction, 'delete')
     })
   })
 

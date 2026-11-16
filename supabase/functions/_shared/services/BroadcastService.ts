@@ -78,11 +78,6 @@ const sendNow = async (): Promise<void> => {
   await createNextBroadcast(broadcast, true)
 }
 
-// Missive answers thousands of 429s per broadcast, and pgmq retries each one 180 s later. Over 90 days of
-// production no message needed more than 3 reads, so a failure is reported from that read on. A non-429 is also
-// dropped there; a 429 keeps retrying.
-const REPORT_FROM_READ_COUNT = 3
-
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
   // We see a lot 429 and 503 errors from Missive API, 180 seconds is a good time to wait
@@ -136,43 +131,37 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
         secondMessageQueueId: secondMessageQueueId,
       })
   } else {
-    const queuedMessage = results[0]
     const missiveError = JSON.stringify(await response.json())
-    const queuedMessageJson = JSON.stringify(queuedMessage)
-    console.error(
-      `[sendBroadcastMessage] Failed to send broadcast message. status: ${response.status}, read_ct: ${queuedMessage.read_ct}, isSecond: ${isSecond}, broadcast: ${messageMetadata.broadcast_id}, campaign: ${messageMetadata.campaign_id}
+    const errorMessage = `
+        [sendBroadcastMessage] Failed to send broadcast message.
         ${missiveError}
-        Message: ${queuedMessageJson}`,
-    )
-    if (queuedMessage.read_ct < REPORT_FROM_READ_COUNT) {
-      return
+        Message: ${JSON.stringify(results[0])},
+        isSecond: ${isSecond},
+        broadcast: ${messageMetadata.broadcast_id}
+      `
+    console.error(errorMessage)
+    // Missive answers thousands of 429s per broadcast that the retry gets through, so Sentry only hears about a
+    // send from its 3rd read. Extra goes as JSON strings because Sentry cuts objects there at depth 3.
+    if (results[0].read_ct > 2) {
+      Sentry.captureException(
+        new Error(`[sendBroadcastMessage] Missive returned ${response.status} on queue read ${results[0].read_ct}`),
+        {
+          extra: {
+            missiveError,
+            queuedMessage: JSON.stringify(results[0]),
+            isSecond,
+            queueAction: response.status === 429 ? 'retry' : 'delete',
+          },
+        },
+      )
     }
-
-    // A rate-limited message stays queued and keeps retrying; any other failure is dropped.
-    const isRateLimited = response.status === 429
-    Sentry.captureException(
-      new Error(`[sendBroadcastMessage] Missive returned ${response.status} on queue read ${queuedMessage.read_ct}`),
-      {
-        fingerprint: ['sendBroadcastMessage', String(response.status)],
-        tags: {
-          queue: queueName,
-          status: response.status,
-          broadcast_id: messageMetadata.broadcast_id,
-          campaign_id: messageMetadata.campaign_id,
-        },
-        // Sentry cuts objects in extra at depth 3, which would hide retry_after, so these go as JSON strings.
-        extra: {
-          missiveError,
-          queuedMessage: queuedMessageJson,
-          isSecond,
-          queueAction: isRateLimited ? 'retry' : 'delete',
-        },
-      },
-    )
-    if (!isRateLimited) {
+    if (results[0].read_ct > 2 && response?.status !== 429) {
       // TODO: Insert somewhere to handle failed deliveries
-      await supabase.execute(pgmqDelete(queueName, queuedMessage.msg_id))
-      console.error(`[sendBroadcastMessage] Deleted msg_id ${queuedMessage.msg_id} from ${queueName}`)
+      await supabase.execute(pgmqDelete(queueName, results[0].msg_id))
+      const errorMsg = `Message deleted from ${queueName}. Status code: ${response?.status}. ${
+        JSON.stringify(messageMetadata)
+      }`
+      console.error(errorMsg)
     }
   }
 }
