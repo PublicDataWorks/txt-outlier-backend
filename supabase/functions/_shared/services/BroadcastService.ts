@@ -79,8 +79,9 @@ const sendNow = async (): Promise<void> => {
 }
 
 // Missive answers thousands of 429s per broadcast, and pgmq retries each one 180 s later. Over 90 days of
-// production no message needed more than 3 reads, so Sentry only hears about a send once it reaches that.
-const MAX_SEND_ATTEMPTS = 3
+// production no message needed more than 3 reads, so a failure is reported from that read on. A non-429 is also
+// dropped there; a 429 keeps retrying.
+const REPORT_FROM_READ_COUNT = 3
 
 const sendBroadcastMessage = async (isSecond: boolean) => {
   const queueName = isSecond ? SECOND_MESSAGES_QUEUE_NAME : FIRST_MESSAGES_QUEUE
@@ -139,18 +140,18 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     const missiveError = JSON.stringify(await response.json())
     const queuedMessageJson = JSON.stringify(queuedMessage)
     console.error(
-      `[sendBroadcastMessage] Failed to send broadcast message. status: ${response.status}, attempt: ${queuedMessage.read_ct}, isSecond: ${isSecond}, broadcast: ${messageMetadata.broadcast_id}, campaign: ${messageMetadata.campaign_id}
+      `[sendBroadcastMessage] Failed to send broadcast message. status: ${response.status}, read_ct: ${queuedMessage.read_ct}, isSecond: ${isSecond}, broadcast: ${messageMetadata.broadcast_id}, campaign: ${messageMetadata.campaign_id}
         ${missiveError}
         Message: ${queuedMessageJson}`,
     )
-    if (queuedMessage.read_ct < MAX_SEND_ATTEMPTS) {
+    if (queuedMessage.read_ct < REPORT_FROM_READ_COUNT) {
       return
     }
 
     // A rate-limited message stays queued and keeps retrying; any other failure is dropped.
     const isRateLimited = response.status === 429
     Sentry.captureException(
-      new Error(`[sendBroadcastMessage] Missive returned ${response.status} on attempt ${queuedMessage.read_ct}`),
+      new Error(`[sendBroadcastMessage] Missive returned ${response.status} on queue read ${queuedMessage.read_ct}`),
       {
         fingerprint: ['sendBroadcastMessage', String(response.status)],
         tags: {
@@ -171,6 +172,7 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
     if (!isRateLimited) {
       // TODO: Insert somewhere to handle failed deliveries
       await supabase.execute(pgmqDelete(queueName, queuedMessage.msg_id))
+      console.error(`[sendBroadcastMessage] Deleted msg_id ${queuedMessage.msg_id} from ${queueName}`)
     }
   }
 }

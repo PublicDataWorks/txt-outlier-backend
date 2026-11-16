@@ -183,8 +183,8 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
     const missiveFails = (status: number, body: object) =>
       missiveMock.sendMessage.resolves(new Response(JSON.stringify(body), { status }))
 
-    // pgmq.read adds one to read_ct, so a stored read_ct of 2 makes this the third attempt.
-    const setPreviousAttempts = (count: number) =>
+    // pgmq.read adds one to read_ct, so a stored read_ct of 2 makes this the third read.
+    const setPreviousReads = (count: number) =>
       supabase.execute(sql.raw(`UPDATE pgmq.q_${FIRST_MESSAGES_QUEUE} SET read_ct = ${count}`))
 
     const queuedMessages = () => supabase.execute(sql.raw(`SELECT * FROM pgmq.q_${FIRST_MESSAGES_QUEUE}`))
@@ -204,7 +204,7 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
 
     it('should delete message after max retries for non-429 errors', async () => {
       missiveFails(500, { error: 'Internal Server Error' })
-      await setPreviousAttempts(3)
+      await setPreviousReads(3)
 
       await BroadcastService.sendBroadcastMessage(false)
 
@@ -219,7 +219,7 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
 
     it('should not delete message on 429 rate limit even after max retries', async () => {
       missiveFails(429, { error: 'Rate limit exceeded' })
-      await setPreviousAttempts(3)
+      await setPreviousReads(3)
 
       await BroadcastService.sendBroadcastMessage(false)
 
@@ -234,32 +234,37 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
 
     it('does not report a 429 to Sentry while retries remain', async () => {
       missiveFails(429, { error: { message: 'Too many requests', params: { retry_after: 4 } } })
-      await setPreviousAttempts(1)
+      await setPreviousReads(1)
 
       await BroadcastService.sendBroadcastMessage(false)
 
+      sinon.assert.calledOnce(missiveMock.sendMessage)
       sinon.assert.notCalled(sentryCapture)
+      assertEquals((await queuedMessages()).length, 1)
     })
 
     it('does not report other failures to Sentry while retries remain', async () => {
       missiveFails(500, { error: 'Internal Server Error' })
+      await setPreviousReads(1)
 
       await BroadcastService.sendBroadcastMessage(false)
 
+      sinon.assert.calledOnce(missiveMock.sendMessage)
       sinon.assert.notCalled(sentryCapture)
+      assertEquals((await queuedMessages()).length, 1)
     })
 
-    it('reports a 429 from the last attempt on, with what is needed to debug it', async () => {
+    it('reports a 429 from the third queue read on, with what is needed to debug it', async () => {
       const missiveError = { error: { message: 'Too many requests', params: { retry_after: 4 } } }
       missiveFails(429, missiveError)
-      await setPreviousAttempts(2)
+      await setPreviousReads(2)
       const [queued] = await queuedMessages()
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(sentryCapture)
       const [error, hint] = sentryCapture.firstCall.args
-      assertEquals(error.message, '[sendBroadcastMessage] Missive returned 429 on attempt 3')
+      assertEquals(error.message, '[sendBroadcastMessage] Missive returned 429 on queue read 3')
       const { tags, extra, fingerprint } = hint.captureContext
       assertEquals(fingerprint, ['sendBroadcastMessage', '429'])
       assertEquals(tags, {
@@ -278,15 +283,15 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
       assertEquals((await queuedMessages()).length, 1)
     })
 
-    it('reports a dropped message once, saying it was deleted', async () => {
+    it('reports a dropped message once, saying it will be deleted', async () => {
       missiveFails(400, { error: { message: 'must match the form +11111111111' } })
-      await setPreviousAttempts(2)
+      await setPreviousReads(2)
 
       await BroadcastService.sendBroadcastMessage(false)
 
       sinon.assert.calledOnce(sentryCapture)
       const [error, hint] = sentryCapture.firstCall.args
-      assertEquals(error.message, '[sendBroadcastMessage] Missive returned 400 on attempt 3')
+      assertEquals(error.message, '[sendBroadcastMessage] Missive returned 400 on queue read 3')
       assertEquals(hint.captureContext.extra.queueAction, 'delete')
       assertEquals((await queuedMessages()).length, 0)
     })
