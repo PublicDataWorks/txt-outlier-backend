@@ -160,7 +160,12 @@ const sendBroadcastMessage = async (isSecond: boolean) => {
           campaign_id: messageMetadata.campaign_id,
         },
         // Sentry cuts objects in extra at depth 3, which would hide retry_after, so these go as JSON strings.
-        extra: { missiveError, queuedMessage: queuedMessageJson, isSecond, deletedFromQueue: !isRateLimited },
+        extra: {
+          missiveError,
+          queuedMessage: queuedMessageJson,
+          isSecond,
+          queueAction: isRateLimited ? 'retry' : 'delete',
+        },
       },
     )
     if (!isRateLimited) {

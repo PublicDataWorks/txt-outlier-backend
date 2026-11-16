@@ -274,7 +274,7 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
       assertEquals(reportedMessage.read_ct, 3)
       assertEquals(reportedMessage.message, messageMetadata)
       assertEquals(extra.isSecond, false)
-      assertEquals(extra.deletedFromQueue, false)
+      assertEquals(extra.queueAction, 'retry')
       assertEquals((await queuedMessages()).length, 1)
     })
 
@@ -287,7 +287,7 @@ describe('sendBroadcastMessage', { sanitizeOps: false, sanitizeResources: false 
       sinon.assert.calledOnce(sentryCapture)
       const [error, hint] = sentryCapture.firstCall.args
       assertEquals(error.message, '[sendBroadcastMessage] Missive returned 400 on attempt 3')
-      assertEquals(hint.captureContext.extra.deletedFromQueue, true)
+      assertEquals(hint.captureContext.extra.queueAction, 'delete')
       assertEquals((await queuedMessages()).length, 0)
     })
   })
