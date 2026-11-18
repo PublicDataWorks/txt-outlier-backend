@@ -53,7 +53,7 @@ const STOP_WORD = 's+t+op+'
 // What "remove me" or "take me off" can point at and still mean our texts: "remove me from this list".
 const OUR_TEXTS = '(this |the |your |ur |that |these |all )*(list|texts?|txts?|messages?|msgs?|service|outlier|number)'
 
-// Clear opt-out phrases, matched one sentence at a time against the normalized text (lowercase, letters and digits,
+// Clear opt-out phrases, matched one clause at a time against the normalized text (lowercase, letters and digits,
 // single spaces), so a phrase can't run across two sentences ("I'm at the bus stop. Text me").
 const OPT_OUT_PHRASES = [
   new RegExp(`\\b${STOP_WORD} ${TEXT_VERB}\\b`), // stop texting, stop sending, stop calling me
@@ -92,6 +92,8 @@ const PLACE_STOP = new RegExp(
 
 // Sentence breaks, including the ideographic full stop some keyboards use ("ＳＴＯＰ。Who is this?").
 const SENTENCE_BREAK = /[.!?;\n。！？]+/
+// Clause breaks, so a negation in one clause can't swallow a request in the next ("I can't, just stop texting me").
+const CLAUSE_BREAK = /[.!?;\n。！？,，:—–]+/
 
 // NFKD turns fullwidth letters ("ＳＴＯＰ") into plain ones and splits accents off ("stöp"), so the accents can be
 // dropped before everything else non-alphanumeric becomes a space.
@@ -133,13 +135,13 @@ const classifyOptOut = (text: string): OptOutKind => {
   const words = normalized.split(' ')
   if (words.length === 1) return /stop|unsub/.test(normalized) ? 'optout' : 'none'
 
-  // Look at one sentence at a time: a bare keyword ("stop please", "Stop. Who is this?") or an explicit phrase.
-  const sentences = text.split(SENTENCE_BREAK).map((sentence) => normalize(sentence).replace(NEGATED_VERB, ' '))
+  // A bare keyword as its own sentence ("stop please", "Stop. Who is this?"), or an explicit phrase in one clause.
   if (text.split(SENTENCE_BREAK).some(isBareKeyword)) return 'optout'
-  if (sentences.some((sentence) => OPT_OUT_PHRASES.some((phrase) => phrase.test(sentence.trim())))) return 'optout'
+  const clauses = text.split(CLAUSE_BREAK).map((clause) => normalize(clause).replace(NEGATED_VERB, ' ').trim())
+  if (clauses.some((clause) => OPT_OUT_PHRASES.some((phrase) => phrase.test(clause)))) return 'optout'
 
   // Drop the harmless uses of "stop", then see whether any stop or unsub word is left.
-  const remaining = normalized.replace(NEGATED_VERB, ' ').replace(PLACE_STOP, ' ').split(' ')
+  const remaining = clauses.join(' ').replace(PLACE_STOP, ' ').split(' ')
   if (remaining.some((word) => isStopWord(word) || word.startsWith('unsub'))) return 'possible'
   return 'none'
 }

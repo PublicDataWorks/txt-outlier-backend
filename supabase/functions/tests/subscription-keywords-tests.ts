@@ -57,6 +57,7 @@ describe('classifyOptOut', () => {
       'Remove me',
       'take me off your list',
       "I don't care, stop texting me",
+      "I can't, just stop texting me",
       'opt me out',
       "don't text me anymore",
       'Do not contact me',
