@@ -17,8 +17,8 @@
   (`_shared/misc/subscriptionKeywords.ts`). A clear opt-out (a bare STOP or other carrier keyword, a one-word typo
   like "stope", or a phrase like "stop texting me" or "unsubscribe me") unsubscribes the sender, adds the
   `MISSIVE_UNSUBSCRIBED_LABEL_ID` label and closes the conversation. Any other use of "stop" or "unsub" ("how do I stop
-  my water shutoff") only adds the `MISSIVE_POSSIBLE_OPTOUT_LABEL_ID` label and a note, and leaves the conversation open
-  for an editor, who comments UNSUBSCRIBE if it is an opt-out. Phone reactions ('Liked "…STOP to unsubscribe"') are
+  my water shutoff") only posts a note, plus the `MISSIVE_POSSIBLE_OPTOUT_LABEL_ID` label when that setting is
+  configured, and leaves the conversation open for an editor, who comments UNSUBSCRIBE if it is an opt-out. Phone reactions ('Liked "…STOP to unsubscribe"') are
   ignored. Resubscribing requires the whole message to be START, UNSTOP, RESUBSCRIBE or DETROIT.
 - **Failed Message Handling**: Use `handle-failed-deliveries` to process conversations with multiple failed messages,
   applying the `undeliverable` label and updating the `unsubscribe` field.

@@ -32,7 +32,7 @@ describe('classifyOptOut', () => {
   })
 
   it('treats STOP as its own sentence inside a longer message as a clear opt-out', () => {
-    expectAll('optout', ['Stop. Who is this?', 'Who is this? Stop'])
+    expectAll('optout', ['Stop. Who is this?', 'Who is this? Stop', 'ＳＴＯＰ。Who is this?'])
   })
 
   it('treats a one-word reply that contains stop or unsub as a clear opt-out, the way typos arrive', () => {
@@ -52,7 +52,10 @@ describe('classifyOptOut', () => {
       'how do I unsubcribe',
       'I would like to unsubscribe',
       'Remove me from this list',
+      'remove me please',
+      'Remove me',
       'take me off your list',
+      "I don't care, stop texting me",
       'opt me out',
       "don't text me anymore",
       'Do not contact me',
@@ -82,6 +85,9 @@ describe('classifyOptOut', () => {
       'waiting at the bus stop',
       'I will stop by tomorrow',
       'turn left at the stop sign',
+      "Please don't ever stop texting me",
+      "Please don't unsubscribe me",
+      "I'm at the bus stop. Text me when you get here.",
     ])
   })
 
@@ -90,7 +96,13 @@ describe('classifyOptOut', () => {
       "Liked “Hello from Outlier Media, Detroit's nonprofit newsroom. STOP to unsubscribe.”",
       'Loved "Reply STOP to unsubscribe"',
       'Reacted 👍 to “STOP to unsubscribe. HELP for support”',
+      'Removed ❤️ from “Reply STOP to unsubscribe”',
+      'Loved “Hello from Outlier Media. Reply STOP to unsub', // Missive cut the preview before the closing quote
     ])
+  })
+
+  it('still checks what the resident typed after a quoted reaction', () => {
+    expectAll('optout', ['Loved "the story", please stop texting me'])
   })
 
   it('ignores ordinary messages and carrier keywords used in a sentence', () => {
@@ -103,6 +115,8 @@ describe('classifyOptOut', () => {
       'I quit my job',
       'revoke my permit',
       'can you take me to the hearing',
+      'Remove me from the raffle',
+      "I can't make the meeting. Cancel it.",
       '123',
       'hello',
       '',

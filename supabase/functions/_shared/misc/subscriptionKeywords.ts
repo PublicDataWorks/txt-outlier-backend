@@ -41,28 +41,42 @@ const FILLER_WORDS = new Set([
 
 // iPhone and Android send a reaction as a text that quotes our whole message, which usually includes "STOP to
 // unsubscribe" and "Detroit". The quote must follow the prefix, so "I loved the article, please stop" still counts.
-const REACTION = /^\s*(loved|liked|disliked|laughed at|emphasi[sz]ed|questioned|reacted\s+\S{1,12}\s+to)\s*[“"]/i
+// Missive's preview can cut a long message before the closing quote, so only the opening quote is required. When the
+// closing quote is there, anything typed after it is still checked.
+const REACTION =
+  /^\s*(loved|liked|disliked|laughed at|emphasi[sz]ed|questioned|reacted\s+\S{1,12}\s+to|removed\s+\S{1,12}\s+from)\s*[“"]/i
+const CLOSING_QUOTE = /[”"]/
 
 const UNSUB_ASKS = 'want|wanna|would like|need|trying|how do i|how can i|how to|can you|could you|please|pls|plz'
 const TEXT_VERB = '(text|txt|tex|message|msg|contact|call|send|spam|email|bother|hit up)(ing|in|s)?'
 const STOP_WORD = 's+t+op+'
+// What "remove me" or "take me off" can point at and still mean our texts: "remove me from this list".
+const OUR_TEXTS = '(this |the |your |ur |that |these |all )*(list|texts?|txts?|messages?|msgs?|service|outlier|number)'
 
-// Clear opt-out phrases, matched against the normalized text (lowercase, letters and digits, single spaces).
+// Clear opt-out phrases, matched one sentence at a time against the normalized text (lowercase, letters and digits,
+// single spaces), so a phrase can't run across two sentences ("I'm at the bus stop. Text me").
 const OPT_OUT_PHRASES = [
   new RegExp(`\\b${STOP_WORD} ${TEXT_VERB}\\b`), // stop texting, stop sending, stop calling me
   new RegExp(`\\b${STOP_WORD} (all |the |these |your |this )*(texts?|txts?|messages?|msgs?|spam|subscription)\\b`),
-  /\b(unsub\w*|remove|opt) me\b/, // unsubscribe me, remove me, opt me out
-  /\btake me off\b/,
-  /\bopt (me )?out\b/,
+  /\bunsub\w* me\b/, // unsubscribe me
+  /\bopt (me )?out\b/, // opt out, opt me out
+  // "remove me" or "take me off" on its own, or pointing at our texts. Not "remove me from the raffle".
+  new RegExp(
+    `\\b(remove me|take me off)( (from|off|of))?( ${OUR_TEXTS})?( (please|pls|plz|now|asap|thanks|thank you))*$`,
+  ),
+  new RegExp(`\\b(remove me|take me off)( (from|off|of))? ${OUR_TEXTS}\\b`),
   new RegExp(`\\b(don t|dont|do not|never) ${TEXT_VERB} (me|this number|my number)\\b`),
   /\bno more (texts?|txts?|messages?|msgs?)\b/,
   // I want to unsubscribe, how do I unsubscribe, can you unsubscribe me, please unsubscribe
   new RegExp(`\\b(${UNSUB_ASKS})( to)?( be)? unsub\\w*`),
 ]
 
-// "stop" negated ("don't stop sending these"). Removed before looking for opt-out phrases.
-const NEGATED_STOP = new RegExp(
-  `\\b(don t|dont|do not|never|can t|cant|cannot|not|won t|wont|didn t|didnt) ${STOP_WORD}\\b`,
+// A negated stop, unsubscribe, remove or opt out ("don't stop sending these", "please don't ever unsubscribe me").
+// Removed before looking for opt-out phrases. One common modifier may sit between the negation and the verb, but
+// not just any word, so "I don't care, stop texting me" still opts out.
+const NEGATED_VERB = new RegExp(
+  '\\b(don t|dont|do not|never|can t|cant|cannot|not|won t|wont|didn t|didnt)( (ever|really|just|you|u|even|please))? ' +
+    `(${STOP_WORD}|unsub\\w*|remove|take|opt)\\b`,
   'g',
 )
 
@@ -74,6 +88,9 @@ const PLACE_STOP = new RegExp(
   ].join('|'),
   'g',
 )
+
+// Sentence breaks, including the ideographic full stop some keyboards use ("ＳＴＯＰ。Who is this?").
+const SENTENCE_BREAK = /[.!?;\n。！？]+/
 
 // NFKD turns fullwidth letters ("ＳＴＯＰ") into plain ones and splits accents off ("stöp"), so the accents can be
 // dropped before everything else non-alphanumeric becomes a space.
@@ -88,15 +105,24 @@ const normalize = (text: string): string =>
 
 // Only s, t and p stretch: a doubled o is "stoop", an everyday word in Detroit.
 const isStopWord = (word: string): boolean => new RegExp(`^${STOP_WORD}$`).test(word)
-const isKeywordWord = (word: string): boolean => isStopWord(word) || UNSUBSCRIBE_EXACT.includes(word)
+// Keywords that still mean "stop texting me" with filler around them or as one sentence of a longer message.
+// CANCEL, END, QUIT and REVOKE only count as the whole message: "Cancel it." is usually about an appointment.
+const isStopKeyword = (word: string): boolean => isStopWord(word) || ['unsubscribe', 'stopall', 'optout'].includes(word)
 
 const isBareKeyword = (segment: string): boolean => {
   const meaningful = normalize(segment).split(' ').filter((word) => word && !FILLER_WORDS.has(word))
-  return meaningful.length > 0 && meaningful.every(isKeywordWord)
+  return meaningful.length > 0 && meaningful.every(isStopKeyword)
 }
 
 const classifyOptOut = (text: string): OptOutKind => {
-  if (REACTION.test(text)) return 'none'
+  const reaction = REACTION.exec(text)
+  if (reaction) {
+    // Check only what the resident typed after the quoted message, if the preview reaches that far.
+    const afterOpeningQuote = text.slice(reaction[0].length)
+    const closing = CLOSING_QUOTE.exec(afterOpeningQuote)
+    return closing ? classifyOptOut(afterOpeningQuote.slice(closing.index + 1)) : 'none'
+  }
+
   const normalized = normalize(text)
   if (!normalized) return 'none'
   // UNSTOP contains "stop" but asks for the opposite.
@@ -106,15 +132,13 @@ const classifyOptOut = (text: string): OptOutKind => {
   const words = normalized.split(' ')
   if (words.length === 1) return /stop|unsub/.test(normalized) ? 'optout' : 'none'
 
-  // A bare keyword padded with filler, on its own or as its own sentence: "stop please", "STOP STOP",
-  // "Stop. Who is this?"
-  if (text.split(/[.!?;\n]+/).some(isBareKeyword)) return 'optout'
-
-  const withoutNegations = normalized.replace(NEGATED_STOP, ' ')
-  if (OPT_OUT_PHRASES.some((phrase) => phrase.test(withoutNegations))) return 'optout'
+  // Look at one sentence at a time: a bare keyword ("stop please", "Stop. Who is this?") or an explicit phrase.
+  const sentences = text.split(SENTENCE_BREAK).map((sentence) => normalize(sentence).replace(NEGATED_VERB, ' '))
+  if (text.split(SENTENCE_BREAK).some(isBareKeyword)) return 'optout'
+  if (sentences.some((sentence) => OPT_OUT_PHRASES.some((phrase) => phrase.test(sentence.trim())))) return 'optout'
 
   // Drop the harmless uses of "stop", then see whether any stop or unsub word is left.
-  const remaining = withoutNegations.replace(PLACE_STOP, ' ').split(' ')
+  const remaining = normalized.replace(NEGATED_VERB, ' ').replace(PLACE_STOP, ' ').split(' ')
   if (remaining.some((word) => isStopWord(word) || word.startsWith('unsub'))) return 'possible'
   return 'none'
 }

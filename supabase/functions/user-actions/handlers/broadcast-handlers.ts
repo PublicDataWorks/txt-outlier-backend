@@ -86,8 +86,8 @@ const flagPossibleOptOut = async (conversationId: string) => {
   const possibleOptOutLabelId = Deno.env.get('MISSIVE_POSSIBLE_OPTOUT_LABEL_ID') || undefined
   const response = await Missive.createPost(
     conversationId,
-    'This message mentions "stop" or "unsubscribe" but may not be an opt-out, so this number has NOT been ' +
-      'unsubscribed. If they do want to stop getting texts, comment UNSUBSCRIBE here.',
+    'This message mentions "stop" or "unsubscribe" but may not be an opt-out, so it did not trigger an automatic ' +
+      'unsubscribe. If they do want to stop getting texts, comment UNSUBSCRIBE here.',
     possibleOptOutLabelId,
     { close: false },
   )
