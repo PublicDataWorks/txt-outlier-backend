@@ -8,8 +8,16 @@
 // - The carrier's other opt-out keywords (CANCEL, END, QUIT, STOPALL, OPTOUT, REVOKE) count only as the whole
 //   message, because most of them are ordinary words in a sentence.
 //
+// A reaction is not an opt-out. When someone reacts to one of our texts on a phone that can't send the reaction itself,
+// the phone texts us the reaction as words with our whole message quoted: Loved “… STOP to unsubscribe …”. Every
+// broadcast and welcome text ends with "STOP to unsubscribe", so matching the quote would unsubscribe someone for
+// liking it. An auto-reply isn't one either: "AUTO REPLY: … please stop by the office" was written by nobody to us.
+// messageKinds.ts says how both are recognized.
+//
 // Resubscribe is deliberately strict: the whole message has to be one of the keywords. Matching anywhere in the text
 // used to resubscribe people who had asked us to stop as soon as they texted something like "I live in Detroit".
+
+import { isAutoReply, textOutsideReactionQuote } from './messageKinds.ts'
 
 const UNSUBSCRIBE_EXACT = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'revoke']
 const RESUBSCRIBE_EXACT = ['start', 'unstop', 'resubscribe', 'detroit']
@@ -29,6 +37,9 @@ const normalize = (text: string): string =>
 const isOptOutWord = (word: string): boolean => /^s+t+op+$/.test(word) || word.startsWith('unsub')
 
 const isUnsubscribeRequest = (text: string): boolean => {
+  if (isAutoReply(text)) return false
+  const outsideQuote = textOutsideReactionQuote(text)
+  if (outsideQuote !== null) return outsideQuote.trim() !== '' && isUnsubscribeRequest(outsideQuote)
   const normalized = normalize(text)
   // UNSTOP contains "stop" but asks for the opposite.
   if (RESUBSCRIBE_EXACT.includes(normalized)) return false

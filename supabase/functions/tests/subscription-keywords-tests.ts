@@ -63,6 +63,60 @@ describe('isUnsubscribeRequest', () => {
     }
   })
 
+  it('ignores a reaction that quotes one of our texts', () => {
+    const welcome =
+      'Hello from Outlier Media. Text REPORTER to ask us a question.\n\nSTOP to unsubscribe. HELP for support.'
+    for (
+      const text of [
+        `Loved “${welcome}”`,
+        `Liked “${welcome}”`,
+        `Disliked “${welcome}”`,
+        `Laughed at “${welcome}”`,
+        `Emphasized “${welcome}”`,
+        `Questioned “${welcome}”`,
+        `Reacted 👍 to “${welcome}”`,
+        `Reacted 👍 to “STOP to unsubscribe”`,
+        `Reacted with 😂 to “${welcome}”`,
+        `Removed a heart from “${welcome}”`,
+        `Loved "Reply STOP to unsubscribe"`,
+        `Loved “${welcome.slice(0, 80)}`,
+      ]
+    ) {
+      assertEquals(isUnsubscribeRequest(text), false, text)
+    }
+  })
+
+  it('still matches an opt-out typed after the quote, or between a reaction word and a quote', () => {
+    for (
+      const text of [
+        'Loved “the update”. Please stop texting me.',
+        'Liked "thanks" STOP',
+        'Reacted, please stop texting me to “x”',
+        'Removed a heart from “x” unsubscribe me',
+        'Loved “the update”. Please stop saying “hi”.',
+      ]
+    ) {
+      assertEquals(isUnsubscribeRequest(text), true, text)
+    }
+  })
+
+  it('still matches an opt-out that only mentions a reaction word', () => {
+    for (const text of ['Loved it but please stop', 'stop', 'I liked your texts but unsubscribe me']) {
+      assertEquals(isUnsubscribeRequest(text), true, text)
+    }
+  })
+
+  it('ignores an auto-reply, even one that says stop', () => {
+    for (
+      const text of [
+        'AUTO REPLY: The office is closed. Please stop by on Monday.',
+        "I'm driving with notifications silenced. I'll see your message when I get where I'm going.",
+      ]
+    ) {
+      assertEquals(isUnsubscribeRequest(text), false, text)
+    }
+  })
+
   it('does not treat UNSTOP as an opt-out', () => {
     for (const text of ['UNSTOP', 'unstop.']) {
       assertEquals(isUnsubscribeRequest(text), false, text)
