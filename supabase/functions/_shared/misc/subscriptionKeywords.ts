@@ -45,13 +45,16 @@ const REACTION_PREFIX = new RegExp(
 )
 
 // The words the resident typed outside our quoted message. Only the opening quote has to be there, because Missive can
-// cut a long message's preview before the closing one; everything after an unclosed quote counts as quoted.
+// cut a long message's preview before the closing one; everything after an unclosed quote counts as quoted. The quote
+// ends at the first closing quote, so a resident who quotes something again after it ("Please stop saying “hi”") is
+// still read. If one of our own texts ever contains a closing quote, the rest of it gets read too, which can only
+// unsubscribe someone, the safer mistake.
 const textOutsideReactionQuote = (text: string): string | null => {
   const match = REACTION_PREFIX.exec(text)
   if (!match) return null
   const quoteStart = match[0].length
   const closingQuote = match[1] === '“' ? '”' : '"'
-  const quoteEnd = text.lastIndexOf(closingQuote)
+  const quoteEnd = text.indexOf(closingQuote, quoteStart)
   return quoteEnd >= quoteStart ? text.slice(quoteEnd + 1) : ''
 }
 

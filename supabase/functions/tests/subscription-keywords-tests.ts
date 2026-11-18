@@ -93,6 +93,7 @@ describe('isUnsubscribeRequest', () => {
         'Liked "thanks" STOP',
         'Reacted, please stop texting me to “x”',
         'Removed a heart from “x” unsubscribe me',
+        'Loved “the update”. Please stop saying “hi”.',
       ]
     ) {
       assertEquals(isUnsubscribeRequest(text), true, text)
