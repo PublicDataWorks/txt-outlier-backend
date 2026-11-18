@@ -34,15 +34,30 @@ const normalize = (text: string): string =>
 const isOptOutWord = (word: string): boolean => /^s+t+op+$/.test(word) || word.startsWith('unsub')
 
 // iMessage sends "Loved “…”", "Laughed at “…”", "Reacted 😂 to “…”" and "Removed a heart from “…”"; Android phones send
-// the same shapes with straight quotes. Only the opening quote is required, because Missive can cut a long message's
-// preview before the closing one.
-const REACTION_QUOTE =
-  /^\s*(?:loved|liked|disliked|laughed at|emphasi[sz]ed|questioned|reacted\b[^“"]{0,40}?\bto|removed\b[^“"]{0,40}?\bfrom)\s*[“"]/i
+// the same shapes with straight quotes. Between "Reacted" or "Removed" and the quote only the reaction itself is allowed
+// (an emoji or a reaction name), so a sentence there is still read.
+const REACTION_PREFIX = new RegExp(
+  '^\\s*(?:loved|liked|disliked|laughed at|emphasi[sz]ed|questioned' +
+    '|reacted\\s+(?:with\\s+)?[^\\p{L}\\p{N}“"]{1,16}?\\s*to' +
+    '|removed\\s+(?:an?\\s+)?(?:heart|like|dislike|laugh|exclamation(?: mark)?|question mark|emphasis|[^\\p{L}\\p{N}\\s“"]{1,16})' +
+    '\\s+from)\\s*([“"])',
+  'iu',
+)
 
-const isReactionToMessage = (text: string): boolean => REACTION_QUOTE.test(text)
+// The words the resident typed outside our quoted message. Only the opening quote has to be there, because Missive can
+// cut a long message's preview before the closing one; everything after an unclosed quote counts as quoted.
+const textOutsideReactionQuote = (text: string): string | null => {
+  const match = REACTION_PREFIX.exec(text)
+  if (!match) return null
+  const quoteStart = match[0].length
+  const closingQuote = match[1] === '“' ? '”' : '"'
+  const quoteEnd = text.lastIndexOf(closingQuote)
+  return quoteEnd >= quoteStart ? text.slice(quoteEnd + 1) : ''
+}
 
 const isUnsubscribeRequest = (text: string): boolean => {
-  if (isReactionToMessage(text)) return false
+  const outsideQuote = textOutsideReactionQuote(text)
+  if (outsideQuote !== null) return outsideQuote.trim() !== '' && isUnsubscribeRequest(outsideQuote)
   const normalized = normalize(text)
   // UNSTOP contains "stop" but asks for the opposite.
   if (RESUBSCRIBE_EXACT.includes(normalized)) return false

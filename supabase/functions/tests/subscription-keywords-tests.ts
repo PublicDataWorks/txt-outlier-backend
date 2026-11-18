@@ -75,12 +75,27 @@ describe('isUnsubscribeRequest', () => {
         `Emphasized “${welcome}”`,
         `Questioned “${welcome}”`,
         `Reacted 👍 to “${welcome}”`,
+        `Reacted 👍 to “STOP to unsubscribe”`,
+        `Reacted with 😂 to “${welcome}”`,
         `Removed a heart from “${welcome}”`,
         `Loved "Reply STOP to unsubscribe"`,
         `Loved “${welcome.slice(0, 80)}`,
       ]
     ) {
       assertEquals(isUnsubscribeRequest(text), false, text)
+    }
+  })
+
+  it('still matches an opt-out typed after the quote, or between a reaction word and a quote', () => {
+    for (
+      const text of [
+        'Loved “the update”. Please stop texting me.',
+        'Liked "thanks" STOP',
+        'Reacted, please stop texting me to “x”',
+        'Removed a heart from “x” unsubscribe me',
+      ]
+    ) {
+      assertEquals(isUnsubscribeRequest(text), true, text)
     }
   })
 
