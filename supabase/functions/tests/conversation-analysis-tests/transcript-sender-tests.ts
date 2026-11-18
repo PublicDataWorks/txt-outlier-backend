@@ -1,4 +1,4 @@
-import { describe, it } from 'jsr:@std/testing/bdd'
+import { afterEach, beforeEach, describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals } from 'jsr:@std/assert'
 
 import '../setup.ts'
@@ -10,7 +10,8 @@ import { createConversationAuthor } from '../factories/conversation-author.ts'
 import { createTwilioMessage } from '../factories/twilio-message.ts'
 import { createBroadcastMessageStatus } from '../factories/message-status.ts'
 
-// Matches OUTLIER_PHONE_NUMBER in .env.testing, which AnalysisService reads at import.
+// .env.testing does not set OUTLIER_PHONE_NUMBER (other in-process tests rely on that), so this file sets it
+// around each transcript test; getConversationTranscript reads it per call.
 const OUTLIER_PHONE_NUMBER = '+15555550100'
 const RESIDENT_PHONE_NUMBER = '+13135550177'
 
@@ -29,6 +30,18 @@ describe('classifyOutbound', () => {
 })
 
 describe('getConversationTranscript sender marking', { sanitizeOps: false, sanitizeResources: false }, () => {
+  let previous: string | undefined
+
+  beforeEach(() => {
+    previous = Deno.env.get('OUTLIER_PHONE_NUMBER')
+    Deno.env.set('OUTLIER_PHONE_NUMBER', OUTLIER_PHONE_NUMBER)
+  })
+
+  afterEach(() => {
+    if (previous === undefined) Deno.env.delete('OUTLIER_PHONE_NUMBER')
+    else Deno.env.set('OUTLIER_PHONE_NUMBER', previous)
+  })
+
   it('tells staff replies, automated replies and broadcast sends apart', async () => {
     await createAuthor(OUTLIER_PHONE_NUMBER)
     await createAuthor(RESIDENT_PHONE_NUMBER)

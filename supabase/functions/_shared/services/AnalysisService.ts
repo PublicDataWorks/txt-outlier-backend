@@ -131,7 +131,10 @@ export const findAmbiguousResidentPhones = async (conversationId: string): Promi
 // would pull in every resident's messages, so the query is scoped strictly to the resident phone(s) of this
 // conversation.
 export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
-  if (!OUTLIER_PHONE_NUMBER) {
+  // Read per call rather than from the module constant, so a test can set it without depending on import order.
+  // The environment never changes inside a deployed function, so this behaves the same in production.
+  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+  if (!outlierPhone) {
     // Without it, the Outlier number can't be filtered out of residentPhones and every
     // message would be classified as inbound - fail loudly instead of mislabeling.
     throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
@@ -142,7 +145,7 @@ export const getConversationTranscript = async (conversationId: string): Promise
     .where(eq(conversationsAuthors.conversationId, conversationId))
 
   const residentPhones = [
-    ...new Set(authorRows.map((row) => row.phone).filter((phone) => phone !== OUTLIER_PHONE_NUMBER)),
+    ...new Set(authorRows.map((row) => row.phone).filter((phone) => phone !== outlierPhone)),
   ]
   if (residentPhones.length === 0) return []
 
@@ -162,10 +165,10 @@ export const getConversationTranscript = async (conversationId: string): Promise
     .where(or(
       and(
         inArray(twilioMessages.fromField, residentPhones),
-        eq(twilioMessages.toField, OUTLIER_PHONE_NUMBER),
+        eq(twilioMessages.toField, outlierPhone),
       ),
       and(
-        eq(twilioMessages.fromField, OUTLIER_PHONE_NUMBER),
+        eq(twilioMessages.fromField, outlierPhone),
         inArray(twilioMessages.toField, residentPhones),
       ),
     ))
