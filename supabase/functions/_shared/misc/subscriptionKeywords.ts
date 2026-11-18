@@ -64,7 +64,8 @@ const OPT_OUT_PHRASES = [
   new RegExp(
     `\\b(remove me|take me off)( (from|off|of))?( ${OUR_TEXTS})?( (please|pls|plz|now|asap|thanks|thank you))*$`,
   ),
-  new RegExp(`\\b(remove me|take me off)( (from|off|of))? ${OUR_TEXTS}\\b`),
+  // ...but not "the list of raffle participants" or "the list for the food bank".
+  new RegExp(`\\b(remove me|take me off)( (from|off|of))? ${OUR_TEXTS}\\b(?! (of|for)\\b)`),
   new RegExp(`\\b(don t|dont|do not|never) ${TEXT_VERB} (me|this number|my number)\\b`),
   /\bno more (texts?|txts?|messages?|msgs?)\b/,
   // I want to unsubscribe, how do I unsubscribe, can you unsubscribe me, please unsubscribe
