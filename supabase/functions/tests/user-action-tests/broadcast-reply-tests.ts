@@ -51,6 +51,43 @@ describe(
 )
 
 describe(
+  'Reactions and auto-replies to a broadcast',
+  { sanitizeOps: false, sanitizeResources: false },
+  () => {
+    for (
+      const preview of [
+        'Loved “Hello from Outlier Media. STOP to unsubscribe.”',
+        'Reacted 😊 to “Hello from Outlier Media. STOP to unsubscribe.”',
+        "I'm Driving\n\n- Sent from My Car",
+        'AUTO REPLY: The office is closed. Please stop by on Monday.',
+      ]
+    ) {
+      it(`neither unsubscribes nor counts as a reply: ${preview}`, async () => {
+        const incomingSms = newIncomingSmsRequest
+        incomingSms.message!.preview = preview
+        incomingSms.message!.delivered_at = Date.now() / 1000
+        await createBroadcastMessageStatus({
+          recipient: incomingSms.message!.from_field.id,
+          createdAt: subMinutes(new Date(), 10).toISOString(),
+        })
+
+        await client.functions.invoke(FUNCTION_NAME, {
+          method: 'POST',
+          body: incomingSms,
+        })
+
+        const incomingMessages = await supabase.select().from(twilioMessages)
+        assertEquals(incomingMessages.length, 1)
+        assertEquals(incomingMessages[0].isReply, false)
+        assertEquals(incomingMessages[0].replyToBroadcast, null)
+        const unsubscribed = await supabase.select().from(unsubscribedMessages)
+        assertEquals(unsubscribed.length, 0)
+      })
+    }
+  },
+)
+
+describe(
   'Unsubscribe',
   { sanitizeOps: false, sanitizeResources: false },
   () => {

@@ -106,6 +106,17 @@ describe('isUnsubscribeRequest', () => {
     }
   })
 
+  it('ignores an auto-reply, even one that says stop', () => {
+    for (
+      const text of [
+        'AUTO REPLY: The office is closed. Please stop by on Monday.',
+        "I'm driving with notifications silenced. I'll see your message when I get where I'm going.",
+      ]
+    ) {
+      assertEquals(isUnsubscribeRequest(text), false, text)
+    }
+  })
+
   it('does not treat UNSTOP as an opt-out', () => {
     for (const text of ['UNSTOP', 'unstop.']) {
       assertEquals(isUnsubscribeRequest(text), false, text)

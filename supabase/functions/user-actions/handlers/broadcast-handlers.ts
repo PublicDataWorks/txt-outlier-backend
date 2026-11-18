@@ -14,6 +14,7 @@ import supabase from '../../_shared/lib/supabase.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
 import { pgmqDelete } from '../../_shared/scheduledcron/queries.ts'
 import { isUnsubscribeRequest } from '../../_shared/misc/subscriptionKeywords.ts'
+import { isAutoReply, isReaction } from '../../_shared/misc/messageKinds.ts'
 
 interface BroadcastMessageUpdate {
   twilioSentAt: Date | null
@@ -101,7 +102,10 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
         sentMessageId: sentMessage[0]?.id,
       })
     } else {
-      if (sentMessage.length > 0) {
+      // A reaction or a phone's auto-reply ("I'm Driving - Sent from My Car") isn't the resident writing back, so it
+      // doesn't count toward a broadcast's replies.
+      const isRealReply = !isReaction(requestMessage.preview) && !isAutoReply(requestMessage.preview)
+      if (sentMessage.length > 0 && isRealReply) {
         await supabase
           .update(twilioMessages)
           .set({

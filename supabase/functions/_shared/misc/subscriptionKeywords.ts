@@ -11,10 +11,13 @@
 // A reaction is not an opt-out. When someone reacts to one of our texts on a phone that can't send the reaction itself,
 // the phone texts us the reaction as words with our whole message quoted: Loved “… STOP to unsubscribe …”. Every
 // broadcast and welcome text ends with "STOP to unsubscribe", so matching the quote would unsubscribe someone for
-// liking it.
+// liking it. An auto-reply isn't one either: "AUTO REPLY: … please stop by the office" was written by nobody to us.
+// messageKinds.ts says how both are recognized.
 //
 // Resubscribe is deliberately strict: the whole message has to be one of the keywords. Matching anywhere in the text
 // used to resubscribe people who had asked us to stop as soon as they texted something like "I live in Detroit".
+
+import { isAutoReply, textOutsideReactionQuote } from './messageKinds.ts'
 
 const UNSUBSCRIBE_EXACT = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'revoke']
 const RESUBSCRIBE_EXACT = ['start', 'unstop', 'resubscribe', 'detroit']
@@ -33,32 +36,8 @@ const normalize = (text: string): string =>
 // Only s, t and p stretch: a doubled o is "stoop", an everyday word in Detroit.
 const isOptOutWord = (word: string): boolean => /^s+t+op+$/.test(word) || word.startsWith('unsub')
 
-// iMessage sends "Loved “…”", "Laughed at “…”", "Reacted 😂 to “…”" and "Removed a heart from “…”"; Android phones send
-// the same shapes with straight quotes. Between "Reacted" or "Removed" and the quote only the reaction itself is allowed
-// (an emoji or a reaction name), so a sentence there is still read.
-const REACTION_PREFIX = new RegExp(
-  '^\\s*(?:loved|liked|disliked|laughed at|emphasi[sz]ed|questioned' +
-    '|reacted\\s+(?:with\\s+)?[^\\p{L}\\p{N}“"]{1,16}?\\s*to' +
-    '|removed\\s+(?:an?\\s+)?(?:heart|like|dislike|laugh|exclamation(?: mark)?|question mark|emphasis|[^\\p{L}\\p{N}\\s“"]{1,16})' +
-    '\\s+from)\\s*([“"])',
-  'iu',
-)
-
-// The words the resident typed outside our quoted message. Only the opening quote has to be there, because Missive can
-// cut a long message's preview before the closing one; everything after an unclosed quote counts as quoted. The quote
-// ends at the first closing quote, so a resident who quotes something again after it ("Please stop saying “hi”") is
-// still read. If one of our own texts ever contains a closing quote, the rest of it gets read too, which can only
-// unsubscribe someone, the safer mistake.
-const textOutsideReactionQuote = (text: string): string | null => {
-  const match = REACTION_PREFIX.exec(text)
-  if (!match) return null
-  const quoteStart = match[0].length
-  const closingQuote = match[1] === '“' ? '”' : '"'
-  const quoteEnd = text.indexOf(closingQuote, quoteStart)
-  return quoteEnd >= quoteStart ? text.slice(quoteEnd + 1) : ''
-}
-
 const isUnsubscribeRequest = (text: string): boolean => {
+  if (isAutoReply(text)) return false
   const outsideQuote = textOutsideReactionQuote(text)
   if (outsideQuote !== null) return outsideQuote.trim() !== '' && isUnsubscribeRequest(outsideQuote)
   const normalized = normalize(text)
