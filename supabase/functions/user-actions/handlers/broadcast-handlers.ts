@@ -13,7 +13,7 @@ import Missive from '../../_shared/lib/Missive.ts'
 import supabase from '../../_shared/lib/supabase.ts'
 import { SECOND_MESSAGES_QUEUE_NAME } from '../../_shared/constants.ts'
 import { pgmqDelete } from '../../_shared/scheduledcron/queries.ts'
-import { isUnsubscribeRequest } from '../../_shared/misc/subscriptionKeywords.ts'
+import { classifyOptOut } from '../../_shared/misc/subscriptionKeywords.ts'
 
 interface BroadcastMessageUpdate {
   twilioSentAt: Date | null
@@ -80,6 +80,22 @@ const updateSubscriptionStatus = async (
   }
 }
 
+// For a message that might be an opt-out but isn't clearly one ("how do I stop my water shutoff"), leave the
+// resident subscribed and the conversation open, and ask an editor to decide.
+const flagPossibleOptOut = async (conversationId: string) => {
+  const possibleOptOutLabelId = Deno.env.get('MISSIVE_POSSIBLE_OPTOUT_LABEL_ID') || undefined
+  const response = await Missive.createPost(
+    conversationId,
+    'This message mentions "stop" or "unsubscribe" but may not be an opt-out, so this number has NOT been ' +
+      'unsubscribed. If they do want to stop getting texts, comment UNSUBSCRIBE here.',
+    possibleOptOutLabelId,
+    { close: false },
+  )
+  if (!response?.ok) {
+    console.error(`Failed to post possible opt-out note to conversation ${conversationId}: ${response?.status}`)
+  }
+}
+
 const handleBroadcastReply = async (requestBody: RequestBody) => {
   try {
     const requestMessage = requestBody.message!
@@ -94,7 +110,8 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
         )
       }
     }
-    if (isUnsubscribeRequest(requestMessage.preview)) {
+    const optOut = classifyOptOut(requestMessage.preview)
+    if (optOut === 'optout') {
       await updateSubscriptionStatus(phoneNumber, true, requestBody.conversation.id, {
         broadcastId: sentMessage[0]?.broadcastId,
         messageId: requestMessage.id,
@@ -110,6 +127,9 @@ const handleBroadcastReply = async (requestBody: RequestBody) => {
             replyToCampaign: sentMessage[0].campaignId,
           })
           .where(eq(twilioMessages.id, requestMessage.id))
+      }
+      if (optOut === 'possible') {
+        await flagPossibleOptOut(requestBody.conversation.id)
       }
       // Resubscribing is handled by handleResubscribe, which also posts a note to the conversation.
     }

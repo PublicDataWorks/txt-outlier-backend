@@ -1,72 +1,124 @@
 import { describe, it } from 'jsr:@std/testing/bdd'
 import { assertEquals } from 'jsr:@std/assert'
 
-import { isResubscribeRequest, isUnsubscribeRequest } from '../_shared/misc/subscriptionKeywords.ts'
+import { classifyOptOut, isResubscribeRequest, isUnsubscribeRequest } from '../_shared/misc/subscriptionKeywords.ts'
 
-describe('isUnsubscribeRequest', () => {
-  it('matches stop and unsubscribe as whole words anywhere in the message', () => {
-    for (
-      const text of ['STOP', 'Stop.', ' stop ', 'Can you stop calling me please', 'pls unsubscribe me!', 'STOP!!!']
-    ) {
-      assertEquals(isUnsubscribeRequest(text), true, text)
-    }
+const expectAll = (kind: 'optout' | 'possible' | 'none', texts: string[]) => {
+  for (const text of texts) {
+    assertEquals(classifyOptOut(text), kind, text)
+  }
+}
+
+describe('classifyOptOut', () => {
+  it('treats a bare keyword, with or without filler, as a clear opt-out', () => {
+    expectAll('optout', [
+      'STOP',
+      'Stop.',
+      ' stop ',
+      'STOP!!!',
+      'stop please',
+      'Please stop',
+      'STOP STOP',
+      'ok stop now',
+      'stop it',
+      'CANCEL',
+      'end',
+      'Quit',
+      'STOPALL',
+      'OPTOUT',
+      'opt out',
+      'Revoke',
+    ])
   })
 
-  it('matches a stretched stop or a word starting with unsub inside a sentence', () => {
-    for (
-      const text of [
-        'Stopp texting me',
-        'sstop texting',
-        'stoppp pls',
-        'I want to be unsubscribed',
-        'how do I unsubcribe',
-      ]
-    ) {
-      assertEquals(isUnsubscribeRequest(text), true, text)
-    }
+  it('treats STOP as its own sentence inside a longer message as a clear opt-out', () => {
+    expectAll('optout', ['Stop. Who is this?', 'Who is this? Stop'])
+  })
+
+  it('treats a one-word reply that contains stop or unsub as a clear opt-out, the way typos arrive', () => {
+    expectAll('optout', ['stope', 'Stoppppp', 'sstop', 'stop2end', 'Stopped', 'unsubcribe'])
+  })
+
+  it('treats explicit opt-out phrases as clear opt-outs', () => {
+    expectAll('optout', [
+      'Can you stop calling me please',
+      'Can you stop texting me',
+      'Stopp texting me',
+      'sstop texting',
+      'stop sending these messages',
+      'please stop the texts',
+      'pls unsubscribe me!',
+      'I want to be unsubscribed',
+      'how do I unsubcribe',
+      'I would like to unsubscribe',
+      'Remove me from this list',
+      'take me off your list',
+      'opt me out',
+      "don't text me anymore",
+      'Do not contact me',
+      'no more texts please',
+      'I loved the article, please stop texting me',
+    ])
   })
 
   it('folds fullwidth and accented letters before matching', () => {
-    for (const text of ['ＳＴＯＰ', 'stöp', 'Stóp texting me']) {
-      assertEquals(isUnsubscribeRequest(text), true, text)
-    }
+    expectAll('optout', ['ＳＴＯＰ', 'stöp', 'Stóp texting me'])
   })
 
-  it('matches carrier opt-out keywords only as the whole message', () => {
-    for (const text of ['CANCEL', 'end', 'Quit', 'STOPALL', 'OPTOUT', 'Revoke']) {
-      assertEquals(isUnsubscribeRequest(text), true, text)
-    }
-    for (const text of ['cancel my water shutoff', 'at the end of the block', 'I quit my job', 'revoke my permit']) {
-      assertEquals(isUnsubscribeRequest(text), false, text)
-    }
+  it('flags other uses of stop or unsub for an editor instead of unsubscribing', () => {
+    expectAll('possible', [
+      'how do I stop my water shutoff',
+      'Can you help me stop the foreclosure',
+      'I need to stop the eviction',
+      'make this stop',
+      'did I unsubscribe by accident?',
+    ])
   })
 
-  it('matches a one-word reply that contains stop or unsub, the way misspelled opt-outs arrive', () => {
-    for (const text of ['stope', 'Stoppppp', 'sstop', 'stop2end', 'Stopped', 'unsubcribe']) {
-      assertEquals(isUnsubscribeRequest(text), true, text)
-    }
+  it('ignores negated stop and stop as a place or a visit', () => {
+    expectAll('none', [
+      "please don't stop sending these",
+      'I never stop reading your texts',
+      'waiting at the bus stop',
+      'I will stop by tomorrow',
+      'turn left at the stop sign',
+    ])
   })
 
-  it('ignores words that only contain stop inside a sentence', () => {
-    for (
-      const text of [
-        'I stopped by',
-        'nonstop traffic all day',
-        'stopping by later',
-        'sitting on my stoop',
-        '123',
-        'hello',
-        '',
-      ]
-    ) {
-      assertEquals(isUnsubscribeRequest(text), false, text)
-    }
+  it('ignores phone reactions that quote our STOP line', () => {
+    expectAll('none', [
+      "Liked “Hello from Outlier Media, Detroit's nonprofit newsroom. STOP to unsubscribe.”",
+      'Loved "Reply STOP to unsubscribe"',
+      'Reacted 👍 to “STOP to unsubscribe. HELP for support”',
+    ])
+  })
+
+  it('ignores ordinary messages and carrier keywords used in a sentence', () => {
+    expectAll('none', [
+      'I stopped by',
+      'nonstop traffic all day',
+      'sitting on my stoop',
+      'cancel my water shutoff',
+      'at the end of the block',
+      'I quit my job',
+      'revoke my permit',
+      'can you take me to the hearing',
+      '123',
+      'hello',
+      '',
+    ])
   })
 
   it('does not treat UNSTOP as an opt-out', () => {
-    for (const text of ['UNSTOP', 'unstop.']) {
-      assertEquals(isUnsubscribeRequest(text), false, text)
-    }
+    expectAll('none', ['UNSTOP', 'unstop.'])
+  })
+})
+
+describe('isUnsubscribeRequest', () => {
+  it('is true only for clear opt-outs', () => {
+    assertEquals(isUnsubscribeRequest('stop texting me'), true)
+    assertEquals(isUnsubscribeRequest('how do I stop my water shutoff'), false)
+    assertEquals(isUnsubscribeRequest('hello'), false)
   })
 })
 
@@ -77,8 +129,9 @@ describe('isResubscribeRequest', () => {
     }
   })
 
-  it('ignores keywords inside a longer message', () => {
-    for (const text of ['I live in Detroit', 'when does it start?', 'start11232', 'restart', 'hello']) {
+  it('ignores keywords inside a longer message or a phone reaction', () => {
+    const texts = ['I live in Detroit', 'when does it start?', 'start11232', 'restart', 'hello', 'Loved “Detroit”']
+    for (const text of texts) {
       assertEquals(isResubscribeRequest(text), false, text)
     }
   })
