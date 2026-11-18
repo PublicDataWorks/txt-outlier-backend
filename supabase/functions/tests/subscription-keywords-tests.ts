@@ -63,6 +63,33 @@ describe('isUnsubscribeRequest', () => {
     }
   })
 
+  it('ignores a reaction that quotes one of our texts', () => {
+    const welcome =
+      'Hello from Outlier Media. Text REPORTER to ask us a question.\n\nSTOP to unsubscribe. HELP for support.'
+    for (
+      const text of [
+        `Loved “${welcome}”`,
+        `Liked “${welcome}”`,
+        `Disliked “${welcome}”`,
+        `Laughed at “${welcome}”`,
+        `Emphasized “${welcome}”`,
+        `Questioned “${welcome}”`,
+        `Reacted 👍 to “${welcome}”`,
+        `Removed a heart from “${welcome}”`,
+        `Loved "Reply STOP to unsubscribe"`,
+        `Loved “${welcome.slice(0, 80)}`,
+      ]
+    ) {
+      assertEquals(isUnsubscribeRequest(text), false, text)
+    }
+  })
+
+  it('still matches an opt-out that only mentions a reaction word', () => {
+    for (const text of ['Loved it but please stop', 'stop', 'I liked your texts but unsubscribe me']) {
+      assertEquals(isUnsubscribeRequest(text), true, text)
+    }
+  })
+
   it('does not treat UNSTOP as an opt-out', () => {
     for (const text of ['UNSTOP', 'unstop.']) {
       assertEquals(isUnsubscribeRequest(text), false, text)

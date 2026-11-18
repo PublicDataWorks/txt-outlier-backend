@@ -8,6 +8,11 @@
 // - The carrier's other opt-out keywords (CANCEL, END, QUIT, STOPALL, OPTOUT, REVOKE) count only as the whole
 //   message, because most of them are ordinary words in a sentence.
 //
+// A reaction is not an opt-out. When someone reacts to one of our texts on a phone that can't send the reaction itself,
+// the phone texts us the reaction as words with our whole message quoted: Loved “… STOP to unsubscribe …”. Every
+// broadcast and welcome text ends with "STOP to unsubscribe", so matching the quote would unsubscribe someone for
+// liking it.
+//
 // Resubscribe is deliberately strict: the whole message has to be one of the keywords. Matching anywhere in the text
 // used to resubscribe people who had asked us to stop as soon as they texted something like "I live in Detroit".
 
@@ -28,7 +33,16 @@ const normalize = (text: string): string =>
 // Only s, t and p stretch: a doubled o is "stoop", an everyday word in Detroit.
 const isOptOutWord = (word: string): boolean => /^s+t+op+$/.test(word) || word.startsWith('unsub')
 
+// iMessage sends "Loved “…”", "Laughed at “…”", "Reacted 😂 to “…”" and "Removed a heart from “…”"; Android phones send
+// the same shapes with straight quotes. Only the opening quote is required, because Missive can cut a long message's
+// preview before the closing one.
+const REACTION_QUOTE =
+  /^\s*(?:loved|liked|disliked|laughed at|emphasi[sz]ed|questioned|reacted\b[^“"]{0,40}?\bto|removed\b[^“"]{0,40}?\bfrom)\s*[“"]/i
+
+const isReactionToMessage = (text: string): boolean => REACTION_QUOTE.test(text)
+
 const isUnsubscribeRequest = (text: string): boolean => {
+  if (isReactionToMessage(text)) return false
   const normalized = normalize(text)
   // UNSTOP contains "stop" but asks for the opposite.
   if (RESUBSCRIBE_EXACT.includes(normalized)) return false
