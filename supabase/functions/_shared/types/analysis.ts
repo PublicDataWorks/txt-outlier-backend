@@ -1,9 +1,17 @@
+// How an outbound message was sent, so the model can tell a staff member's own answer from automation that
+// happens to be signed with a staff name. 'staff': sent from a staff member's Missive account (twilio_messages
+// has a sender_id and the message is not a broadcast send). 'automated': no sender_id, which is what Missive
+// keyword and automation rules produce. 'broadcast': recorded in message_statuses as a broadcast or campaign
+// send. Undefined for inbound messages, and for outbound messages whose sender could not be determined.
+export type OutboundSender = 'staff' | 'automated' | 'broadcast'
+
 export type TranscriptMessage = {
   body: string
   direction: 'inbound' | 'outbound'
   timestamp: string
   from: string
   to: string
+  sentBy?: OutboundSender
 }
 
 export type AnalysisResult = {
@@ -28,9 +36,14 @@ export const TAG_PRIORITY_ORDER = [
   'wrong-audience',
   'unsubscribe',
   'story-tip',
-  'reporter-engaged',
   'unmet-demand',
+  // Ahead of reporter-engaged and user-sat since q4-v1: the newsroom's own definition makes "Info gap filled"
+  // the outcome that matters most, and both of those overlap with it. A staff member who personally answered
+  // a resident's question is info-gap; reporter-engaged is left for 1:1 engagement without such an answer.
+  // Human impact labels never map to reporter-engaged, so this does not change how a labelled conversation
+  // resolves.
   'info-gap',
+  'reporter-engaged',
   'user-sat',
   'no-impact',
 ]

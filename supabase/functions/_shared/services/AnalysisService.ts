@@ -1,8 +1,8 @@
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import supabase from '../lib/supabase.ts'
-import { authors, conversationsAuthors, twilioMessages } from '../drizzle/schema.ts'
-import { AnalysisResult, TAG_PRIORITY_ORDER, TranscriptMessage } from '../types/analysis.ts'
+import { authors, conversationsAuthors, messageStatuses, twilioMessages } from '../drizzle/schema.ts'
+import { AnalysisResult, OutboundSender, TAG_PRIORITY_ORDER, TranscriptMessage } from '../types/analysis.ts'
 
 // Re-exported for existing importers; the definition lives in types/analysis.ts so the user-actions
 // webhook path can read it without pulling this module's dependencies in.
@@ -12,7 +12,11 @@ export { TAG_PRIORITY_ORDER }
 // authoritative. The instructions materially change how a labelled conversation is classified, so rows
 // from before and after must be distinguishable - the newsroom-versus-model comparison this change exists
 // to enable depends on being able to separate the cohorts.
-export const PROMPT_VERSION = 'q3-v1-missive-labels'
+//
+// Bumped from 'q3-v1-missive-labels' when info-gap was redefined to match the newsroom's definition (a staff
+// member personally answered a resident's specific question; automated, broadcast and campaign content alone
+// never counts) and the transcript started marking how each outbound message was sent.
+export const PROMPT_VERSION = 'q4-v1-info-gap-definition'
 
 // gpt-5.6 tiers (Sol > Terra > Luna). Realtime closes are a handful a day, so the cost difference is
 // negligible there and tag quality - which the whole newsroom sees in Slack - wins; bulk backfill runs
@@ -127,7 +131,10 @@ export const findAmbiguousResidentPhones = async (conversationId: string): Promi
 // would pull in every resident's messages, so the query is scoped strictly to the resident phone(s) of this
 // conversation.
 export const getConversationTranscript = async (conversationId: string): Promise<TranscriptMessage[]> => {
-  if (!OUTLIER_PHONE_NUMBER) {
+  // Read per call rather than from the module constant, so a test can set it without depending on import order.
+  // The environment never changes inside a deployed function, so this behaves the same in production.
+  const outlierPhone = Deno.env.get('OUTLIER_PHONE_NUMBER')
+  if (!outlierPhone) {
     // Without it, the Outlier number can't be filtered out of residentPhones and every
     // message would be classified as inbound - fail loudly instead of mislabeling.
     throw new Error('OUTLIER_PHONE_NUMBER environment variable is not set')
@@ -138,7 +145,7 @@ export const getConversationTranscript = async (conversationId: string): Promise
     .where(eq(conversationsAuthors.conversationId, conversationId))
 
   const residentPhones = [
-    ...new Set(authorRows.map((row) => row.phone).filter((phone) => phone !== OUTLIER_PHONE_NUMBER)),
+    ...new Set(authorRows.map((row) => row.phone).filter((phone) => phone !== outlierPhone)),
   ]
   if (residentPhones.length === 0) return []
 
@@ -152,15 +159,16 @@ export const getConversationTranscript = async (conversationId: string): Promise
       deliveredAt: twilioMessages.deliveredAt,
       fromField: twilioMessages.fromField,
       toField: twilioMessages.toField,
+      senderId: twilioMessages.senderId,
     })
     .from(twilioMessages)
     .where(or(
       and(
         inArray(twilioMessages.fromField, residentPhones),
-        eq(twilioMessages.toField, OUTLIER_PHONE_NUMBER),
+        eq(twilioMessages.toField, outlierPhone),
       ),
       and(
-        eq(twilioMessages.fromField, OUTLIER_PHONE_NUMBER),
+        eq(twilioMessages.fromField, outlierPhone),
         inArray(twilioMessages.toField, residentPhones),
       ),
     ))
@@ -170,19 +178,46 @@ export const getConversationTranscript = async (conversationId: string): Promise
     // guarantees full determinism.
     .orderBy(asc(twilioMessages.deliveredAt), asc(twilioMessages.createdAt), asc(twilioMessages.id))
 
+  const broadcastIds = await getBroadcastMessageIds(residentPhones)
+
   const messages: TranscriptMessage[] = []
   for (const row of rows) {
     if (!row.preview || row.preview.trim().length === 0) continue
 
+    const inbound = residentPhones.includes(row.fromField)
     messages.push({
       body: row.preview,
-      direction: residentPhones.includes(row.fromField) ? 'inbound' : 'outbound',
+      direction: inbound ? 'inbound' : 'outbound',
       timestamp: row.deliveredAt,
       from: row.fromField,
       to: row.toField,
+      ...(inbound ? {} : { sentBy: classifyOutbound(row.id, row.senderId, broadcastIds) }),
     })
   }
   return messages
+}
+
+// Broadcast and campaign sends go through the Missive API as a staff user, so they carry a sender_id just like
+// a personal reply. message_statuses records each one under the Missive message id, which is the
+// twilio_messages id. Looked up by recipient phone (indexed) rather than by missive_id (not indexed), which
+// keeps this to the resident's own broadcast history.
+const getBroadcastMessageIds = async (residentPhones: string[]): Promise<Set<string>> => {
+  const rows = await supabase
+    .select({ missiveId: messageStatuses.missiveId })
+    .from(messageStatuses)
+    .where(inArray(messageStatuses.recipientPhoneNumber, residentPhones))
+  return new Set(rows.map((row) => row.missiveId))
+}
+
+// Same rule as the conversation_staff_activity view: a sender_id that is not a broadcast send is a staff reply,
+// and keyword or automation rules leave sender_id empty.
+export const classifyOutbound = (
+  messageId: string,
+  senderId: string | null,
+  broadcastIds: Set<string>,
+): OutboundSender => {
+  if (broadcastIds.has(messageId)) return 'broadcast'
+  return senderId ? 'staff' : 'automated'
 }
 
 const truncateTranscript = (
@@ -220,10 +255,20 @@ const truncateTranscript = (
   return { messages, truncated }
 }
 
-const formatTranscript = (messages: TranscriptMessage[]): string =>
+const OUTBOUND_SPEAKER: Record<OutboundSender, string> = {
+  staff: 'OUTLIER STAFF',
+  automated: 'OUTLIER AUTOMATED',
+  broadcast: 'OUTLIER BROADCAST',
+}
+
+export const formatTranscript = (messages: TranscriptMessage[]): string =>
   messages
     .map((message) => {
-      const speaker = message.direction === 'inbound' ? 'RESIDENT' : 'OUTLIER'
+      const speaker = message.direction === 'inbound'
+        ? 'RESIDENT'
+        : message.sentBy
+        ? OUTBOUND_SPEAKER[message.sentBy]
+        : 'OUTLIER'
       return `[${message.timestamp}] ${speaker}: ${message.body}`
     })
     .join('\n')
@@ -251,19 +296,47 @@ asked about.
 Tag taxonomy (priority order when multiple apply - use the first that fits): ${priorityOrder}.
 ${taxonomy}
 
-IMPORTANT for reporter-engaged: only use this tag when a named Outlier journalist or staff member gave a real, \
-personalized response - eligibility research, a referral they made themselves, multi-turn follow-up. A broadcast \
-or campaign message that merely happens to be signed by a staff member's name is NOT reporter-engaged; a resident \
-receiving only templated/automated content is info-gap, no-impact, or unsubscribe depending on what they did with it.
+How each message was sent. Every Outlier message in the transcript is marked:
+- OUTLIER STAFF: sent from a staff member's own Missive account. Usually a person writing to this resident, \
+but staff sometimes send a saved template by hand, so still judge by what it says.
+- OUTLIER AUTOMATED: sent by a keyword or automation rule with no person involved. These replies are often \
+signed with a real staff member's first name ("Koby from Outlier"); the signature does not make them personal.
+- OUTLIER BROADCAST: part of a broadcast or campaign sent to many residents.
+- OUTLIER: how it was sent is unknown; judge by what it says.
 
-This is the single most common misclassification, so weigh it carefully. Outlier's AUTOMATED replies are \
-routinely signed with a real staff member's first name ("Koby from Outlier", "Sarah from Outlier"), and a \
-signature is not engagement. Measured against conversations the newsroom itself labelled, this tag was applied \
-roughly ten times too often, and in 87% of those cases no staff member had been assigned to the conversation at \
-all. Before choosing reporter-engaged, look for something a person demonstrably did that automation could not: \
-an answer specific to this resident's circumstances, a lookup performed on their behalf, or a genuine \
-back-and-forth. A warm, personal-sounding template is still a template. When the resident simply received \
-information - even helpful, even signed - the tag is info-gap.
+info-gap ("Info gap filled") is the outcome the newsroom cares about most, so apply its definition exactly. \
+Choose info-gap only when all three hold:
+1. The resident had a specific information need about their own situation: they asked a question, or sent a \
+keyword together with their own details (an address, their circumstances), which counts as an implied personal \
+question.
+2. A staff member personally answered it with usable information: a fact, a rule, an eligibility answer \
+(including "no, you don't qualify"), a deadline, a phone number, email, address, open hours or location, or a \
+concrete next step. Good signs are deadlines, applications, filling out forms or paperwork, a number to call, \
+a place to go.
+3. The answer settles the question on its face, or the resident acknowledges it. A plain "thanks" counts as \
+acknowledgement.
+When a staff member answered only part of the question but the resident engaged with the answer, lean toward \
+info-gap.
+
+These are NOT info-gap, however helpful the content:
+- The resident only received AUTOMATED, BROADCAST or campaign content, including keyword menu replies and \
+automated lookup results. Tag what the resident did instead (no-impact, unsubscribe, unmet-demand, story-tip).
+- A staff check-in that the resident never answered.
+- Staff asked a clarifying question and the conversation ended there.
+- Staff told the resident something they already knew.
+- Questions about Outlier itself (how the service works, why they got a text, how to stop texts).
+- The resident gave Outlier information (a tip, their own experience, a complaint about a landlord or a city \
+service) rather than receiving it. That is story-tip.
+
+reporter-engaged: a staff member personally engaged with this resident one-on-one but did not deliver a \
+specific answer to a specific need: they checked in and the resident replied, offered to look into something, \
+or held a back-and-forth. When the staff member did deliver such an answer, choose info-gap and you may add \
+reporter-engaged as a secondary tag. Measured against conversations the newsroom itself labelled, \
+reporter-engaged used to be applied roughly ten times too often because automated replies are signed with \
+staff names, so look for something a person demonstrably did that automation could not.
+
+user-sat: the resident expressed satisfaction or praise beyond thanking someone for an answer. When the thanks \
+is for an answer that meets the info-gap definition, choose info-gap; user-sat may be a secondary tag.
 
 Topic list (choose based on the RESIDENT's own words and actual ask, not whichever broadcast campaign the \
 conversation happens to contain - a resident who asks about an address lookup during a REPAY campaign thread is \

@@ -289,6 +289,37 @@ describe('analyzeTranscript', { sanitizeOps: false, sanitizeResources: false }, 
     assertStringIncludes(content, 'msg-120')
   })
 
+  it('labels each outbound message by how it was sent', async () => {
+    fetchStub.resolves(openAiResponse(basePayload))
+
+    await analyzeTranscript([
+      buildMessage(0, { body: 'BROADCAST-BODY', direction: 'outbound', sentBy: 'broadcast' }),
+      buildMessage(1, { body: 'RESIDENT-QUESTION' }),
+      buildMessage(2, { body: 'AUTOMATED-REPLY', direction: 'outbound', sentBy: 'automated' }),
+      buildMessage(3, { body: 'STAFF-ANSWER', direction: 'outbound', sentBy: 'staff' }),
+      buildMessage(4, { body: 'UNKNOWN-SENDER', direction: 'outbound' }),
+    ], tags)
+
+    const content = requestBodyFromCall(fetchStub).input as string
+    assertStringIncludes(content, 'OUTLIER BROADCAST: BROADCAST-BODY')
+    assertStringIncludes(content, 'RESIDENT: RESIDENT-QUESTION')
+    assertStringIncludes(content, 'OUTLIER AUTOMATED: AUTOMATED-REPLY')
+    assertStringIncludes(content, 'OUTLIER STAFF: STAFF-ANSWER')
+    assertStringIncludes(content, '] OUTLIER: UNKNOWN-SENDER')
+  })
+
+  it('tells the model that automated and broadcast content alone is never info-gap', async () => {
+    fetchStub.resolves(openAiResponse(basePayload))
+
+    await analyzeTranscript([buildMessage(0)], tags)
+
+    const instructions = requestBodyFromCall(fetchStub).instructions as string
+    assertStringIncludes(instructions, 'A staff member personally answered it with usable information')
+    assertStringIncludes(instructions, 'The resident only received AUTOMATED, BROADCAST or campaign content')
+    // The old rule sent any received information to info-gap, which is what the newsroom's definition rejects.
+    assertEquals(instructions.includes('the tag is info-gap'), false)
+  })
+
   it('sends the full transcript untruncated when it fits within both budgets', async () => {
     fetchStub.resolves(openAiResponse(basePayload))
 

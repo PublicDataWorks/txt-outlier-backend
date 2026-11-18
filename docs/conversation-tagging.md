@@ -388,11 +388,21 @@ tags below, in priority order (use the first one that fits when more than one ap
 | 3 | `wrong-audience` | Message reached someone it was never meant for (wrong number, minor, out-of-area, mismatched targeting) | Suppressed |
 | 4 | `unsubscribe` | Resident explicitly opted out (STOP), typically in response to an unsolicited broadcast | Suppressed |
 | 5 | `story-tip` | Resident surfaced information a reporter could turn into a story or investigation | Posted |
-| 6 | `reporter-engaged` | A named Outlier journalist or staff member gave a real, personalized response — not an automated or templated broadcast reply | Posted |
-| 7 | `unmet-demand` | Resident expressed a real, in-scope need the service didn't resolve in-thread | Posted |
-| 8 | `info-gap` | A concrete question was answered correctly via automation/keyword menu, no reporter time spent | Posted |
+| 6 | `unmet-demand` | Resident expressed a real, in-scope need the service didn't resolve in-thread | Posted |
+| 7 | `info-gap` | A staff member personally answered the resident's specific question about their own situation with usable information (fact, rule, eligibility answer, deadline, contact, location, next step). Automated keyword, broadcast or campaign replies alone never count | Posted |
+| 8 | `reporter-engaged` | A staff member engaged one-on-one without delivering a specific answer to a specific need (a check-in the resident answered, an offer to look into something) | Posted |
 | 9 | `user-sat` | Resident was connected to a program/referral and expressed explicit satisfaction or gratitude | Posted |
-| 10 | `no-impact` | Resident received a broadcast/one-off message and took no further action of any kind | Suppressed |
+| 10 | `no-impact` | Resident received broadcast, campaign or automated content, or a staff check-in, and took no further meaningful action | Suppressed |
+
+**How `info-gap` is defined (prompt `q4-v1-info-gap-definition`)**: this follows the definition agreed with Outlier
+on Oct 7 2026 (the "TXT Outlier impact labels: proposed definitions" doc). Until q4 the tag meant the opposite (an
+answer delivered by automation), so automated keyword replies were counted under the outcome the newsroom treats as
+its most important. The transcript sent to the model now marks each outbound message as `OUTLIER STAFF` (sent from a
+staff member's Missive account), `OUTLIER AUTOMATED` (no sender, which is what keyword and automation rules
+produce) or `OUTLIER BROADCAST` (recorded in `message_statuses`), so the model no longer has to guess from a
+signature. `info-gap` also moved ahead of `reporter-engaged` in the priority order. Human impact labels never map to
+`reporter-engaged`, so this does not change how a labelled conversation resolves.
+`supabase/scripts/compare_info_gap.ts` measures the new prompt against reporters' own labels (read-only).
 
 **Why `automation-failure` isn't suppressed**: an earlier draft of this taxonomy suppressed it like the other
 "nothing to see here" tags. The historical audit's QA pass found this exact bug being introduced by the classifier —
