@@ -66,6 +66,30 @@ describe('Unsubscribe post to Missive', { sanitizeOps: false, sanitizeResources:
     assertEquals(missiveMock.createPost.firstCall.args[2], undefined)
   })
 
+  it('flags a possible opt-out for an editor without unsubscribing or closing', async () => {
+    const possibleLabelId = crypto.randomUUID()
+    env.withArgs('MISSIVE_UNSUBSCRIBED_LABEL_ID').returns(UNSUBSCRIBED_LABEL_ID)
+    env.withArgs('MISSIVE_POSSIBLE_OPTOUT_LABEL_ID').returns(possibleLabelId)
+
+    const request = await replyToBroadcast('How do I stop my water shutoff')
+
+    assertEquals(missiveMock.createPost.callCount, 1)
+    const [conversationId, , labelId, options] = missiveMock.createPost.firstCall.args
+    assertEquals(conversationId, request.conversation.id)
+    assertEquals(labelId, possibleLabelId)
+    assertEquals(options, { close: false })
+    assertEquals((await supabase.select().from(unsubscribedMessages)).length, 0)
+  })
+
+  it('ignores a phone reaction that quotes our STOP line', async () => {
+    env.withArgs('MISSIVE_UNSUBSCRIBED_LABEL_ID').returns(UNSUBSCRIBED_LABEL_ID)
+
+    await replyToBroadcast('Liked “Hello from Outlier Media. STOP to unsubscribe. HELP for customer support.”')
+
+    assertEquals(missiveMock.createPost.callCount, 0)
+    assertEquals((await supabase.select().from(unsubscribedMessages)).length, 0)
+  })
+
   it('leaves an UNSTOP reply alone', async () => {
     env.withArgs('MISSIVE_UNSUBSCRIBED_LABEL_ID').returns(UNSUBSCRIBED_LABEL_ID)
 

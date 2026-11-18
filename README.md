@@ -14,9 +14,12 @@
   functions, handling success and failure scenarios.
 - **Unsubscribe Handling**: Manage unsubscription requests with the `admin-action` edge function, triggered by Missive
   rules, and update the `unsubscribe` field accordingly. Incoming texts are also checked by `user-actions`
-  (`_shared/misc/subscriptionKeywords.ts`): "stop" or "unsubscribe" as a whole word anywhere in a message unsubscribes
-  the sender, and adds the `MISSIVE_UNSUBSCRIBED_LABEL_ID` label and closes the conversation. Resubscribing requires
-  the whole message to be START, UNSTOP, RESUBSCRIBE or DETROIT.
+  (`_shared/misc/subscriptionKeywords.ts`). A clear opt-out (a bare STOP or other carrier keyword, a one-word typo
+  like "stope", or a phrase like "stop texting me" or "unsubscribe me") unsubscribes the sender, adds the
+  `MISSIVE_UNSUBSCRIBED_LABEL_ID` label and closes the conversation. Any other use of "stop" or "unsub" ("how do I stop
+  my water shutoff") only posts a note, plus the `MISSIVE_POSSIBLE_OPTOUT_LABEL_ID` label when that setting is
+  configured, and leaves the conversation open for an editor, who comments UNSUBSCRIBE if it is an opt-out. Phone reactions ('Liked "…STOP to unsubscribe"') are
+  ignored. Resubscribing requires the whole message to be START, UNSTOP, RESUBSCRIBE or DETROIT.
 - **Failed Message Handling**: Use `handle-failed-deliveries` to process conversations with multiple failed messages,
   applying the `undeliverable` label and updating the `unsubscribe` field.
 - **Message Archival**: Implement `archive-double-failures` to archive conversations with consecutive failed messages,

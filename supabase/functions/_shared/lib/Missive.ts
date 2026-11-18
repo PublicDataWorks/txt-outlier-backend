@@ -50,7 +50,13 @@ const sendMessage = async (message: string, toPhone: string, isSecond: boolean, 
   return response
 }
 
-const createPost = async (conversationId: string, postBody: string, sharedLabelId?: string) => {
+// Adding a label also closes the conversation unless `close: false` is passed.
+const createPost = async (
+  conversationId: string,
+  postBody: string,
+  sharedLabelId?: string,
+  { close = true }: { close?: boolean } = {},
+) => {
   // deno-lint-ignore no-explicit-any
   const postData: any = {
     posts: {
@@ -66,9 +72,11 @@ const createPost = async (conversationId: string, postBody: string, sharedLabelI
 
   if (sharedLabelId) {
     postData.posts.add_shared_labels = [sharedLabelId]
-    postData.posts.close = true
-    postData.posts.reopen = false
     postData.posts.organization = MISSIVE_ORGANIZATION_ID
+    if (close) {
+      postData.posts.close = true
+      postData.posts.reopen = false
+    }
   }
 
   return await fetch(CREATE_POST_URL, {
