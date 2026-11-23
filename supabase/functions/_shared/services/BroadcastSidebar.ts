@@ -110,7 +110,7 @@ const updateSubscriptionStatus = async (
     )
   } else {
     console.error(
-      `[updateSubscriptionStatus] Failed to create post. Missive returned ${response.status}. conversationId: ${conversationId}, postMessage: ${postMessage}`,
+      `[updateSubscriptionStatus] Failed to create post. Missive returned ${response.status}. conversationId: ${conversationId}, action: ${action}`,
     )
     throw new Error(`Failed to update subscription status and create post. Missive returned ${response.status}.`)
   }
