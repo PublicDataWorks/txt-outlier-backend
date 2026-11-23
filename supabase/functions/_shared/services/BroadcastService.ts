@@ -393,9 +393,11 @@ const archiveBroadcastDoubleFailures = async () => {
       )
     } else {
       console.error(
-        `[archiveBroadcastDoubleFailures] Failed to archive conversation. conversationId: ${conversation.missive_conversation_id}`,
+        `[archiveBroadcastDoubleFailures] Failed to archive conversation. Missive returned ${response.status}. conversationId: ${conversation.missive_conversation_id}`,
       )
-      Sentry.captureException(`Failed to archive conversation: ${conversation.missive_conversation_id}`)
+      Sentry.captureException(
+        `Failed to archive conversation: ${conversation.missive_conversation_id}. Missive returned ${response.status}.`,
+      )
     }
     const elapsedTime = Date.now() - startTime
     if (elapsedTime > MAX_RUN_TIME) {
